@@ -2,7 +2,7 @@
 #include <LittleFS.h>
 #include <ArduinoJson.h>
 
-ApConfig loadApConfig() {
+ApConfig ConfigManager::loadApConfig() {
     ApConfig cfg{"YuriClock", "12345678"};
 
     if (!STORAGE.begin()) {
@@ -29,3 +29,5 @@ ApConfig loadApConfig() {
     cfg.password = doc["password"] | "12345678";
     return cfg;
 }
+
+ConfigManager configManager;

@@ -26,5 +26,18 @@ struct I2CScanResult {
 	size_t count;
 };
 
-void          i2cScan();
-I2CScanResult i2cGetLastScanResult();
+class I2CBusScanner {
+public:
+	void scan();
+	I2CScanResult lastResult() const;
+
+private:
+	static constexpr uint8_t FIRST_VALID_ADDRESS = 1;
+	static constexpr uint8_t LAST_VALID_ADDRESS = 126;
+	static constexpr size_t ADDRESS_CAPACITY = LAST_VALID_ADDRESS;
+
+	uint8_t lastScanAddresses_[ADDRESS_CAPACITY] = {};
+	size_t lastScanCount_ = 0;
+};
+
+extern I2CBusScanner i2cBusScanner;

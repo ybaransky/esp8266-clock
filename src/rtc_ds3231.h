@@ -14,5 +14,3 @@ bool rtcBegin();
 void rtcTick();
 RtcStatus rtcGetStatus();
 String rtcGetCurrentTimeString();
-
-void IRAM_ATTR onSQWPulse();

@@ -8,4 +8,9 @@ struct ApConfig {
     String password;
 };
 
-ApConfig loadApConfig();
+class ConfigManager {
+public:
+    ApConfig loadApConfig();
+};
+
+extern ConfigManager configManager;
