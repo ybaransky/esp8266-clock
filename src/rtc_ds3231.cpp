@@ -111,12 +111,18 @@ public:
     logRtcTime("Current RTC time:", rtc_.now());
 
     forcePollingMode_ = crashRecovery_.shouldForcePolling();
+    if (Hardware::Pins::RTC_SQW == Hardware::Pins::INTERNAL_LED) {
+      forcePollingMode_ = true;
+      Serial.printf("[RTC] INFO: SQW pin GPIO%u shares INTERNAL_LED; using polling mode to prevent LED blinking\n",
+                    Hardware::Pins::RTC_SQW);
+    }
+
     recoverIfPowerWasLost();
     flagInvalidTimeIfNeeded();
 
     if (forcePollingMode_) {
       configurePollingMode();
-      Serial.printf("[RTC] DS3231 initialized in polling mode (GPIO%u SQW disabled by crash guard)\n",
+      Serial.printf("[RTC] DS3231 initialized in polling mode (GPIO%u SQW disabled)\n",
                     Hardware::Pins::RTC_SQW);
     } else {
       configureSquareWaveInterrupt();
