@@ -12,13 +12,6 @@ static void onBtnLongPressStart();
 class ButtonController {
 public:
   void begin() {
-    if (LED_AVAILABLE_) {
-      pinMode(Hardware::Pins::INTERNAL_LED, OUTPUT);
-      digitalWrite(Hardware::Pins::INTERNAL_LED, HIGH);
-    } else {
-      Serial.println("[BTN] INFO: LED pulse disabled (INTERNAL_LED shares pin with RTC_SQW)");
-    }
-
     pinMode(Hardware::Pins::BUTTON, INPUT_PULLUP);
     if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
       Serial.println("[BTN] WARNING: D3/GPIO0 is LOW at startup (button may be pressed). Avoid holding this button during boot.");
@@ -42,13 +35,6 @@ public:
     btn_.tick();
   }
 
-  void ledTick(unsigned long now) {
-    if (!LED_AVAILABLE_) return;
-    if (!ledPulseActive_ || static_cast<long>(now - ledOffAtMs_) < 0) return;
-    digitalWrite(Hardware::Pins::INTERNAL_LED, HIGH);
-    ledPulseActive_ = false;
-  }
-
   bool hasEvent() const {
     return eventHead_ != eventTail_;
   }
@@ -62,7 +48,6 @@ public:
 
   void handleAction(const char *message, ButtonEvent event = ButtonEvent::NONE) {
     Serial.println(message);
-    startLedPulse(LED_PULSE_MS);
     if (event != ButtonEvent::NONE) {
       enqueueEvent(event);
     }
@@ -70,9 +55,7 @@ public:
 
 private:
   static constexpr int EVENT_QUEUE_CAPACITY = 8;
-  static constexpr unsigned long LED_PULSE_MS = 200;
   static constexpr unsigned long STARTUP_RECHECK_DELAY_MS = 500;
-  static constexpr bool LED_AVAILABLE_ = Hardware::Pins::INTERNAL_LED != Hardware::Pins::RTC_SQW;
 
   void enqueueEvent(ButtonEvent event) {
     const int nextTail = (eventTail_ + 1) % EVENT_QUEUE_CAPACITY;
@@ -81,19 +64,10 @@ private:
     eventTail_ = nextTail;
   }
 
-  void startLedPulse(unsigned long durationMs) {
-    if (!LED_AVAILABLE_) return;
-    digitalWrite(Hardware::Pins::INTERNAL_LED, LOW);
-    ledPulseActive_ = true;
-    ledOffAtMs_ = millis() + durationMs;
-  }
-
   OneButton btn_ = OneButton(Hardware::Pins::BUTTON, true, true);
   volatile ButtonEvent eventQueue_[EVENT_QUEUE_CAPACITY] = {};
   volatile int eventHead_ = 0;
   volatile int eventTail_ = 0;
-  bool ledPulseActive_ = false;
-  unsigned long ledOffAtMs_ = 0;
   bool startupRecheckDone_ = false;
   unsigned long startupRecheckAtMs_ = 0;
 };
@@ -115,6 +89,5 @@ static void onBtnLongPressStart() {
 
 void buttonBegin()                    { btn.begin(); }
 void buttonTick()                     { btn.tick(); }
-void buttonLedTick(unsigned long now) { btn.ledTick(now); }
 bool buttonHasEvent()                 { return btn.hasEvent(); }
 ButtonEvent buttonNextEvent()         { return btn.nextEvent(); }

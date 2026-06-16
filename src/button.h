@@ -11,6 +11,5 @@ enum class ButtonEvent {
 
 void buttonBegin();
 void buttonTick();
-void buttonLedTick(unsigned long now);
 bool buttonHasEvent();
 ButtonEvent buttonNextEvent();

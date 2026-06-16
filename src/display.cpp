@@ -1,0 +1,199 @@
+#include "display.h"
+
+#include "hardware.h"
+#include <TM1637Display.h>
+
+namespace {
+
+constexpr uint8_t SEG_BLANK = 0x00;
+constexpr uint8_t SEG_MINUS = 0x40;
+constexpr uint8_t SEG_DOT = 0x80;
+constexpr uint8_t SEG_VALUE_MASK = 0x7F;
+constexpr size_t PANEL_COUNT = 3;
+constexpr size_t PANEL_WIDTH = 4;
+constexpr size_t CACHE_WIDTH = 8;
+
+TM1637Display displays[PANEL_COUNT] = {
+    TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[0]),
+    TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[1]),
+    TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[2]),
+};
+
+constexpr uint8_t ASCII_SEGMENTS[96] = {
+  /*       a
+   *      ---
+   *  f |  g | b
+   *      ---
+   *  e |    | c
+   *      ---
+   *       d
+   * TM1637Display encoding is 0bXGFEDCBA.
+   * X is the decimal point / colon bit and is controlled by renderPanel().
+   */
+0b00000000, /* (space) this is 32 */
+0b10000110, /* ! */
+0b00100010, /* " */
+0b01111110, /* # */
+0b01101101, /* $ */
+0b11010010, /* % */
+0b01000110, /* & */
+0b00100000, /* ' */
+0b00101001, /* ( */
+0b00001011, /* ) */
+0b00100001, /* * */
+0b01110000, /* + */
+0b00010000, /* , */
+0b01000000, /* - */
+0b10000000, /* . */
+0b01010010, /* / */
+0b00111111, /* 0 */
+0b00000110, /* 1 */
+0b01011011, /* 2 */
+0b01001111, /* 3 */
+0b01100110, /* 4 */
+0b01101101, /* 5 */
+0b01111101, /* 6 */
+0b00000111, /* 7 */
+0b01111111, /* 8 */
+0b01101111, /* 9 */
+0b00001001, /* : */
+0b00001101, /* ; */
+0b01100001, /* < */
+0b01001000, /* = */
+0b01000011, /* > */
+0b11010011, /* ? */
+0b01011111, /* @ */
+0b01110111, /* A */
+0b01111100, /* B */
+0b00111001, /* C */
+0b01011110, /* D */
+0b01111001, /* E */
+0b01110001, /* F */
+0b00111101, /* G */
+0b01110110, /* H */
+0b00110000, /* I */
+0b00011110, /* J */
+0b01110101, /* K */
+0b00111000, /* L */
+0b00010101, /* M */
+0b00110111, /* N */
+0b00111111, /* O */
+0b01110011, /* P */
+0b01101011, /* Q */
+0b00110011, /* R */
+0b01101101, /* S */
+0b00110001, /* T */
+0b00111110, /* U */
+0b00111110, /* V */
+0b00101010, /* W */
+0b01110110, /* X */
+0b01101110, /* Y */
+0b01011011, /* Z */
+0b00111001, /* [ */
+0b01100100, /* \ */
+0b00001111, /* ] */
+0b00100011, /* ^ */
+0b00001000, /* _ */
+0b00000010, /* ` */
+0b01011111, /* a */
+0b01111100, /* b */
+0b01011000, /* c */
+0b01011110, /* d */
+0b01111011, /* e */
+0b01110001, /* f */
+0b01101111, /* g */
+0b01110100, /* h */
+0b00010000, /* i */
+0b00001100, /* j */
+0b01110101, /* k */
+0b00110000, /* l */
+0b00010100, /* m */
+0b01010100, /* n */
+0b01011100, /* o */
+0b01110011, /* p */
+0b01100111, /* q */
+0b01010000, /* r */
+0b01101101, /* s */
+0b01111000, /* t */
+0b00011100, /* u */
+0b00011100, /* v */
+0b00010100, /* w */
+0b01110110, /* x */
+0b01101110, /* y */
+0b01011011, /* z */
+0b01000110, /* { */
+0b00110000, /* | */
+0b01110000, /* } */
+0b00000001, /* ~ */
+0b00000000, /* (del) */
+};
+ 
+uint8_t segmentForChar(char c) {
+  const uint8_t code = static_cast<uint8_t>(c);
+  if (code < 32 || code > 127) return SEG_BLANK;
+  return ASCII_SEGMENTS[code - 32] & SEG_VALUE_MASK;
+}
+
+void renderPanel(TM1637Display &display, const char *text) {
+  uint8_t segments[PANEL_WIDTH] = {SEG_BLANK, SEG_BLANK, SEG_BLANK, SEG_BLANK};
+  size_t slot = 0;
+
+  for (size_t index = 0; text[index] != '\0' && slot < PANEL_WIDTH; ++index) {
+    const char value = text[index];
+
+    if ((value == ':' || value == ';') && slot == 2) {
+      segments[1] |= SEG_DOT;
+      continue;
+    }
+
+    if (value == '.' && slot > 0) {
+      segments[slot - 1] |= SEG_DOT;
+      continue;
+    }
+
+    segments[slot++] = segmentForChar(value);
+  }
+
+  display.setSegments(segments);
+}
+
+void copyPanelCache(char *destination, const char *source) {
+  strncpy(destination, source, CACHE_WIDTH - 1);
+  destination[CACHE_WIDTH - 1] = '\0';
+}
+
+}  // namespace
+
+void SegmentDisplay::begin(uint8_t brightness) {
+  setBrightness(brightness);
+  blank();
+}
+
+void SegmentDisplay::setBrightness(uint8_t level) {
+  const uint8_t clamped = min<uint8_t>(level, 7);
+  for (TM1637Display &display : displays) {
+    display.setBrightness(clamped);
+  }
+}
+
+void SegmentDisplay::showPanels(const char *r1, const char *r2, const char *r3) {
+  const char *panels[PANEL_COUNT] = {r1, r2, r3};
+
+  for (size_t index = 0; index < PANEL_COUNT; ++index) {
+    if (strncmp(panels[index], last_[index], CACHE_WIDTH - 1) == 0) continue;
+
+    copyPanelCache(last_[index], panels[index]);
+    renderPanel(displays[index], panels[index]);
+  }
+}
+
+void SegmentDisplay::blank() {
+  const uint8_t blankSegments[PANEL_WIDTH] = {};
+  memset(last_, 0, sizeof(last_));
+
+  for (TM1637Display &display : displays) {
+    display.setSegments(blankSegments);
+  }
+}
+
+SegmentDisplay segmentDisplay;
