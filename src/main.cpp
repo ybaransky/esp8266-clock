@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Wire.h>
 
 #include "button.h"
 #include "config.h"
@@ -49,9 +50,15 @@ void processButtonEvents() {
 }  // namespace
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(74880);
   delay(500);
   Serial.println("\n[SETUP] Starting up...");
+
+  Wire.begin(Hardware::Pins::I2C_SDA, Hardware::Pins::I2C_SCL);
+  Wire.setClock(100000);
+  Serial.printf("[I2C] Initialized SDA=GPIO%u SCL=GPIO%u\n",
+                Hardware::Pins::I2C_SDA,
+                Hardware::Pins::I2C_SCL);
 
   if (!rtcBegin()) {
     Serial.printf("[RTC] Init failed: %s\n", rtcGetStatus().error.c_str());

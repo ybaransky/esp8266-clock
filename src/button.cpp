@@ -12,17 +12,21 @@ static void onBtnLongPressStart();
 class ButtonController {
 public:
   void begin() {
-    pinMode(Hardware::Pins::INTERNAL_LED, OUTPUT);
-    digitalWrite(Hardware::Pins::INTERNAL_LED, HIGH);
+    if (LED_AVAILABLE_) {
+      pinMode(Hardware::Pins::INTERNAL_LED, OUTPUT);
+      digitalWrite(Hardware::Pins::INTERNAL_LED, HIGH);
+    } else {
+      Serial.println("[BTN] INFO: LED pulse disabled (INTERNAL_LED shares pin with RTC_SQW)");
+    }
 
-    pinMode(Hardware::Pins::BUTTON_1, INPUT);
-    if (digitalRead(Hardware::Pins::BUTTON_1) == HIGH) {
-      Serial.println("[BTN] WARNING: D8/GPIO15 is HIGH at startup (button may be pressed). Avoid holding this button during boot.");
+    pinMode(Hardware::Pins::BUTTON, INPUT_PULLUP);
+    if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
+      Serial.println("[BTN] WARNING: D3/GPIO0 is LOW at startup (button may be pressed). Avoid holding this button during boot.");
     }
     startupRecheckAtMs_ = millis() + STARTUP_RECHECK_DELAY_MS;
     startupRecheckDone_ = false;
 
-    // D8/GPIO15 has a board pull-down on D1 mini, so treat pressed state as HIGH.
+    // D3/GPIO0 uses pull-up logic; pressed state is LOW.
     btn_.attachClick(onBtnClick);
     btn_.attachDoubleClick(onBtnDoubleClick);
     btn_.attachLongPressStart(onBtnLongPressStart);
@@ -30,8 +34,8 @@ public:
 
   void tick() {
     if (!startupRecheckDone_ && static_cast<long>(millis() - startupRecheckAtMs_) >= 0) {
-      if (digitalRead(Hardware::Pins::BUTTON_1) == HIGH) {
-        Serial.println("[BTN] WARNING: D8/GPIO15 still HIGH 500ms after startup. Check wiring or release button during boot.");
+      if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
+        Serial.println("[BTN] WARNING: D3/GPIO0 still LOW 500ms after startup. Check wiring or release button during boot.");
       }
       startupRecheckDone_ = true;
     }
@@ -39,6 +43,7 @@ public:
   }
 
   void ledTick(unsigned long now) {
+    if (!LED_AVAILABLE_) return;
     if (!ledPulseActive_ || static_cast<long>(now - ledOffAtMs_) < 0) return;
     digitalWrite(Hardware::Pins::INTERNAL_LED, HIGH);
     ledPulseActive_ = false;
@@ -67,6 +72,7 @@ private:
   static constexpr int EVENT_QUEUE_CAPACITY = 8;
   static constexpr unsigned long LED_PULSE_MS = 200;
   static constexpr unsigned long STARTUP_RECHECK_DELAY_MS = 500;
+  static constexpr bool LED_AVAILABLE_ = Hardware::Pins::INTERNAL_LED != Hardware::Pins::RTC_SQW;
 
   void enqueueEvent(ButtonEvent event) {
     const int nextTail = (eventTail_ + 1) % EVENT_QUEUE_CAPACITY;
@@ -76,12 +82,13 @@ private:
   }
 
   void startLedPulse(unsigned long durationMs) {
+    if (!LED_AVAILABLE_) return;
     digitalWrite(Hardware::Pins::INTERNAL_LED, LOW);
     ledPulseActive_ = true;
     ledOffAtMs_ = millis() + durationMs;
   }
 
-  OneButton btn_ = OneButton(Hardware::Pins::BUTTON_1, false, false);
+  OneButton btn_ = OneButton(Hardware::Pins::BUTTON, true, true);
   volatile ButtonEvent eventQueue_[EVENT_QUEUE_CAPACITY] = {};
   volatile int eventHead_ = 0;
   volatile int eventTail_ = 0;

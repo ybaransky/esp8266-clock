@@ -2,14 +2,28 @@
 
 #include <Arduino.h>
 
+/*
+Function       | Pin | GPIO   | 	Notes
+---------------|-----|--------|-------------------------------
+TM1637 ALL CLK | D5	 | GPIO14 |	Shared across all 3 displays
+TM1637 #3 DIO  | D6	 | GPIO12 |	Safe
+TM1637 #2 DIO	 | D7	 | GPIO13 |	Safe
+TM1637 #1 DIO  | D0	 | GPIO16 |	No interrupts, but fine for DIO
+DS3231 SDA	   | D2	 | GPIO4  |	Hardware I2C
+DS3231 SCL	   | D1	 | GPIO5  |	Hardware I2C
+DS3231 SQW	   | D4	 | GPIO2  |	Interrupt capable ✓ — idles HIGH, SQW idles HIGH ✓
+Button         | D3	 | GPIO0  |	INPUT_PULLUP, don't press at boot
+*/
+
 namespace Hardware {
 	namespace Pins {
-		constexpr uint8_t I2C_SDA = D2;
-		constexpr uint8_t I2C_SCL = D1;
-
-		constexpr uint8_t BUTTON_1 = D8;
-		constexpr uint8_t INTERNAL_LED = D4;
-		constexpr uint8_t RTC_SQW = D7;
+		constexpr uint8_t I2C_SDA        = D2;
+		constexpr uint8_t I2C_SCL        = D1;
+		constexpr uint8_t BUTTON         = D3;
+		constexpr uint8_t INTERNAL_LED   = D4;
+		constexpr uint8_t RTC_SQW        = D4;
+		constexpr uint8_t SEGMENT_DIO[3] = {D0, D7, D6}; /* DIO[0] = D0 */
+		constexpr uint8_t SEGMENT_CLK    = D5;
 	}  // namespace Pins
 
 	namespace I2CAddress {
