@@ -4,6 +4,8 @@
 #include "log.h"
 
 static constexpr const char* CONFIG_PATH = "/config.json";
+static constexpr const char* YURICLOC = "YuriCloc";
+static constexpr const char* PASSWORD = "12345678";
 
 // Opens and deserializes config.json into doc.  Returns false on any failure.
 static bool openAndParse(JsonDocument& doc) {
@@ -30,7 +32,6 @@ ClockConfig defaultClockConfig() {
     s.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
     s.countupFmt    = 0;
     s.clockFmt      = 1; // " YYYY | MM:DD | hh:mm" (static colon)
-    s.justification = 1; // Right justified
     s.brightness    = 3;
     snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "2026-07-04 00:00:00");
     snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "now");
@@ -41,13 +42,15 @@ ClockConfig defaultClockConfig() {
 
 // ── WiFi ──────────────────────────────────────────────────────────────────────
 WifiConfig ConfigManager::loadWifiConfig() {
-    WifiConfig cfg{"YuriClock", "12345678"};
+    WifiConfig cfg{"", "", YURICLOC, PASSWORD};
 
     JsonDocument doc;
     if (!openAndParse(doc)) return cfg;
 
-    cfg.ssid     = doc["ssid"]     | "YuriClock";
-    cfg.password = doc["password"] | "12345678";
+    cfg.staSsid         = doc["staSsid"]         | "";
+    cfg.staPassword     = doc["staPassword"]     | "";
+    cfg.apSsid          = doc["apSsid"]          | YURICLOC;
+    cfg.apPassword      = doc["apPassword"]      | PASSWORD;
     return cfg;
 }
 
@@ -61,8 +64,10 @@ void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     File fr = STORAGE.open(CONFIG_PATH, "r");
     if (fr) { deserializeJson(doc, fr); fr.close(); }
 
-    doc["ssid"]     = cfg.ssid;
-    doc["password"] = cfg.password;
+    doc["staSsid"]         = cfg.staSsid;
+    doc["staPassword"]     = cfg.staPassword;
+    doc["apSsid"]          = cfg.apSsid;
+    doc["apPassword"]      = cfg.apPassword;
 
     File fw = STORAGE.open(CONFIG_PATH, "w");
     if (!fw) { LOG_PRINTLN("Failed to open config.json for writing"); return; }
@@ -83,7 +88,6 @@ ClockConfig ConfigManager::loadClockConfig() {
     s.countdownFmt  = doc["countdownFmt"]  | s.countdownFmt;
     s.countupFmt    = doc["countupFmt"]    | s.countupFmt;
     s.clockFmt      = doc["clockFmt"]      | s.clockFmt;
-    s.justification = doc["justification"] | s.justification;
     s.brightness    = doc["brightness"]    | s.brightness;
 
     const char* target = doc["countdownDatetime"] | "";
@@ -92,10 +96,12 @@ ClockConfig ConfigManager::loadClockConfig() {
     const char* start = doc["countupDatetime"] | "";
     if (start[0])  snprintf(s.countupDatetime,  sizeof(s.countupDatetime),   "%s", start);
 
-    const char* splash = doc["splashMessage"] | "";
+                                               /*123412341234*/
+    const char* splash = doc["splashMessage"] | "      hi    ";
     snprintf(s.splashMessage, sizeof(s.splashMessage), "%s", splash);
 
-    const char* finalMsg = doc["finalMessage"] | "";
+                                                /*123412341234*/
+    const char* finalMsg = doc["finalMessage"] | "Good Luc    ";
     snprintf(s.finalMessage, sizeof(s.finalMessage), "%s", finalMsg);
 
     return s;
@@ -115,35 +121,16 @@ void ConfigManager::saveClockConfig(const ClockConfig& s) {
     doc["countdownFmt"]      = s.countdownFmt;
     doc["countupFmt"]        = s.countupFmt;
     doc["clockFmt"]          = s.clockFmt;
-    doc["justification"]     = s.justification;
     doc["brightness"]        = s.brightness;
     doc["countdownDatetime"] = s.countdownDatetime;
     doc["countupDatetime"]   = s.countupDatetime;
     doc["splashMessage"]     = s.splashMessage;
     doc["finalMessage"]      = s.finalMessage;
-    doc.remove("infoMessage");
-
     File fw = STORAGE.open(CONFIG_PATH, "w");
     if (!fw) { LOG_PRINTLN("Failed to open config.json for writing"); return; }
     serializeJson(doc, fw);
     fw.close();
     LOG_PRINTLN("Clock config saved");
-}
-
-// ── Utility ───────────────────────────────────────────────────────────────────
-String ConfigManager::loadRaw() {
-    if (!STORAGE.begin()) return String();
-    File f = STORAGE.open(CONFIG_PATH, "r");
-    if (!f) return String();
-    String s = f.readString();
-    f.close();
-    return s;
-}
-
-bool ConfigManager::deleteConfig() {
-    if (!STORAGE.begin()) return false;
-    if (!STORAGE.exists(CONFIG_PATH)) return false;
-    return STORAGE.remove(CONFIG_PATH);
 }
 
 ConfigManager configManager;

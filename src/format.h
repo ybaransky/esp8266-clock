@@ -7,8 +7,7 @@ enum FormatGroup : uint8_t {
   kFmtGroupCountdown     = 0,
   kFmtGroupCountUp       = 1,
   kFmtGroupClock         = 2,
-  kFmtGroupJustification = 3,
-  kFmtGroupCount         = 4
+  kFmtGroupCount         = 3
 };
 
 // Number of entries in each group.
@@ -32,4 +31,3 @@ enum PersistentMode : uint8_t {
   kPersistentCountup   = 1,
   kPersistentClock     = 2,
 };
-

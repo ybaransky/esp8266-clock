@@ -10,6 +10,25 @@ enum class DisplayBehavior : uint8_t {
   kCountdown,
   kCountup,
   kMessage,
+  kPagedMessage,
+};
+
+static constexpr uint8_t kDisplayRowsPerPage = 3;
+static constexpr uint8_t kDisplayRowChars = 4;
+static constexpr uint8_t kMaxDisplayPages = 8;
+static constexpr uint16_t kDefaultPageDurationMs = 2000;
+
+struct DisplayPage {
+  char rows[kDisplayRowsPerPage][kDisplayRowChars + 1] = {};  // Three 4-character panel rows.
+};
+
+struct PagedDisplayPayload {
+  DisplayPage pages[kMaxDisplayPages];       // Prebuilt pages rendered exactly as provided.
+  uint8_t pageCount = 0;                      // Number of valid pages in pages[].
+  uint8_t currentPage = 0;                    // Page currently visible.
+  uint16_t pageDurationMs = kDefaultPageDurationMs;  // Time each page remains visible.
+  uint32_t pageStartedAtMs = 0;               // millis() timestamp when currentPage began.
+  bool repeat = false;                        // True when pages loop until externally cleared.
 };
 
 struct DisplayPayload {
@@ -17,6 +36,7 @@ struct DisplayPayload {
   DateTime startTime = DateTime(2000, 1, 1, 0, 0, 0);   // Count-up origin time.
   uint8_t formatIndex = 0;                              // Formatter index for clock/count states.
   char message[64] = {};                                // Text rendered by message states.
+  PagedDisplayPayload paged;                             // Structured pages for paged message states.
 };
 
 struct DisplayState {
@@ -34,11 +54,15 @@ class DisplayManager {
  public:
   void begin(const ClockConfig& config);
   void applySettings(const ClockConfig& config);
+  void setBrightness(uint8_t brightness);
   void tick(uint32_t nowMs);
 
   void showSplash(const char* message);
   void showDemo();
   void showInfo(const char* message, int32_t durationMs = FOREVER);
+  void showPages(const DisplayPage* pages, uint8_t pageCount,
+                 uint16_t pageDurationMs = kDefaultPageDurationMs,
+                 bool repeat = false);
   void clearInfo();
 
   const char* defaultStateName() const;
@@ -67,6 +91,7 @@ class DisplayManager {
   void renderCountdown(uint32_t nowMs, bool force);
   void renderCountup(uint32_t nowMs, bool force);
   void renderMessage(uint32_t nowMs, bool force);
+  void renderPagedMessage(uint32_t nowMs, bool force);
 
   ClockConfig settings_ = defaultClockConfig();  // Persisted display settings currently applied.
   DisplayState defaultState_;                    // State restored after temporary states.

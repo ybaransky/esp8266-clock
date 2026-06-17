@@ -15,6 +15,7 @@ bool rtcBegin();
 RtcStatus rtcGetStatus();
 String rtcGetCurrentTimeString();
 DateTime rtcGetNow();
+void rtcSetNow(const DateTime& timeValue);
 
 // SQW 1 Hz interrupt — call after rtcBegin() succeeds, then every loop iteration.
 void rtcBeginSqwProcessing();

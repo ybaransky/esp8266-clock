@@ -8,8 +8,10 @@ static constexpr int32_t FOREVER = INT32_MAX;
 
 // ── WifiConfig ────────────────────────────────────────────────────────────────
 struct WifiConfig {
-    String ssid;
-    String password;
+    String staSsid;
+    String staPassword;
+    String apSsid;
+    String apPassword;
 };
 
 // ── ClockConfig ───────────────────────────────────────────────────────────────
@@ -20,7 +22,6 @@ struct ClockConfig {
   uint8_t countdownFmt;  // index into kCountdownFormats
   uint8_t countupFmt;    // index into kCountupFormats
   uint8_t clockFmt;      // index into kClockFormats
-  uint8_t justification; // 0 = left, 1 = right
   uint8_t brightness;    // TM1637 brightness 0–7
 
   char countdownDatetime[20]; // "YYYY-MM-DD HH:MM:SS"
@@ -42,8 +43,6 @@ public:
     ClockConfig loadClockConfig();
     void        saveClockConfig(const ClockConfig& cfg);
 
-    String loadRaw();
-    bool   deleteConfig();
 };
 
 extern ConfigManager configManager;

@@ -63,6 +63,14 @@ void blankBuffers(char r1[8], char r2[8], char r3[8]) {
   snprintf(r3, 8, "    ");
 }
 
+void copyDisplayRow(char destination[kDisplayRowChars + 1], const char* source) {
+  snprintf(destination, kDisplayRowChars + 1, "%-4.4s", source);
+}
+
+void copyDisplayTitle(char destination[kDisplayRowChars + 1], const char* source) {
+  snprintf(destination, kDisplayRowChars + 1, "%4.4s", source);
+}
+
 }  // namespace
 
 void DisplayManager::begin(const ClockConfig& config) {
@@ -83,6 +91,11 @@ void DisplayManager::applySettings(const ClockConfig& config) {
   installDefaultState(millis());
 }
 
+void DisplayManager::setBrightness(uint8_t brightness) {
+  settings_.brightness = constrain(brightness, 0, 7);
+  segmentDisplay.setBrightness(settings_.brightness);
+}
+
 void DisplayManager::tick(uint32_t nowMs) {
   if (transitionExpired(nowMs)) {
     finishTemporaryState(nowMs);
@@ -92,16 +105,19 @@ void DisplayManager::tick(uint32_t nowMs) {
 }
 
 void DisplayManager::showSplash(const char* message) {
+  const uint32_t nowMs = millis();
   DisplayState state;
   state.behavior = DisplayBehavior::kMessage;
   state.blink = false;
   state.payload.formatIndex = 0;
   copyMessage(state.payload.message, message);
 
-  installState(state, {true, millis() + kSplashDurationMs}, millis(), true);
+  installState(state, {true, nowMs + kSplashDurationMs}, nowMs, true);
+  renderCurrentState(nowMs, true);
 }
 
 void DisplayManager::showDemo() {
+  const uint32_t nowMs = millis();
   DisplayState state;
   state.behavior = DisplayBehavior::kCountdown;
   state.blink = false;
@@ -109,10 +125,12 @@ void DisplayManager::showDemo() {
   state.payload.endTime = rtcGetNow() + TimeSpan(0, 0, 0, 5);
 
   demoCountdownActive_ = true;
-  installState(state, {true, millis() + kDemoCountdownMs}, millis(), true);
+  installState(state, {true, nowMs + kDemoCountdownMs}, nowMs, true);
+  renderCurrentState(nowMs, true);
 }
 
 void DisplayManager::showInfo(const char* message, int32_t durationMs) {
+  const uint32_t nowMs = millis();
   DisplayState state;
   state.behavior = DisplayBehavior::kMessage;
   state.blink = true;
@@ -120,12 +138,53 @@ void DisplayManager::showInfo(const char* message, int32_t durationMs) {
   copyMessage(state.payload.message, message);
 
   const bool expires = durationMs != FOREVER;
-  const uint32_t expiresAt = expires ? millis() + static_cast<uint32_t>(durationMs) : 0;
-  installState(state, {expires, expiresAt}, millis(), true);
+  const uint32_t expiresAt = expires ? nowMs + static_cast<uint32_t>(durationMs) : 0;
+  installState(state, {expires, expiresAt}, nowMs, true);
+  renderCurrentState(nowMs, true);
+}
+
+void DisplayManager::showPages(const DisplayPage* pages,
+                               uint8_t pageCount,
+                               uint16_t pageDurationMs,
+                               bool repeat) {
+  if (pages == nullptr || pageCount == 0) {
+    return;
+  }
+
+  DisplayState state;
+  const uint32_t nowMs = millis();
+  state.behavior = DisplayBehavior::kPagedMessage;
+  state.blink = false;
+  state.payload.paged.pageCount =
+      pageCount < kMaxDisplayPages ? pageCount : kMaxDisplayPages;
+  state.payload.paged.currentPage = 0;
+  state.payload.paged.pageDurationMs = pageDurationMs;
+  state.payload.paged.pageStartedAtMs = nowMs;
+  state.payload.paged.repeat = repeat;
+
+  for (uint8_t pageIndex = 0; pageIndex < state.payload.paged.pageCount; ++pageIndex) {
+    for (uint8_t rowIndex = 0; rowIndex < kDisplayRowsPerPage; ++rowIndex) {
+      if (rowIndex == 0) {
+        copyDisplayTitle(state.payload.paged.pages[pageIndex].rows[rowIndex],
+                         pages[pageIndex].rows[rowIndex]);
+      } else {
+        copyDisplayRow(state.payload.paged.pages[pageIndex].rows[rowIndex],
+                       pages[pageIndex].rows[rowIndex]);
+      }
+    }
+  }
+
+  const uint32_t durationMs =
+      static_cast<uint32_t>(state.payload.paged.pageDurationMs) *
+      state.payload.paged.pageCount;
+  installState(state, {!repeat, nowMs + durationMs}, nowMs, true);
+  renderCurrentState(nowMs, true);
 }
 
 void DisplayManager::clearInfo() {
-  if (hasPreviousState_ && currentState_.behavior == DisplayBehavior::kMessage) {
+  if (hasPreviousState_ &&
+      (currentState_.behavior == DisplayBehavior::kMessage ||
+       currentState_.behavior == DisplayBehavior::kPagedMessage)) {
     finishTemporaryState(millis());
   }
 }
@@ -172,6 +231,8 @@ const char* DisplayManager::behaviorName(DisplayBehavior behavior) const {
       return "countup";
     case DisplayBehavior::kMessage:
       return "message";
+    case DisplayBehavior::kPagedMessage:
+      return "pages";
   }
   return "?";
 }
@@ -191,7 +252,7 @@ void DisplayManager::installState(const DisplayState& state,
                                   bool rememberPrevious) {
   const DisplayState oldState = currentState_;
 
-  if (rememberPrevious) {
+  if (rememberPrevious && !hasPreviousState_) {
     previousState_ = currentState_;
     hasPreviousState_ = true;
   }
@@ -278,6 +339,8 @@ uint32_t DisplayManager::refreshInterval() const {
       return clockHasTenths(currentState_.payload.formatIndex) ? kTenthMs : kSecondMs;
     case DisplayBehavior::kMessage:
       return currentState_.blink ? kBlinkMs : kSecondMs;
+    case DisplayBehavior::kPagedMessage:
+      return currentState_.payload.paged.pageDurationMs;
   }
   return kSecondMs;
 }
@@ -313,6 +376,9 @@ void DisplayManager::renderCurrentState(uint32_t nowMs, bool force) {
       break;
     case DisplayBehavior::kMessage:
       renderMessage(nowMs, force);
+      break;
+    case DisplayBehavior::kPagedMessage:
+      renderPagedMessage(nowMs, force);
       break;
   }
 }
@@ -409,14 +475,62 @@ void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
+void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
+  PagedDisplayPayload& paged = currentState_.payload.paged;
+  if (paged.pageCount == 0) {
+    return;
+  }
+
+  bool pageChanged = false;
+  if (static_cast<long>(nowMs - paged.pageStartedAtMs) >=
+      static_cast<long>(paged.pageDurationMs)) {
+    const uint8_t nextPage = paged.currentPage + 1;
+    if (nextPage < paged.pageCount) {
+      paged.currentPage = nextPage;
+      pageChanged = true;
+    } else if (paged.repeat) {
+      paged.currentPage = 0;
+      pageChanged = true;
+    }
+    paged.pageStartedAtMs = nowMs;
+  }
+
+  if (pageChanged) {
+    blinkOn_ = true;
+    blinkMs_ = nowMs;
+    force = true;
+  } else if (static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kBlinkMs)) {
+    blinkMs_ = nowMs;
+    blinkOn_ = !blinkOn_;
+    force = true;
+  }
+
+  if (!force) {
+    return;
+  }
+
+  const DisplayPage& page = paged.pages[paged.currentPage];
+  segmentDisplay.showPanels(blinkOn_ ? page.rows[0] : "    ",
+                            page.rows[1],
+                            page.rows[2]);
+}
+
 DisplayManager displayManager;
 
 void clockApplySettings(const ClockConfig& cfg) {
   displayManager.applySettings(cfg);
 }
 
+void clockSetBrightness(uint8_t brightness) {
+  displayManager.setBrightness(brightness);
+}
+
 void clockTriggerDemo() {
   displayManager.showDemo();
+}
+
+void clockShowMessagePreview(const char* msg) {
+  displayManager.showSplash(msg);
 }
 
 void clockShowInfo(const char* msg, int32_t durationMs) {

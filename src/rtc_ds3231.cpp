@@ -54,6 +54,15 @@ public:
     return status_.present ? rtc_.now() : DateTime(2000, 1, 1, 0, 0, 0);
   }
 
+  void setNow(const DateTime &timeValue) {
+    if (!status_.present) {
+      LOG_PRINTLN("RTC time sync skipped: DS3231 not initialized");
+      return;
+    }
+
+    adjustWithLog(timeValue, "browser time sync");
+  }
+
 private:
   static constexpr uint8_t RTC_I2C_ADDRESS = Hardware::I2CAddress::DS3231;
 
@@ -124,6 +133,7 @@ bool rtcBegin()                  { return rtc.begin(); }
 RtcStatus rtcGetStatus()         { return rtc.getStatus(); }
 String rtcGetCurrentTimeString() { return rtc.currentTimeString(); }
 DateTime rtcGetNow()             { return rtc.now(); }
+void rtcSetNow(const DateTime& timeValue) { rtc.setNow(timeValue); }
 
 // ── SQW 1 Hz interrupt processing ─────────────────────────────────────────────
 

@@ -4,8 +4,8 @@
 
 enum class ButtonEvent {
   NONE,
-  SHOW_NETWORK_INFO,
-  SHOW_I2C_SCAN,
+  SHOW_SSID,
+  SHOW_IP_ADDRESS,
   SHOW_RTC_STATUS,
 };
 

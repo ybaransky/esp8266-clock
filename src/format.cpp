@@ -48,25 +48,16 @@ static const char* const kClockFormats[] = {
   "   DD |    hh |    mm",   // day       | hours         | minutes
 };
 
-// ── Justification modes ───────────────────────────────────────────────────────
-// Controls how blank-padded numeric tokens (d, h, m, s) are aligned.
-static const char* const kJustificationModes[] = {
-  " Left justified",   // leading space keeps width equal to "Right justified"
-  "Right justified",
-};
-
 // ── Master lookup table ───────────────────────────────────────────────────────
 const char* const* const kFormatGroups[kFmtGroupCount] = {
   kCountdownFormats,
   kCountupFormats,
   kClockFormats,
-  kJustificationModes,
 };
 
 const uint8_t kFormatGroupSizes[kFmtGroupCount] = {
   (uint8_t)(sizeof(kCountdownFormats)    / sizeof(kCountdownFormats[0])),
   (uint8_t)(sizeof(kCountupFormats)      / sizeof(kCountupFormats[0])),
   (uint8_t)(sizeof(kClockFormats)        / sizeof(kClockFormats[0])),
-  (uint8_t)(sizeof(kJustificationModes)  / sizeof(kJustificationModes[0])),
 };
 

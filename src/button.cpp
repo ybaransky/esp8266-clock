@@ -76,12 +76,11 @@ private:
 static ButtonController btn;
 
 static void onBtnClick() {
-  btn.handleAction("Single press", ButtonEvent::SHOW_NETWORK_INFO);
-  LOG_PRINTLN("INFO: explicit call");
+  btn.handleAction("Single press", ButtonEvent::SHOW_SSID);
 }
 
 static void onBtnDoubleClick() {
-  btn.handleAction("Double click", ButtonEvent::SHOW_I2C_SCAN);
+  btn.handleAction("Double click", ButtonEvent::SHOW_IP_ADDRESS);
 }
 
 static void onBtnLongPressStart() {

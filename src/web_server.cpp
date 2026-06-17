@@ -12,22 +12,27 @@
 #include "html.h"
 #include "log.h"
 #include "rtc_ds3231.h"
+#include "wifi_connection_manager.h"
 
 // Forward declarations for server route callbacks.
 static void handleRootRoute();
 static void handleConfigGetRoute();
+static void handleFormatRoute();
+static void handleTimeSyncRoute();
+static void handleMessageRoute();
 static void handleWifiRoute();
-static void handleUtilityRoute();
-static void handleDemoRoute();
 static void handleApiDemoTestRoute();
+static void handleApiMessageTestRoute();
+static void handleApiSetModeRoute();
+static void handleApiBrightnessRoute();
 static void handleApiTimeRoute();
+static void handleApiTimeSyncRoute();
 static void handleApiFormatsRoute();
 static void handleApiGetConfigRoute();
 static void handleApiSaveConfigRoute();
-static void handleApiConfigRawRoute();
-static void handleApiConfigDeleteRoute();
-static void handleApiWifiGetRoute();
-static void handleApiWifiSaveRoute();
+static void handleApiWifiStatusRoute();
+static void handleApiWifiScanRoute();
+static void handleApiWifiConnectRoute();
 static void handleCaptiveRedirectRoute();
 
 // ── WebPortal ─────────────────────────────────────────────────────────────────
@@ -36,32 +41,32 @@ class WebPortal {
 public:
   WebPortal() : server_(80) {}
 
-  void begin(const char *ssid, const char *password) {
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(ssid, password);
-    waitForSoftApIp();
-
-    LOG_PRINTF("AP \"%s\" started  IP: %s\n", ssid, WiFi.softAPIP().toString().c_str());
-
-    dnsRunning_ = dnsServer_.start(53, "*", WiFi.softAPIP());
-    if (!dnsRunning_) {
-      LOG_PRINTLN("Failed to start captive DNS server (no socket available)");
+  void begin() {
+    if (wifiConnectionManager.status().mode == WifiMode::kAccessPoint) {
+      dnsRunning_ = dnsServer_.start(53, "*", WiFi.softAPIP());
+      if (!dnsRunning_) {
+        LOG_PRINTLN("Failed to start captive DNS server (no socket available)");
+      }
     }
 
     server_.on("/",                    HTTP_GET,  handleRootRoute);
     server_.on("/config",              HTTP_GET,  handleConfigGetRoute);
+    server_.on("/format",              HTTP_GET,  handleFormatRoute);
+    server_.on("/time-sync",           HTTP_GET,  handleTimeSyncRoute);
+    server_.on("/messages",            HTTP_GET,  handleMessageRoute);
     server_.on("/wifi",                HTTP_GET,  handleWifiRoute);
-    server_.on("/utility",             HTTP_GET,  handleUtilityRoute);
-    server_.on("/demo",                HTTP_GET,  handleDemoRoute);
     server_.on("/api/demo/test",       HTTP_POST, handleApiDemoTestRoute);
+    server_.on("/api/message/test",    HTTP_POST, handleApiMessageTestRoute);
+    server_.on("/api/mode",            HTTP_POST, handleApiSetModeRoute);
+    server_.on("/api/brightness",      HTTP_POST, handleApiBrightnessRoute);
     server_.on("/api/time",            HTTP_GET,  handleApiTimeRoute);
+    server_.on("/api/time/sync",       HTTP_POST, handleApiTimeSyncRoute);
     server_.on("/api/formats",         HTTP_GET,  handleApiFormatsRoute);
     server_.on("/api/config",          HTTP_GET,  handleApiGetConfigRoute);
     server_.on("/api/config",          HTTP_POST, handleApiSaveConfigRoute);
-    server_.on("/api/config/raw",      HTTP_GET,  handleApiConfigRawRoute);
-    server_.on("/api/config/delete",   HTTP_POST, handleApiConfigDeleteRoute);
-    server_.on("/api/wifi",            HTTP_GET,  handleApiWifiGetRoute);
-    server_.on("/api/wifi",            HTTP_POST, handleApiWifiSaveRoute);
+    server_.on("/api/wifi/status",     HTTP_GET,  handleApiWifiStatusRoute);
+    server_.on("/api/wifi/scan",       HTTP_GET,  handleApiWifiScanRoute);
+    server_.on("/api/wifi/connect",    HTTP_POST, handleApiWifiConnectRoute);
     server_.onNotFound(handleCaptiveRedirectRoute);
     server_.begin();
     LOG_PRINTLN("HTTP server started");
@@ -77,8 +82,14 @@ public:
   }
 
   void getNetworkInfo(String &ssid, String &ip) {
-    ssid = WiFi.softAPSSID();
-    ip   = WiFi.softAPIP().toString();
+    const WifiRuntimeStatus status = wifiConnectionManager.status();
+    if (status.mode == WifiMode::kStation && status.connected) {
+      ssid = status.ssid;
+      ip = status.ip;
+      return;
+    }
+    ssid = status.apSsid;
+    ip = status.apIp;
   }
 
   // ── GET / ────────────────────────────────────────────────────────────────────
@@ -90,7 +101,22 @@ public:
   // ── GET /config ───────────────────────────────────────────────────────────────
   void handleConfigGet() {
     logRequest(200);
+    server_.send_P(200, "text/html", CONFIG_JSON_HTML);
+  }
+
+  void handleFormat() {
+    logRequest(200);
     server_.send_P(200, "text/html", CONFIG_HTML);
+  }
+
+  void handleTimeSync() {
+    logRequest(200);
+    server_.send_P(200, "text/html", TIME_SYNC_HTML);
+  }
+
+  void handleMessage() {
+    logRequest(200);
+    server_.send_P(200, "text/html", MESSAGE_HTML);
   }
 
   // ── GET /wifi ─────────────────────────────────────────────────────────────────
@@ -99,22 +125,32 @@ public:
     server_.send_P(200, "text/html", WIFI_HTML);
   }
 
-  // ── GET /utility ──────────────────────────────────────────────────────────────
-  void handleUtility() {
-    logRequest(200);
-    server_.send_P(200, "text/html", UTILITY_HTML);
-  }
-
-  // ── GET /demo ───────────────────────────────────────────────────────────────────
-  void handleDemo() {
-    logRequest(200);
-    server_.send_P(200, "text/html", DEMO_HTML);
-  }
-
   // ── POST /api/demo/test ──────────────────────────────────────────────────────────
-  // Applies demo mode in memory (not persisted). Returns preview_ms so the
-  // page knows when to show the Save button.
+  // Applies demo mode in memory. If finalMessage is supplied, previews it without
+  // persisting. Returns preview_ms so the page knows when the demo should finish.
   void handleApiDemoTest() {
+    logRequest(200);
+    if (server_.hasArg("plain") && server_.arg("plain").length() > 0) {
+      JsonDocument doc;
+      DeserializationError err = deserializeJson(doc, server_.arg("plain"));
+      if (err) {
+        server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+      }
+
+      if (!doc["finalMessage"].isNull()) {
+        ClockConfig cfg = configManager.loadClockConfig();
+        snprintf(cfg.finalMessage, sizeof(cfg.finalMessage), "%s", doc["finalMessage"].as<const char*>());
+        clockApplySettings(cfg);
+      }
+    }
+
+    clockTriggerDemo();
+    // 5-second countdown + 5 seconds of blinking = 10 s preview
+    server_.send(200, "application/json", "{\"preview_ms\":10000}");
+  }
+
+  void handleApiMessageTest() {
     logRequest(200);
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, server_.arg("plain"));
@@ -122,25 +158,93 @@ public:
       server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
     }
-    // Patch finalMessage into the live settings without persisting, then run demo state.
-    if (!doc["finalMessage"].isNull()) {
-      ClockConfig s = configManager.loadClockConfig();
-      snprintf(s.finalMessage, sizeof(s.finalMessage), "%s", doc["finalMessage"].as<const char*>());
-      clockApplySettings(s);
+
+    const char* message = doc["message"] | "";
+    clockShowMessagePreview(message);
+    server_.send(200, "application/json", "{\"message\":\"Previewing message\",\"preview_ms\":5000}");
+  }
+
+  void handleApiSetMode() {
+    logRequest(200);
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, server_.arg("plain"));
+    if (err) {
+      server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      return;
     }
-    clockTriggerDemo();
-    // 5-second countdown + 5 seconds of blinking = 10 s preview
-    server_.send(200, "application/json", "{\"preview_ms\":10000}");
+
+    const String mode = doc["mode"] | "";
+    ClockConfig cfg = configManager.loadClockConfig();
+    if (mode == "countdown") {
+      cfg.activeMode = kPersistentCountdown;
+    } else if (mode == "countup") {
+      cfg.activeMode = kPersistentCountup;
+    } else if (mode == "clock") {
+      cfg.activeMode = kPersistentClock;
+    } else {
+      server_.send(400, "application/json", "{\"error\":\"Invalid mode\"}");
+      return;
+    }
+
+    configManager.saveClockConfig(cfg);
+    clockApplySettings(cfg);
+    server_.send(200, "application/json", "{\"message\":\"Mode changed\"}");
+  }
+
+  void handleApiBrightness() {
+    logRequest(200);
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, server_.arg("plain"));
+    if (err) {
+      server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      return;
+    }
+
+    if (doc["brightness"].isNull()) {
+      server_.send(400, "application/json", "{\"error\":\"Brightness required\"}");
+      return;
+    }
+
+    clockSetBrightness(constrain(doc["brightness"].as<int>(), 0, 7));
+    server_.send(200, "application/json", "{\"message\":\"Brightness previewed\"}");
   }
 
   // ── GET /api/time ─────────────────────────────────────────────────────────────
   void handleApiTime() {
     logRequest(200);
     const DateTime dt = rtcGetNow();
-    char buf[32];
-    snprintf(buf, sizeof(buf), "{\"time\":\"%02d:%02d:%02d\"}",
-             dt.hour(), dt.minute(), dt.second());
+    char buf[96];
+    snprintf(buf, sizeof(buf),
+             "{\"date\":\"%04d-%02d-%02d\",\"time\":\"%02d:%02d:%02d\",\"dateTime\":\"%04d-%02d-%02d %02d:%02d:%02d\"}",
+             dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second(),
+             dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second());
     server_.send(200, "application/json", buf);
+  }
+
+  void handleApiTimeSync() {
+    logRequest(200);
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, server_.arg("plain"));
+    if (err) {
+      server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      return;
+    }
+
+    const int year = doc["year"] | 0;
+    const int month = doc["month"] | 0;
+    const int day = doc["day"] | 0;
+    const int hour = doc["hour"] | 0;
+    const int minute = doc["minute"] | 0;
+    const int second = doc["second"] | 0;
+    if (year < 2020 || year > 2099 || month < 1 || month > 12 ||
+        day < 1 || day > 31 || hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59 || second < 0 || second > 59) {
+      server_.send(400, "application/json", "{\"error\":\"Invalid time\"}");
+      return;
+    }
+
+    rtcSetNow(DateTime(year, month, day, hour, minute, second));
+    server_.send(200, "application/json", "{\"message\":\"RTC synced\"}");
   }
 
   // ── GET /api/formats ──────────────────────────────────────────────────────────
@@ -156,9 +260,6 @@ public:
     JsonArray ck = doc["clock"].to<JsonArray>();
     for (uint8_t i = 0; i < formatCount(kFmtGroupClock); ++i)
       ck.add(getFormat(kFmtGroupClock, i));
-    JsonArray ju = doc["justification"].to<JsonArray>();
-    for (uint8_t i = 0; i < formatCount(kFmtGroupJustification); ++i)
-      ju.add(getFormat(kFmtGroupJustification, i));
     String json;
     serializeJson(doc, json);
     server_.send(200, "application/json", json);
@@ -174,13 +275,13 @@ public:
     doc["countdownFmt"]    = s.countdownFmt;
     doc["countupFmt"]      = s.countupFmt;
     doc["clockFmt"]        = s.clockFmt;
-    doc["justification"]   = s.justification;
     doc["brightness"]      = s.brightness;
     doc["countdownDatetime"] = s.countdownDatetime;
     doc["countupDatetime"]    = s.countupDatetime;
     doc["splashMessage"]   = s.splashMessage;
     doc["finalMessage"]    = s.finalMessage;
-    doc["ssid"]            = cfg.ssid;
+    doc["staSsid"]         = cfg.staSsid;
+    doc["apSsid"]          = cfg.apSsid;
     // password is never returned — client sends a new one only if changing it
     String json;
     serializeJson(doc, json);
@@ -203,7 +304,6 @@ public:
     if (!doc["countdownFmt"].isNull())    s.countdownFmt  = doc["countdownFmt"].as<uint8_t>();
     if (!doc["countupFmt"].isNull())      s.countupFmt    = doc["countupFmt"].as<uint8_t>();
     if (!doc["clockFmt"].isNull())        s.clockFmt      = doc["clockFmt"].as<uint8_t>();
-    if (!doc["justification"].isNull())   s.justification = doc["justification"].as<uint8_t>();
     if (!doc["brightness"].isNull())      s.brightness    = constrain(doc["brightness"].as<int>(), 0, 7);
     if (!doc["countdownDatetime"].isNull()) snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "%s", doc["countdownDatetime"].as<const char*>());
     if (!doc["countupDatetime"].isNull())    snprintf(s.countupDatetime,    sizeof(s.countupDatetime),    "%s", doc["countupDatetime"].as<const char*>());
@@ -214,10 +314,13 @@ public:
 
     // ── WiFi settings (optional — reboot required to apply) ───────────────────
     bool wifiChanged = false;
-    if (!doc["ssid"].isNull() || !doc["password"].isNull()) {
+    if (!doc["staSsid"].isNull() || !doc["staPassword"].isNull() ||
+        !doc["apSsid"].isNull() || !doc["apPassword"].isNull()) {
       WifiConfig cfg = configManager.loadWifiConfig();
-      if (!doc["ssid"].isNull())     cfg.ssid     = doc["ssid"].as<String>();
-      if (!doc["password"].isNull()) cfg.password = doc["password"].as<String>();
+      if (!doc["staSsid"].isNull())         cfg.staSsid         = doc["staSsid"].as<String>();
+      if (!doc["staPassword"].isNull())     cfg.staPassword     = doc["staPassword"].as<String>();
+      if (!doc["apSsid"].isNull())          cfg.apSsid          = doc["apSsid"].as<String>();
+      if (!doc["apPassword"].isNull())      cfg.apPassword      = doc["apPassword"].as<String>();
       configManager.saveWifiConfig(cfg);
       wifiChanged = true;
     }
@@ -230,40 +333,33 @@ public:
     }
   }
 
-  // ── GET /api/config/raw ───────────────────────────────────────────────────────
-  void handleApiConfigRaw() {
+  // ── GET /api/wifi/status ──────────────────────────────────────────────────────
+  void handleApiWifiStatus() {
     logRequest(200);
-    String raw = configManager.loadRaw();
-    if (raw.isEmpty()) {
-      server_.send(404, "text/plain", "config.json not found");
-      return;
-    }
-    server_.send(200, "application/json", raw);
-  }
-
-  // ── POST /api/config/delete ───────────────────────────────────────────────────
-  void handleApiConfigDelete() {
-    logRequest(200);
-    if (configManager.deleteConfig()) {
-      server_.send(200, "application/json", "{\"message\":\"Deleted\"}");
-    } else {
-      server_.send(500, "application/json", "{\"error\":\"Delete failed\"}");
-    }
-  }
-
-  // ── GET /api/wifi ─────────────────────────────────────────────────────────────
-  void handleApiWifiGet() {
-    logRequest(200);
-    const WifiConfig cfg = configManager.loadWifiConfig();
+    const WifiRuntimeStatus status = wifiConnectionManager.status();
     JsonDocument doc;
-    doc["ssid"] = cfg.ssid;
+    doc["mode"] = status.mode == WifiMode::kStation ? "station" : "access_point";
+    doc["connected"] = status.connected;
+    doc["ssid"] = status.ssid;
+    doc["ip"] = status.ip;
+    doc["apSsid"] = status.apSsid;
+    doc["apIp"] = status.apIp;
     String json;
     serializeJson(doc, json);
     server_.send(200, "application/json", json);
   }
 
-  // ── POST /api/wifi ────────────────────────────────────────────────────────────
-  void handleApiWifiSave() {
+  void handleApiWifiScan() {
+    logRequest(200);
+    JsonDocument doc;
+    wifiConnectionManager.scanNetworks(doc);
+    String json;
+    serializeJson(doc, json);
+    server_.send(200, "application/json", json);
+  }
+
+  // POST /api/wifi/connect
+  void handleApiWifiConnect() {
     logRequest(200);
     JsonDocument doc;
     DeserializationError err = deserializeJson(doc, server_.arg("plain"));
@@ -271,15 +367,24 @@ public:
       server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
     }
-    WifiConfig cfg = configManager.loadWifiConfig();
-    if (!doc["ssid"].isNull())     cfg.ssid     = doc["ssid"].as<String>();
-    if (!doc["password"].isNull()) cfg.password = doc["password"].as<String>();
-    configManager.saveWifiConfig(cfg);
-    server_.send(200, "application/json", "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\"}");
+    const String ssid = doc["ssid"] | "";
+    const String password = doc["password"] | "";
+    if (!wifiConnectionManager.connectAndSave(ssid, password)) {
+      server_.send(400, "application/json", "{\"error\":\"SSID required\"}");
+      return;
+    }
+
+    server_.send(200, "application/json", "{\"message\":\"Saved - rebooting...\",\"reboot\":true}");
     pendingRebootMs_ = millis() + 1500;
   }
 
   void handleCaptiveRedirect() {
+    if (wifiConnectionManager.status().mode != WifiMode::kAccessPoint) {
+      logRequest(404);
+      server_.send(404, "text/plain", "Not found");
+      return;
+    }
+
     logRequest(302);
     server_.sendHeader("Location", "http://192.168.4.1/", true);
     server_.send(302, "text/plain", "");
@@ -295,10 +400,6 @@ private:
       case HTTP_PATCH:  return "PATCH";
       default:          return "OTHER";
     }
-  }
-
-  void waitForSoftApIp() {
-    while (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) delay(10);
   }
 
   void logRequest(int status) {
@@ -319,20 +420,24 @@ static WebPortal portal;
 
 static void handleRootRoute()            { portal.handleRoot(); }
 static void handleConfigGetRoute()       { portal.handleConfigGet(); }
+static void handleFormatRoute()          { portal.handleFormat(); }
+static void handleTimeSyncRoute()        { portal.handleTimeSync(); }
+static void handleMessageRoute()         { portal.handleMessage(); }
 static void handleWifiRoute()            { portal.handleWifi(); }
-static void handleUtilityRoute()         { portal.handleUtility(); }
-static void handleDemoRoute()            { portal.handleDemo(); }
 static void handleApiDemoTestRoute()     { portal.handleApiDemoTest(); }
+static void handleApiMessageTestRoute()  { portal.handleApiMessageTest(); }
+static void handleApiSetModeRoute()      { portal.handleApiSetMode(); }
+static void handleApiBrightnessRoute()   { portal.handleApiBrightness(); }
 static void handleApiTimeRoute()         { portal.handleApiTime(); }
+static void handleApiTimeSyncRoute()     { portal.handleApiTimeSync(); }
 static void handleApiFormatsRoute()      { portal.handleApiFormats(); }
 static void handleApiGetConfigRoute()    { portal.handleApiGetConfig(); }
 static void handleApiSaveConfigRoute()   { portal.handleApiSaveConfig(); }
-static void handleApiConfigRawRoute()    { portal.handleApiConfigRaw(); }
-static void handleApiConfigDeleteRoute() { portal.handleApiConfigDelete(); }
-static void handleApiWifiGetRoute()      { portal.handleApiWifiGet(); }
-static void handleApiWifiSaveRoute()     { portal.handleApiWifiSave(); }
+static void handleApiWifiStatusRoute()   { portal.handleApiWifiStatus(); }
+static void handleApiWifiScanRoute()     { portal.handleApiWifiScan(); }
+static void handleApiWifiConnectRoute()  { portal.handleApiWifiConnect(); }
 static void handleCaptiveRedirectRoute() { portal.handleCaptiveRedirect(); }
 
-void webBegin(const char *ssid, const char *password) { portal.begin(ssid, password); }
+void webBegin()                                        { portal.begin(); }
 void webHandleClients()                               { portal.handleClients(); }
 void networkGetInfo(String &ssid, String &ip)          { portal.getNetworkInfo(ssid, ip); }

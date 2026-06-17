@@ -7,8 +7,10 @@
 #include "display_manager.h"
 #include "hardware.h"
 #include "log.h"
+#include "page_manager.h"
 #include "rtc_ds3231.h"
 #include "web_server.h"
+#include "wifi_connection_manager.h"
 
 // ─── Button handling ──────────────────────────────────────────────────────────
 
@@ -16,17 +18,23 @@ namespace {
 
 void handleButtonEvent(ButtonEvent event) {
   switch (event) {
-    case ButtonEvent::SHOW_NETWORK_INFO: {
+    case ButtonEvent::SHOW_SSID: {
       String ssid;
       String ip;
       networkGetInfo(ssid, ip);
-      LOG_PRINTF("AP SSID: %s  IP: %s\n", ssid.c_str(), ip.c_str());
+      LOG_PRINTF("Network SSID: %s\n", ssid.c_str());
+      pageManager.showSsid(ssid);
       break;
     }
 
-    case ButtonEvent::SHOW_I2C_SCAN:
-      i2cBusScanner.scan();
+    case ButtonEvent::SHOW_IP_ADDRESS: {
+      String ssid;
+      String ip;
+      networkGetInfo(ssid, ip);
+      LOG_PRINTF("Network IP: %s\n", ip.c_str());
+      pageManager.showIpAddress(ip);
       break;
+    }
 
     case ButtonEvent::SHOW_RTC_STATUS: {
       const RtcStatus status = rtcGetStatus();
@@ -90,7 +98,8 @@ void setup() {
   }
 
   WifiConfig cfg = configManager.loadWifiConfig();
-  webBegin(cfg.ssid.c_str(), cfg.password.c_str());
+  wifiConnectionManager.begin(cfg);
+  webBegin();
 
   buttonBegin();
 }
@@ -104,5 +113,6 @@ void loop() {
   }
 
   displayManager.tick(now);
+  wifiConnectionManager.tick();
   webHandleClients();
 }

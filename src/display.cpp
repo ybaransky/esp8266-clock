@@ -169,8 +169,11 @@ void SegmentDisplay::begin(uint8_t brightness) {
 
 void SegmentDisplay::setBrightness(uint8_t level) {
   const uint8_t clamped = min<uint8_t>(level, 7);
-  for (TM1637Display &display : displays) {
-    display.setBrightness(clamped);
+  for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
+    displays[panel].setBrightness(clamped);
+    if (cacheValid_[panel]) {
+      displays[panel].setSegments(lastSegments_[panel]);
+    }
   }
 }
 
