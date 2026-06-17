@@ -82,7 +82,7 @@ a{color:#6af;font-size:.9em}
 <hr><h2>Messages</h2>
 <label>Splash message (shown at boot for 5 s — leave blank to skip)
 <input type="text" id="splash" maxlength="63"></label>
-<label>Final message (shown at end of demo overlay)
+<label>Final message (shown at end of demo)
 <input type="text" id="msg" maxlength="63"></label>
 
 <hr><h2>Display</h2>

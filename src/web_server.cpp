@@ -10,6 +10,7 @@
 #include "format.h"
 #include "hardware.h"
 #include "html.h"
+#include "log.h"
 #include "rtc_ds3231.h"
 
 // Forward declarations for server route callbacks.
@@ -40,11 +41,11 @@ public:
     WiFi.softAP(ssid, password);
     waitForSoftApIp();
 
-    Serial.printf("[WIFI] AP \"%s\" started  IP: %s\n", ssid, WiFi.softAPIP().toString().c_str());
+    LOG_PRINTF("AP \"%s\" started  IP: %s\n", ssid, WiFi.softAPIP().toString().c_str());
 
     dnsRunning_ = dnsServer_.start(53, "*", WiFi.softAPIP());
     if (!dnsRunning_) {
-      Serial.println("[DNS] Failed to start captive DNS server (no socket available)");
+      LOG_PRINTLN("Failed to start captive DNS server (no socket available)");
     }
 
     server_.on("/",                    HTTP_GET,  handleRootRoute);
@@ -63,14 +64,14 @@ public:
     server_.on("/api/wifi",            HTTP_POST, handleApiWifiSaveRoute);
     server_.onNotFound(handleCaptiveRedirectRoute);
     server_.begin();
-    Serial.println("[WIFI] HTTP server started");
+    LOG_PRINTLN("HTTP server started");
   }
 
   void handleClients() {
     if (dnsRunning_) dnsServer_.processNextRequest();
     server_.handleClient();
     if (pendingRebootMs_ && millis() >= pendingRebootMs_) {
-      Serial.println("[WEB] Rebooting...");
+      LOG_PRINTLN("Rebooting...");
       ESP.restart();
     }
   }
@@ -121,7 +122,7 @@ public:
       server_.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
     }
-    // Patch finalMessage into the live settings without persisting, then fire the overlay.
+    // Patch finalMessage into the live settings without persisting, then run demo state.
     if (!doc["finalMessage"].isNull()) {
       ClockConfig s = configManager.loadClockConfig();
       snprintf(s.finalMessage, sizeof(s.finalMessage), "%s", doc["finalMessage"].as<const char*>());
@@ -198,7 +199,7 @@ public:
 
     // ── Clock settings ────────────────────────────────────────────────────────
     ClockConfig s = configManager.loadClockConfig();
-    if (!doc["mode"].isNull())            s.activeMode    = static_cast<BaseMode>(doc["mode"].as<int>());
+    if (!doc["mode"].isNull())            s.activeMode    = static_cast<PersistentMode>(doc["mode"].as<int>());
     if (!doc["countdownFmt"].isNull())    s.countdownFmt  = doc["countdownFmt"].as<uint8_t>();
     if (!doc["countupFmt"].isNull())      s.countupFmt    = doc["countupFmt"].as<uint8_t>();
     if (!doc["clockFmt"].isNull())        s.clockFmt      = doc["clockFmt"].as<uint8_t>();
@@ -301,11 +302,11 @@ private:
   }
 
   void logRequest(int status) {
-    Serial.printf("[HTTP] %s %s <- %s  => %d\n",
-                  methodName(server_.method()),
-                  server_.uri().c_str(),
-                  server_.client().remoteIP().toString().c_str(),
-                  status);
+    LOG_PRINTF("%s %s <- %s  => %d\n",
+               methodName(server_.method()),
+               server_.uri().c_str(),
+               server_.client().remoteIP().toString().c_str(),
+               status);
   }
 
   ESP8266WebServer server_;

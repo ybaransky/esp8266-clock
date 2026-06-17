@@ -6,6 +6,7 @@
 #include "display.h"
 #include "display_manager.h"
 #include "hardware.h"
+#include "log.h"
 #include "rtc_ds3231.h"
 #include "web_server.h"
 
@@ -19,7 +20,7 @@ void handleButtonEvent(ButtonEvent event) {
       String ssid;
       String ip;
       networkGetInfo(ssid, ip);
-      Serial.printf("[NET] AP SSID: %s  IP: %s\n", ssid.c_str(), ip.c_str());
+      LOG_PRINTF("AP SSID: %s  IP: %s\n", ssid.c_str(), ip.c_str());
       break;
     }
 
@@ -29,13 +30,13 @@ void handleButtonEvent(ButtonEvent event) {
 
     case ButtonEvent::SHOW_RTC_STATUS: {
       const RtcStatus status = rtcGetStatus();
-      Serial.printf("[RTC] present=%s powerLost=%s lowBattery=%s sqwConfigured=%s\n",
-                    status.present ? "yes" : "no",
-                    status.powerLost ? "yes" : "no",
-                    status.lowBattery ? "yes" : "no",
-                    status.sqwConfigured ? "yes" : "no");
+      LOG_PRINTF("present=%s powerLost=%s lowBattery=%s sqwConfigured=%s\n",
+                 status.present ? "yes" : "no",
+                 status.powerLost ? "yes" : "no",
+                 status.lowBattery ? "yes" : "no",
+                 status.sqwConfigured ? "yes" : "no");
       if (!status.error.isEmpty()) {
-        Serial.printf("[RTC] error: %s\n", status.error.c_str());
+        LOG_PRINTF("error: %s\n", status.error.c_str());
       }
       break;
     }
@@ -58,26 +59,26 @@ void processButtonEvents() {
 void setup() {
   Serial.begin(74880);
   delay(500);
-  Serial.println("\n[SETUP] Starting up...");
+  LOG_PRINTLN("Starting up...");
 
   Wire.begin(Hardware::Pins::I2C_SDA, Hardware::Pins::I2C_SCL);
   Wire.setClock(100000);
-  Serial.printf("[I2C] Initialized SDA=GPIO%u SCL=GPIO%u\n",
-                Hardware::Pins::I2C_SDA,
-                Hardware::Pins::I2C_SCL);
+  LOG_PRINTF("Initialized SDA=GPIO%u SCL=GPIO%u\n",
+             Hardware::Pins::I2C_SDA,
+             Hardware::Pins::I2C_SCL);
 
   if (rtcBegin()) {
     rtcBeginSqwProcessing();
   } else {
-    Serial.printf("[RTC] Init failed: %s\n", rtcGetStatus().error.c_str());
+    LOG_PRINTF("Init failed: %s\n", rtcGetStatus().error.c_str());
   }
   i2cBusScanner.scan();
 
   ClockConfig cs = configManager.loadClockConfig();
   segmentDisplay.begin(cs.brightness);
-  displayManager.begin(cs);
-  Serial.printf("[DISP] Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
+  LOG_PRINTF("Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
 
+  displayManager.begin(cs);
   if (cs.splashMessage[0] != '\0') {
     displayManager.showSplash(cs.splashMessage);
   }
@@ -85,7 +86,7 @@ void setup() {
   const RtcStatus rtcStatus = rtcGetStatus();
   if (rtcStatus.lowBattery) {
     displayManager.showInfo("LOW BAT");
-    Serial.println("[RTC] Low battery — showing info overlay");
+    LOG_PRINTLN("Low battery - showing info state");
   }
 
   WifiConfig cfg = configManager.loadWifiConfig();
@@ -99,10 +100,7 @@ void loop() {
   buttonTick();
   processButtonEvents();
   if (rtcProcessSqwPulse()) {
-    Serial.printf("[RTC] SQW trigger: %s  base[%s] overlay[%s]\n",
-                  rtcGetCurrentTimeString().c_str(),
-                  displayManager.baseModeName(),
-                  displayManager.overlayModeName());
+    LOG_PRINTF("SQW trigger: state[%s]\n", displayManager.currentStateName());
   }
 
   displayManager.tick(now);

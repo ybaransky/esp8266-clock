@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include "log.h"
 
 namespace {
 
@@ -52,14 +53,14 @@ const char *I2CBusScanner::deviceNameForAddress(uint8_t address) {
 }
 
 void I2CBusScanner::scan() {
-  Serial.println("[I2C] Scanning I2C bus...");
+  LOG_PRINTLN("Scanning I2C bus...");
   size_t found = 0;
   lastScanCount_ = 0;
 
   for (uint8_t address = FIRST_VALID_ADDRESS; address <= LAST_VALID_ADDRESS; address++) {
     Wire.beginTransmission(address);
     if (Wire.endTransmission() == 0) {
-      Serial.printf("[I2C] Found device at 0x%02X: (%s)\n", address, deviceNameForAddress(address));
+      LOG_PRINTF("Found device at 0x%02X: (%s)\n", address, deviceNameForAddress(address));
       if (found < ADDRESS_CAPACITY) {
         lastScanAddresses_[found] = address;
       }
@@ -68,7 +69,7 @@ void I2CBusScanner::scan() {
   }
 
   lastScanCount_ = (found < ADDRESS_CAPACITY) ? found : ADDRESS_CAPACITY;
-  Serial.printf("[I2C] Scan complete. %u device(s) found.\n", static_cast<unsigned>(found));
+  LOG_PRINTF("Scan complete. %u device(s) found.\n", static_cast<unsigned>(found));
 }
 
 I2CScanResult I2CBusScanner::lastResult() const {

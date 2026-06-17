@@ -1,6 +1,7 @@
 #include "rtc_ds3231.h"
 
 #include "hardware.h"
+#include "log.h"
 #include <RTClib.h>
 #include <Wire.h>
 
@@ -11,13 +12,13 @@ public:
 
     if (!probeAddress()) {
       status_.error = "DS3231 not found on I2C address 0x68";
-      Serial.println("[RTC] ERROR: DS3231 not detected");
+      LOG_PRINTLN("ERROR: DS3231 not detected");
       return false;
     }
 
     if (!rtc_.begin()) {
       status_.error = "rtc.begin() failed";
-      Serial.println("[RTC] ERROR: rtc.begin() failed");
+      LOG_PRINTLN("ERROR: rtc.begin() failed");
       return false;
     }
 
@@ -28,7 +29,7 @@ public:
     flagInvalidTimeIfNeeded();
     configureSquareWaveOutput();
 
-    Serial.println("[RTC] DS3231 initialized, SQW output set to 1Hz");
+    LOG_PRINTLN("DS3231 initialized, SQW output set to 1Hz");
     return true;
   }
 
@@ -66,15 +67,15 @@ private:
   }
 
   static void logRtcTime(const char *label, const DateTime &timeValue) {
-    Serial.printf("[RTC] %s %04d-%02d-%02d %02d:%02d:%02d\n",
-                  label,
-                  timeValue.year(), timeValue.month(), timeValue.day(),
-                  timeValue.hour(), timeValue.minute(), timeValue.second());
+    LOG_PRINTF("%s %04d-%02d-%02d %02d:%02d:%02d\n",
+               label,
+               timeValue.year(), timeValue.month(), timeValue.day(),
+               timeValue.hour(), timeValue.minute(), timeValue.second());
   }
 
   void adjustWithLog(const DateTime &newTime, const char *reason) {
     const DateTime oldTime = rtc_.now();
-    Serial.printf("[RTC] Adjusting time (%s)\n", reason);
+    LOG_PRINTF("Adjusting time (%s)\n", reason);
     logRtcTime("Old:", oldTime);
 
     rtc_.adjust(newTime);
@@ -88,13 +89,13 @@ private:
 
     status_.powerLost = true;
     status_.lowBattery = true;
-    Serial.println("[RTC] WARNING: RTC lost power (possible low/dead backup battery)");
+    LOG_PRINTLN("WARNING: RTC lost power (possible low/dead backup battery)");
 
     // Set a known-valid time once to clear the DS3231 OSF/lostPower condition.
     adjustWithLog(DateTime(F(__DATE__), F(__TIME__)), "lost power recovery");
     status_.powerLost = false;
     status_.lowBattery = false;
-    Serial.println("[RTC] INFO: RTC reset to build time to clear lost-power flag");
+    LOG_PRINTLN("INFO: RTC reset to build time to clear lost-power flag");
   }
 
   void flagInvalidTimeIfNeeded() {
@@ -102,9 +103,9 @@ private:
     if (!isLikelyInvalidTime(now)) return;
 
     status_.lowBattery = true;
-    Serial.printf("[RTC] WARNING: RTC time looks invalid: %04d-%02d-%02d %02d:%02d:%02d\n",
-                  now.year(), now.month(), now.day(),
-                  now.hour(), now.minute(), now.second());
+    LOG_PRINTF("WARNING: RTC time looks invalid: %04d-%02d-%02d %02d:%02d:%02d\n",
+               now.year(), now.month(), now.day(),
+               now.hour(), now.minute(), now.second());
   }
 
   void configureSquareWaveOutput() {
@@ -136,8 +137,8 @@ static void IRAM_ATTR onRtcSqwPulse() {
 
 static void warnIfSqwSharesInternalLed() {
   if (Hardware::Pins::RTC_SQW != Hardware::Pins::INTERNAL_LED) return;
-  Serial.printf("[RTC] WARNING: SQW shares GPIO%u with INTERNAL_LED; DS3231 SQW may blink the onboard LED\n",
-                Hardware::Pins::RTC_SQW);
+  LOG_PRINTF("WARNING: SQW shares GPIO%u with INTERNAL_LED; DS3231 SQW may blink the onboard LED\n",
+             Hardware::Pins::RTC_SQW);
 }
 
 static bool consumeSqwPulse() {
@@ -152,8 +153,8 @@ void rtcBeginSqwProcessing() {
   warnIfSqwSharesInternalLed();
   pinMode(Hardware::Pins::RTC_SQW, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(Hardware::Pins::RTC_SQW), onRtcSqwPulse, RISING);
-  Serial.printf("[RTC] SQW interrupt attached on GPIO%u (RISING, INPUT_PULLUP)\n",
-                Hardware::Pins::RTC_SQW);
+  LOG_PRINTF("SQW interrupt attached on GPIO%u (RISING, INPUT_PULLUP)\n",
+             Hardware::Pins::RTC_SQW);
 }
 
 bool rtcProcessSqwPulse() {

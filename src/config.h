@@ -15,7 +15,7 @@ struct WifiConfig {
 // ── ClockConfig ───────────────────────────────────────────────────────────────
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
-  BaseMode activeMode;    // persistent base mode (countdown / countup / clock)
+  PersistentMode activeMode;  // Persistent mode restored after temporary states.
 
   uint8_t countdownFmt;  // index into kCountdownFormats
   uint8_t countupFmt;    // index into kCountupFormats

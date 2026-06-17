@@ -3,6 +3,7 @@
 #include "clock_format.h"
 #include "clock_state.h"
 #include "display.h"
+#include "log.h"
 #include "rtc_ds3231.h"
 
 namespace {
@@ -13,9 +14,7 @@ constexpr uint32_t kBlinkMs = 500;
 constexpr uint32_t kSplashDurationMs = 5000;
 constexpr uint32_t kDemoCountdownMs = 5000;
 constexpr uint32_t kDemoMessageMs = 5000;
-// TM1637 modules need a short quiet period after an overlay ends before
-// accepting the base frame reliably on the shared CLK bus.
-constexpr uint32_t kOverlayToBaseDelayMs = 10;
+constexpr uint8_t kDemoCountdownFormat = 0xFF;
 
 DateTime parseDateTime(const char* s) {
   int y = 2000, mo = 1, d = 1, h = 0, mi = 0, sec = 0;
@@ -25,25 +24,30 @@ DateTime parseDateTime(const char* s) {
 
 TimeFields deltaToFields(long totalSecs) {
   if (totalSecs < 0) totalSecs = 0;
-  TimeFields f = {};
-  f.days = totalSecs / 86400;
+  TimeFields fields = {};
+  fields.days = totalSecs / 86400;
   totalSecs %= 86400;
-  f.hours = totalSecs / 3600;
+  fields.hours = totalSecs / 3600;
   totalSecs %= 3600;
-  f.minutes = totalSecs / 60;
-  f.seconds = totalSecs % 60;
-  return f;
+  fields.minutes = totalSecs / 60;
+  fields.seconds = totalSecs % 60;
+  return fields;
 }
 
 TimeFields rtcToFields(const DateTime& dt) {
-  TimeFields f = {};
-  f.year = dt.year();
-  f.month = dt.month();
-  f.dayOfMonth = dt.day();
-  f.hours = dt.hour();
-  f.minutes = dt.minute();
-  f.seconds = dt.second();
-  return f;
+  TimeFields fields = {};
+  fields.year = dt.year();
+  fields.month = dt.month();
+  fields.dayOfMonth = dt.day();
+  fields.hours = dt.hour();
+  fields.minutes = dt.minute();
+  fields.seconds = dt.second();
+  return fields;
+}
+
+void copyMessage(char destination[64], const char* source) {
+  strncpy(destination, source, 63);
+  destination[63] = '\0';
 }
 
 void messageToBuffers(const char* msg, char r1[8], char r2[8], char r3[8]) {
@@ -53,16 +57,10 @@ void messageToBuffers(const char* msg, char r1[8], char r2[8], char r3[8]) {
   snprintf(r3, 8, "%-4.4s", len > 8 ? msg + 8 : "    ");
 }
 
-void showBlinkingMessage(const char* msg, bool blinkOn) {
-  char r1[8], r2[8], r3[8];
-  if (blinkOn) {
-    messageToBuffers(msg, r1, r2, r3);
-  } else {
-    snprintf(r1, 8, "    ");
-    snprintf(r2, 8, "    ");
-    snprintf(r3, 8, "    ");
-  }
-  segmentDisplay.showPanels(r1, r2, r3);
+void blankBuffers(char r1[8], char r2[8], char r3[8]) {
+  snprintf(r1, 8, "    ");
+  snprintf(r2, 8, "    ");
+  snprintf(r3, 8, "    ");
 }
 
 }  // namespace
@@ -73,146 +71,192 @@ void DisplayManager::begin(const ClockConfig& config) {
 
 void DisplayManager::applySettings(const ClockConfig& config) {
   settings_ = config;
-  lastBaseTickMs_ = 0;
   colonVisible_ = true;
   colonMs_ = 0;
+  blinkOn_ = true;
+  blinkMs_ = millis();
+  lastRenderMs_ = 0;
 
   updateCountupOrigin(config);
+  defaultState_ = stateForConfiguredMode(config.activeMode);
   segmentDisplay.setBrightness(config.brightness);
-  setBaseMode(baseModeFor(config.activeMode));
-
-  if (overlayMode_ == OverlayDisplayMode::kSplash) {
-    finishOverlay(millis());
-  }
+  installDefaultState(millis());
 }
 
 void DisplayManager::tick(uint32_t nowMs) {
-  if (overlayMode_ == OverlayDisplayMode::kNone) {
-    if (baseHandoffDueMs_ != 0) {
-      if (static_cast<long>(nowMs - baseHandoffDueMs_) < 0) {
-        return;
-      }
-      baseHandoffDueMs_ = 0;
-      tickBase(nowMs, true);
-      return;
-    }
-
-    tickBase(nowMs);
-    return;
+  if (transitionExpired(nowMs)) {
+    finishTemporaryState(nowMs);
   }
 
-  if (tickActiveOverlay(nowMs)) {
-    finishOverlay(nowMs);
-  }
+  renderCurrentState(nowMs);
 }
 
 void DisplayManager::showSplash(const char* message) {
-  startOverlay(OverlayDisplayMode::kSplash, message, FOREVER, millis());
+  DisplayState state;
+  state.behavior = DisplayBehavior::kMessage;
+  state.blink = false;
+  state.payload.formatIndex = 0;
+  copyMessage(state.payload.message, message);
+
+  installState(state, {true, millis() + kSplashDurationMs}, millis(), true);
 }
 
 void DisplayManager::showDemo() {
-  startOverlay(OverlayDisplayMode::kDemo, "", FOREVER, millis());
+  DisplayState state;
+  state.behavior = DisplayBehavior::kCountdown;
+  state.blink = false;
+  state.payload.formatIndex = kDemoCountdownFormat;
+  state.payload.endTime = rtcGetNow() + TimeSpan(0, 0, 0, 5);
+
+  demoCountdownActive_ = true;
+  installState(state, {true, millis() + kDemoCountdownMs}, millis(), true);
 }
 
 void DisplayManager::showInfo(const char* message, int32_t durationMs) {
-  startOverlay(OverlayDisplayMode::kInfo, message, durationMs, millis());
+  DisplayState state;
+  state.behavior = DisplayBehavior::kMessage;
+  state.blink = true;
+  state.payload.formatIndex = 0;
+  copyMessage(state.payload.message, message);
+
+  const bool expires = durationMs != FOREVER;
+  const uint32_t expiresAt = expires ? millis() + static_cast<uint32_t>(durationMs) : 0;
+  installState(state, {expires, expiresAt}, millis(), true);
 }
 
 void DisplayManager::clearInfo() {
-  if (overlayMode_ == OverlayDisplayMode::kInfo) {
-    finishOverlay(millis());
+  if (hasPreviousState_ && currentState_.behavior == DisplayBehavior::kMessage) {
+    finishTemporaryState(millis());
   }
 }
 
-const char* DisplayManager::baseModeName() const {
-  return baseModeName(baseMode_);
+const char* DisplayManager::defaultStateName() const {
+  return behaviorName(defaultState_.behavior);
 }
 
-const char* DisplayManager::overlayModeName() const {
-  return overlayModeName(overlayMode_);
+const char* DisplayManager::currentStateName() const {
+  return behaviorName(currentState_.behavior);
 }
 
-BaseDisplayMode DisplayManager::baseModeFor(BaseMode mode) const {
+DisplayState DisplayManager::stateForConfiguredMode(PersistentMode mode) const {
+  DisplayState state;
+  state.blink = false;
+
   switch (mode) {
-    case kBaseCountup:
-      return BaseDisplayMode::kCountup;
-    case kBaseClock:
-      return BaseDisplayMode::kClock;
-    case kBaseCountdown:
-      return BaseDisplayMode::kCountdown;
+    case kPersistentCountup:
+      state.behavior = DisplayBehavior::kCountup;
+      state.payload.startTime = countupOrigin_;
+      state.payload.formatIndex = settings_.countupFmt;
+      break;
+    case kPersistentClock:
+      state.behavior = DisplayBehavior::kClock;
+      state.payload.formatIndex = settings_.clockFmt;
+      break;
+    case kPersistentCountdown:
+      state.behavior = DisplayBehavior::kCountdown;
+      state.payload.endTime = parseDateTime(settings_.countdownDatetime);
+      state.payload.formatIndex = settings_.countdownFmt;
+      break;
   }
-  return BaseDisplayMode::kCountdown;
+
+  return state;
 }
 
-const char* DisplayManager::baseModeName(BaseDisplayMode mode) const {
-  switch (mode) {
-    case BaseDisplayMode::kClock:
+const char* DisplayManager::behaviorName(DisplayBehavior behavior) const {
+  switch (behavior) {
+    case DisplayBehavior::kClock:
       return "clock";
-    case BaseDisplayMode::kCountdown:
+    case DisplayBehavior::kCountdown:
       return "countdown";
-    case BaseDisplayMode::kCountup:
+    case DisplayBehavior::kCountup:
       return "countup";
+    case DisplayBehavior::kMessage:
+      return "message";
   }
   return "?";
 }
 
-const char* DisplayManager::overlayModeName(OverlayDisplayMode mode) const {
-  switch (mode) {
-    case OverlayDisplayMode::kNone:
-      return "none";
-    case OverlayDisplayMode::kSplash:
-      return "splash";
-    case OverlayDisplayMode::kDemo:
-      return "demo";
-    case OverlayDisplayMode::kInfo:
-      return "info";
-  }
-  return "?";
+void DisplayManager::logStateTransition(const DisplayState& from,
+                                        const DisplayState& to,
+                                        const char* reason) const {
+  LOG_PRINTF("state transition: %s -> %s (%s)\n",
+             behaviorName(from.behavior),
+             behaviorName(to.behavior),
+             reason);
 }
 
-void DisplayManager::setBaseMode(BaseDisplayMode next) {
-  if (next == baseMode_) {
-    return;
+void DisplayManager::installState(const DisplayState& state,
+                                  const DisplayTransition& transition,
+                                  uint32_t nowMs,
+                                  bool rememberPrevious) {
+  const DisplayState oldState = currentState_;
+
+  if (rememberPrevious) {
+    previousState_ = currentState_;
+    hasPreviousState_ = true;
   }
 
-  Serial.printf("[MODE] %s  base[%s->%s] overlay[%s]\n",
-                rtcGetCurrentTimeString().c_str(),
-                baseModeName(baseMode_), baseModeName(next),
-                overlayModeName(overlayMode_));
-  baseMode_ = next;
-}
-
-void DisplayManager::startOverlay(OverlayDisplayMode overlay, const char* message,
-                                  int32_t durationMs, uint32_t nowMs) {
-  Serial.printf("[MODE] %s  base[%s] overlay[%s->%s]\n",
-                rtcGetCurrentTimeString().c_str(),
-                baseModeName(baseMode_),
-                overlayModeName(overlayMode_), overlayModeName(overlay));
-  baseHandoffDueMs_ = 0;
-  overlayMode_ = overlay;
-  modeStartMs_ = nowMs;
-  infoDurationMs_ = durationMs;
+  currentState_ = state;
+  currentTransition_ = transition;
+  lastRenderMs_ = 0;
   blinkOn_ = true;
   blinkMs_ = nowMs;
-  strncpy(overlayMessage_, message, sizeof(overlayMessage_) - 1);
-  overlayMessage_[sizeof(overlayMessage_) - 1] = '\0';
   segmentDisplay.blank();
+
+  logStateTransition(oldState, currentState_,
+                     rememberPrevious ? "temporary state" : "state install");
 }
 
-void DisplayManager::finishOverlay(uint32_t nowMs) {
-  if (overlayMode_ == OverlayDisplayMode::kNone) {
+void DisplayManager::installDefaultState(uint32_t nowMs, bool forceRender) {
+  demoCountdownActive_ = false;
+  hasPreviousState_ = false;
+  installState(defaultState_, {false, 0}, nowMs, false);
+  if (forceRender) {
+    renderCurrentState(nowMs, true);
+  }
+}
+
+void DisplayManager::finishTemporaryState(uint32_t nowMs) {
+  if (demoCountdownActive_) {
+    startDemoMessageState(nowMs);
     return;
   }
 
-  Serial.printf("[MODE] %s  base[%s] overlay[%s->%s]\n",
-                rtcGetCurrentTimeString().c_str(),
-                baseModeName(baseMode_),
-                overlayModeName(overlayMode_),
-                overlayModeName(OverlayDisplayMode::kNone));
-  overlayMode_ = OverlayDisplayMode::kNone;
-  lastBaseTickMs_ = 0;
+  restorePreviousState(nowMs);
+}
 
-  baseHandoffDueMs_ = nowMs + kOverlayToBaseDelayMs;
+void DisplayManager::restorePreviousState(uint32_t nowMs) {
+  if (hasPreviousState_) {
+    const DisplayState oldState = currentState_;
+    currentState_ = previousState_;
+    currentTransition_ = {false, 0};
+    hasPreviousState_ = false;
+    lastRenderMs_ = 0;
+    segmentDisplay.blank();
+    logStateTransition(oldState, currentState_, "restore previous");
+    renderCurrentState(nowMs, true);
+    return;
+  }
+
+  installDefaultState(nowMs);
+}
+
+void DisplayManager::startDemoMessageState(uint32_t nowMs) {
+  const DisplayState oldState = currentState_;
+  DisplayState state;
+  state.behavior = DisplayBehavior::kMessage;
+  state.blink = true;
+  state.payload.formatIndex = kDemoCountdownFormat;
+  copyMessage(state.payload.message, settings_.finalMessage);
+
+  demoCountdownActive_ = false;
+  currentState_ = state;
+  currentTransition_ = {true, nowMs + kDemoMessageMs};
+  lastRenderMs_ = 0;
+  blinkOn_ = true;
+  blinkMs_ = nowMs;
+  segmentDisplay.blank();
+  logStateTransition(oldState, currentState_, "demo final message");
 }
 
 void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
@@ -221,162 +265,148 @@ void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
       : parseDateTime(config.countupDatetime);
 }
 
-uint32_t DisplayManager::baseRefreshInterval() const {
-  const bool needsTenths =
-      (baseMode_ == BaseDisplayMode::kCountdown &&
-       countdownHasTenths(settings_.countdownFmt)) ||
-      (baseMode_ == BaseDisplayMode::kCountup &&
-       countupHasTenths(settings_.countupFmt)) ||
-      (baseMode_ == BaseDisplayMode::kClock &&
-       clockHasTenths(settings_.clockFmt));
-  return needsTenths ? kTenthMs : kSecondMs;
+uint32_t DisplayManager::refreshInterval() const {
+  switch (currentState_.behavior) {
+    case DisplayBehavior::kCountdown:
+      if (currentState_.payload.formatIndex == kDemoCountdownFormat) {
+        return kTenthMs;
+      }
+      return countdownHasTenths(currentState_.payload.formatIndex) ? kTenthMs : kSecondMs;
+    case DisplayBehavior::kCountup:
+      return countupHasTenths(currentState_.payload.formatIndex) ? kTenthMs : kSecondMs;
+    case DisplayBehavior::kClock:
+      return clockHasTenths(currentState_.payload.formatIndex) ? kTenthMs : kSecondMs;
+    case DisplayBehavior::kMessage:
+      return currentState_.blink ? kBlinkMs : kSecondMs;
+  }
+  return kSecondMs;
 }
 
-bool DisplayManager::baseElapsed(uint32_t nowMs, bool force) {
+bool DisplayManager::renderElapsed(uint32_t nowMs, bool force) {
   if (force) {
-    lastBaseTickMs_ = nowMs;
+    lastRenderMs_ = nowMs;
     return true;
   }
 
-  if (static_cast<long>(nowMs - lastBaseTickMs_) <
-      static_cast<long>(baseRefreshInterval())) {
+  if (static_cast<long>(nowMs - lastRenderMs_) < static_cast<long>(refreshInterval())) {
     return false;
   }
-  lastBaseTickMs_ = nowMs;
+  lastRenderMs_ = nowMs;
   return true;
 }
 
-void DisplayManager::tickBase(uint32_t nowMs, bool force) {
-  switch (baseMode_) {
-    case BaseDisplayMode::kClock:
-      tickClock(nowMs, force);
+bool DisplayManager::transitionExpired(uint32_t nowMs) const {
+  return currentTransition_.hasExpiration &&
+         static_cast<long>(nowMs - currentTransition_.expiresAtMs) >= 0;
+}
+
+void DisplayManager::renderCurrentState(uint32_t nowMs, bool force) {
+  switch (currentState_.behavior) {
+    case DisplayBehavior::kClock:
+      renderClock(nowMs, force);
       break;
-    case BaseDisplayMode::kCountdown:
-      tickCountdown(nowMs, force);
+    case DisplayBehavior::kCountdown:
+      renderCountdown(nowMs, force);
       break;
-    case BaseDisplayMode::kCountup:
-      tickCountup(nowMs, force);
+    case DisplayBehavior::kCountup:
+      renderCountup(nowMs, force);
+      break;
+    case DisplayBehavior::kMessage:
+      renderMessage(nowMs, force);
       break;
   }
 }
 
-bool DisplayManager::tickActiveOverlay(uint32_t nowMs) {
-  switch (overlayMode_) {
-    case OverlayDisplayMode::kNone:
-      return false;
-    case OverlayDisplayMode::kSplash:
-      return tickSplash(nowMs);
-    case OverlayDisplayMode::kDemo:
-      return tickDemo(nowMs);
-    case OverlayDisplayMode::kInfo:
-      return tickInfo(nowMs);
-  }
-  return false;
-}
-
-void DisplayManager::tickClock(uint32_t nowMs, bool force) {
+void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   if (static_cast<long>(nowMs - colonMs_) >= static_cast<long>(kBlinkMs)) {
     colonMs_ = nowMs;
     colonVisible_ = !colonVisible_;
   }
-  if (!baseElapsed(nowMs, force)) return;
+  if (!renderElapsed(nowMs, force)) return;
 
-  TimeFields f = rtcToFields(rtcGetNow());
-  if (clockHasTenths(settings_.clockFmt)) {
-    f.tenths = (nowMs % kSecondMs) / kTenthMs;
+  TimeFields fields = rtcToFields(rtcGetNow());
+  if (clockHasTenths(currentState_.payload.formatIndex)) {
+    fields.tenths = (nowMs % kSecondMs) / kTenthMs;
   }
 
   char r1[8], r2[8], r3[8];
-  renderClock(settings_.clockFmt, f, r1, r2, r3, colonVisible_);
+  ::renderClock(currentState_.payload.formatIndex, fields, r1, r2, r3, colonVisible_);
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
-void DisplayManager::tickCountdown(uint32_t nowMs, bool force) {
-  if (!baseElapsed(nowMs, force)) return;
+void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
+  if (!renderElapsed(nowMs, force)) return;
 
   const DateTime now = rtcGetNow();
-  const DateTime target = parseDateTime(settings_.countdownDatetime);
-  const long secs =
-      static_cast<long>(target.unixtime()) - static_cast<long>(now.unixtime());
+  const long secs = static_cast<long>(currentState_.payload.endTime.unixtime()) -
+                    static_cast<long>(now.unixtime());
 
-  TimeFields f = deltaToFields(secs < 0 ? 0 : secs);
-  if (countdownHasTenths(settings_.countdownFmt)) {
-    f.tenths = (secs > 0) ? (10 - (nowMs % kSecondMs) / kTenthMs) % 10 : 0;
+  if (!hasPreviousState_ && !demoCountdownActive_ && currentState_.behavior == DisplayBehavior::kCountdown && secs <= 0) {
+    DisplayState finalState;
+    finalState.behavior = DisplayBehavior::kMessage;
+    finalState.blink = false;
+    copyMessage(finalState.payload.message, settings_.finalMessage);
+    installState(finalState, {false, 0}, nowMs, false);
+    renderCurrentState(nowMs, true);
+    return;
   }
 
-  char r1[8], r2[8], r3[8];
-  renderCountdown(settings_.countdownFmt, f, r1, r2, r3);
-  segmentDisplay.showPanels(r1, r2, r3);
-}
-
-void DisplayManager::tickCountup(uint32_t nowMs, bool force) {
-  if (!baseElapsed(nowMs, force)) return;
-
-  const DateTime now = rtcGetNow();
-  const long secs =
-      static_cast<long>(now.unixtime()) - static_cast<long>(countupOrigin_.unixtime());
-
-  TimeFields f = deltaToFields(secs < 0 ? 0 : secs);
-  if (countupHasTenths(settings_.countupFmt)) {
-    f.tenths = (nowMs % kSecondMs) / kTenthMs;
-  }
-
-  char r1[8], r2[8], r3[8];
-  renderCountup(settings_.countupFmt, f, r1, r2, r3);
-  segmentDisplay.showPanels(r1, r2, r3);
-}
-
-bool DisplayManager::tickSplash(uint32_t nowMs) {
-  if (static_cast<long>(nowMs - modeStartMs_) >=
-      static_cast<long>(kSplashDurationMs)) {
-    return true;
-  }
-
-  char r1[8], r2[8], r3[8];
-  messageToBuffers(overlayMessage_, r1, r2, r3);
-  segmentDisplay.showPanels(r1, r2, r3);
-  return false;
-}
-
-bool DisplayManager::tickInfo(uint32_t nowMs) {
-  if (infoDurationMs_ != FOREVER &&
-      static_cast<long>(nowMs - modeStartMs_) >= infoDurationMs_) {
-    return true;
-  }
-
-  if (static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kBlinkMs)) {
-    blinkMs_ = nowMs;
-    blinkOn_ = !blinkOn_;
-  }
-  showBlinkingMessage(overlayMessage_, blinkOn_);
-  return false;
-}
-
-bool DisplayManager::tickDemo(uint32_t nowMs) {
-  const uint32_t elapsed = nowMs - modeStartMs_;
-
-  if (elapsed < kDemoCountdownMs) {
-    const uint32_t remaining = kDemoCountdownMs - elapsed;
+  if (currentState_.payload.formatIndex == kDemoCountdownFormat) {
+    const uint32_t remaining = currentTransition_.expiresAtMs - nowMs;
     const uint8_t whole =
         static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
     const uint8_t tenths = static_cast<uint8_t>(
         min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
     char r3[8];
-    snprintf(r3, sizeof(r3), "%u.%u", whole, tenths);
+    snprintf(r3, sizeof(r3), "%2u.%u", whole, tenths);
     segmentDisplay.showPanels("    ", "    ", r3);
-    return false;
+    return;
   }
 
-  if (elapsed < kDemoCountdownMs + kDemoMessageMs) {
-    if (static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kBlinkMs)) {
-      blinkMs_ = nowMs;
-      blinkOn_ = !blinkOn_;
-    }
-    showBlinkingMessage(settings_.finalMessage, blinkOn_);
-    return false;
+  TimeFields fields = deltaToFields(secs);
+  if (countdownHasTenths(currentState_.payload.formatIndex)) {
+    fields.tenths = (secs > 0) ? (10 - (nowMs % kSecondMs) / kTenthMs) % 10 : 0;
   }
 
-  return true;
+  char r1[8], r2[8], r3[8];
+  ::renderCountdown(currentState_.payload.formatIndex, fields, r1, r2, r3);
+  segmentDisplay.showPanels(r1, r2, r3);
+}
+
+void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
+  if (!renderElapsed(nowMs, force)) return;
+
+  const DateTime now = rtcGetNow();
+  const long secs = static_cast<long>(now.unixtime()) -
+                    static_cast<long>(currentState_.payload.startTime.unixtime());
+
+  TimeFields fields = deltaToFields(secs);
+  if (countupHasTenths(currentState_.payload.formatIndex)) {
+    fields.tenths = (nowMs % kSecondMs) / kTenthMs;
+  }
+
+  char r1[8], r2[8], r3[8];
+  ::renderCountup(currentState_.payload.formatIndex, fields, r1, r2, r3);
+  segmentDisplay.showPanels(r1, r2, r3);
+}
+
+void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
+  if (currentState_.blink &&
+      static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kBlinkMs)) {
+    blinkMs_ = nowMs;
+    blinkOn_ = !blinkOn_;
+    force = true;
+  }
+
+  if (!renderElapsed(nowMs, force)) return;
+
+  char r1[8], r2[8], r3[8];
+  if (currentState_.blink && !blinkOn_) {
+    blankBuffers(r1, r2, r3);
+  } else {
+    messageToBuffers(currentState_.payload.message, r1, r2, r3);
+  }
+  segmentDisplay.showPanels(r1, r2, r3);
 }
 
 DisplayManager displayManager;

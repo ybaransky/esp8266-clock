@@ -1,6 +1,7 @@
 #include "button.h"
 
 #include "hardware.h"
+#include "log.h"
 #include <Arduino.h>
 #include <OneButton.h>
 
@@ -14,7 +15,7 @@ public:
   void begin() {
     pinMode(Hardware::Pins::BUTTON, INPUT_PULLUP);
     if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
-      Serial.println("[BTN] WARNING: D3/GPIO0 is LOW at startup (button may be pressed). Avoid holding this button during boot.");
+      LOG_PRINTLN("WARNING: D3/GPIO0 is LOW at startup (button may be pressed). Avoid holding this button during boot.");
     }
     startupRecheckAtMs_ = millis() + STARTUP_RECHECK_DELAY_MS;
     startupRecheckDone_ = false;
@@ -28,7 +29,7 @@ public:
   void tick() {
     if (!startupRecheckDone_ && static_cast<long>(millis() - startupRecheckAtMs_) >= 0) {
       if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
-        Serial.println("[BTN] WARNING: D3/GPIO0 still LOW 500ms after startup. Check wiring or release button during boot.");
+        LOG_PRINTLN("WARNING: D3/GPIO0 still LOW 500ms after startup. Check wiring or release button during boot.");
       }
       startupRecheckDone_ = true;
     }
@@ -47,7 +48,7 @@ public:
   }
 
   void handleAction(const char *message, ButtonEvent event = ButtonEvent::NONE) {
-    Serial.println(message);
+    LOG_PRINTLN(message);
     if (event != ButtonEvent::NONE) {
       enqueueEvent(event);
     }
@@ -75,16 +76,16 @@ private:
 static ButtonController btn;
 
 static void onBtnClick() {
-  btn.handleAction("[BTN] Single press", ButtonEvent::SHOW_NETWORK_INFO);
-  Serial.println("[BTN] INFO: explicit call");
+  btn.handleAction("Single press", ButtonEvent::SHOW_NETWORK_INFO);
+  LOG_PRINTLN("INFO: explicit call");
 }
 
 static void onBtnDoubleClick() {
-  btn.handleAction("[BTN] Double click", ButtonEvent::SHOW_I2C_SCAN);
+  btn.handleAction("Double click", ButtonEvent::SHOW_I2C_SCAN);
 }
 
 static void onBtnLongPressStart() {
-  btn.handleAction("[BTN] Long press", ButtonEvent::SHOW_RTC_STATUS);
+  btn.handleAction("Long press", ButtonEvent::SHOW_RTC_STATUS);
 }
 
 void buttonBegin()                    { btn.begin(); }

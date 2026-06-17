@@ -5,17 +5,29 @@
 
 #include "config.h"
 
-enum class BaseDisplayMode : uint8_t {
+enum class DisplayBehavior : uint8_t {
   kClock,
   kCountdown,
   kCountup,
+  kMessage,
 };
 
-enum class OverlayDisplayMode : uint8_t {
-  kNone,
-  kSplash,
-  kDemo,
-  kInfo,
+struct DisplayPayload {
+  DateTime endTime = DateTime(2000, 1, 1, 0, 0, 0);     // Countdown end time.
+  DateTime startTime = DateTime(2000, 1, 1, 0, 0, 0);   // Count-up origin time.
+  uint8_t formatIndex = 0;                              // Formatter index for clock/count states.
+  char message[64] = {};                                // Text rendered by message states.
+};
+
+struct DisplayState {
+  DisplayBehavior behavior = DisplayBehavior::kClock;  // Renderer used for this state.
+  bool blink = false;                                  // True when message output alternates blank/on.
+  DisplayPayload payload;                              // Data consumed by the selected renderer.
+};
+
+struct DisplayTransition {
+  bool hasExpiration = false;  // True when the current state should expire.
+  uint32_t expiresAtMs = 0;    // millis() deadline for temporary state expiration.
 };
 
 class DisplayManager {
@@ -29,47 +41,47 @@ class DisplayManager {
   void showInfo(const char* message, int32_t durationMs = FOREVER);
   void clearInfo();
 
-  const char* baseModeName() const;
-  const char* overlayModeName() const;
+  const char* defaultStateName() const;
+  const char* currentStateName() const;
 
  private:
-  BaseDisplayMode baseModeFor(BaseMode mode) const;
-  const char* baseModeName(BaseDisplayMode mode) const;
-  const char* overlayModeName(OverlayDisplayMode mode) const;
+  DisplayState stateForConfiguredMode(PersistentMode mode) const;
+  const char* behaviorName(DisplayBehavior behavior) const;
+  void logStateTransition(const DisplayState& from, const DisplayState& to,
+                          const char* reason) const;
 
-  void setBaseMode(BaseDisplayMode next);
-  void startOverlay(OverlayDisplayMode overlay, const char* message,
-                    int32_t durationMs, uint32_t nowMs);
-  void finishOverlay(uint32_t nowMs);
+  void installState(const DisplayState& state, const DisplayTransition& transition,
+                    uint32_t nowMs, bool rememberPrevious);
+  void installDefaultState(uint32_t nowMs, bool forceRender = true);
+  void finishTemporaryState(uint32_t nowMs);
+  void restorePreviousState(uint32_t nowMs);
+  void startDemoMessageState(uint32_t nowMs);
 
   void updateCountupOrigin(const ClockConfig& config);
-  uint32_t baseRefreshInterval() const;
-  bool baseElapsed(uint32_t nowMs, bool force = false);
+  uint32_t refreshInterval() const;
+  bool renderElapsed(uint32_t nowMs, bool force = false);
+  bool transitionExpired(uint32_t nowMs) const;
 
-  void tickBase(uint32_t nowMs, bool force = false);
-  void tickClock(uint32_t nowMs, bool force = false);
-  void tickCountdown(uint32_t nowMs, bool force = false);
-  void tickCountup(uint32_t nowMs, bool force = false);
-  bool tickActiveOverlay(uint32_t nowMs);
-  bool tickSplash(uint32_t nowMs);
-  bool tickInfo(uint32_t nowMs);
-  bool tickDemo(uint32_t nowMs);
+  void renderCurrentState(uint32_t nowMs, bool force = false);
+  void renderClock(uint32_t nowMs, bool force);
+  void renderCountdown(uint32_t nowMs, bool force);
+  void renderCountup(uint32_t nowMs, bool force);
+  void renderMessage(uint32_t nowMs, bool force);
 
-  ClockConfig settings_ = defaultClockConfig();  // Current display configuration.
-  BaseDisplayMode baseMode_ = BaseDisplayMode::kClock;  // Persistent mode to render.
-  OverlayDisplayMode overlayMode_ = OverlayDisplayMode::kNone;  // Active transient overlay.
+  ClockConfig settings_ = defaultClockConfig();  // Persisted display settings currently applied.
+  DisplayState defaultState_;                    // State restored after temporary states.
+  DisplayState currentState_;                    // State rendered on each tick.
+  DisplayTransition currentTransition_;          // Expiration metadata for the current state.
+  DisplayState previousState_;                   // State restored after temporary splash/info/demo states.
+  bool hasPreviousState_ = false;                // True while a temporary state can return to previousState_.
+  bool demoCountdownActive_ = false;             // True during demo's first countdown phase.
 
-  DateTime countupOrigin_;  // Start time used by count-up mode.
-  uint32_t modeStartMs_ = 0;  // millis() when the active overlay started.
-  int32_t infoDurationMs_ = FOREVER;  // Optional info overlay lifetime; FOREVER means indefinite.
-  char overlayMessage_[64] = {};  // Message text used by splash/info overlays.
-
-  bool blinkOn_ = true;  // Current blink phase for blinking overlays.
-  uint32_t blinkMs_ = 0;  // millis() timestamp for the last blink phase change.
-  uint32_t lastBaseTickMs_ = 0;  // millis() timestamp for the last base render.
-  uint32_t baseHandoffDueMs_ = 0;  // When to render base after overlay; 0 means not pending.
-  bool colonVisible_ = true;  // Current colon phase for clock formats with blinking colon.
-  uint32_t colonMs_ = 0;  // millis() timestamp for the last colon phase change.
+  DateTime countupOrigin_;       // Captured start time for count-up states using "now".
+  bool blinkOn_ = true;          // Current visible/blank phase for blinking message states.
+  uint32_t blinkMs_ = 0;         // millis() timestamp of the last blink phase change.
+  uint32_t lastRenderMs_ = 0;    // millis() timestamp of the last rendered frame.
+  bool colonVisible_ = true;     // Current colon phase for clock formats with blinking colon.
+  uint32_t colonMs_ = 0;         // millis() timestamp of the last colon phase change.
 };
 
 extern DisplayManager displayManager;

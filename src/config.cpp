@@ -1,13 +1,14 @@
 #include "config.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include "log.h"
 
 static constexpr const char* CONFIG_PATH = "/config.json";
 
 // Opens and deserializes config.json into doc.  Returns false on any failure.
 static bool openAndParse(JsonDocument& doc) {
     if (!STORAGE.begin()) {
-        Serial.println("[CFG] STORAGE mount failed");
+        LOG_PRINTLN("STORAGE mount failed");
         return false;
     }
     File f = STORAGE.open(CONFIG_PATH, "r");
@@ -16,7 +17,7 @@ static bool openAndParse(JsonDocument& doc) {
     DeserializationError err = deserializeJson(doc, f);
     f.close();
     if (err) {
-        Serial.printf("[CFG] parse error: %s\n", err.c_str());
+        LOG_PRINTF("parse error: %s\n", err.c_str());
         return false;
     }
     return true;
@@ -25,7 +26,7 @@ static bool openAndParse(JsonDocument& doc) {
 // ── ClockConfig defaults ──────────────────────────────────────────────────────
 ClockConfig defaultClockConfig() {
     ClockConfig s;
-    s.activeMode    = kBaseCountdown;
+    s.activeMode    = kPersistentCountdown;
     s.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
     s.countupFmt    = 0;
     s.clockFmt      = 1; // " YYYY | MM:DD | hh:mm" (static colon)
@@ -52,7 +53,7 @@ WifiConfig ConfigManager::loadWifiConfig() {
 
 void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     if (!STORAGE.begin()) {
-        Serial.println("[CFG] STORAGE mount failed — cannot save WiFi config");
+        LOG_PRINTLN("STORAGE mount failed - cannot save WiFi config");
         return;
     }
     // Read existing doc so clock settings are preserved.
@@ -64,10 +65,10 @@ void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     doc["password"] = cfg.password;
 
     File fw = STORAGE.open(CONFIG_PATH, "w");
-    if (!fw) { Serial.println("[CFG] Failed to open config.json for writing"); return; }
+    if (!fw) { LOG_PRINTLN("Failed to open config.json for writing"); return; }
     serializeJson(doc, fw);
     fw.close();
-    Serial.println("[CFG] WiFi config saved");
+    LOG_PRINTLN("WiFi config saved");
 }
 
 // ── Clock config ──────────────────────────────────────────────────────────────
@@ -77,8 +78,8 @@ ClockConfig ConfigManager::loadClockConfig() {
     JsonDocument doc;
     if (!openAndParse(doc)) return s;
 
-    const int rawMode = doc["mode"] | (int)kBaseCountdown;
-    s.activeMode    = static_cast<BaseMode>(rawMode <= (int)kBaseClock ? rawMode : (int)kBaseCountdown);
+    const int rawMode = doc["mode"] | (int)kPersistentCountdown;
+    s.activeMode    = static_cast<PersistentMode>(rawMode <= (int)kPersistentClock ? rawMode : (int)kPersistentCountdown);
     s.countdownFmt  = doc["countdownFmt"]  | s.countdownFmt;
     s.countupFmt    = doc["countupFmt"]    | s.countupFmt;
     s.clockFmt      = doc["clockFmt"]      | s.clockFmt;
@@ -102,7 +103,7 @@ ClockConfig ConfigManager::loadClockConfig() {
 
 void ConfigManager::saveClockConfig(const ClockConfig& s) {
     if (!STORAGE.begin()) {
-        Serial.println("[CFG] STORAGE mount failed — cannot save");
+        LOG_PRINTLN("STORAGE mount failed - cannot save");
         return;
     }
     // Read existing doc so WiFi credentials are preserved.
@@ -123,10 +124,10 @@ void ConfigManager::saveClockConfig(const ClockConfig& s) {
     doc.remove("infoMessage");
 
     File fw = STORAGE.open(CONFIG_PATH, "w");
-    if (!fw) { Serial.println("[CFG] Failed to open config.json for writing"); return; }
+    if (!fw) { LOG_PRINTLN("Failed to open config.json for writing"); return; }
     serializeJson(doc, fw);
     fw.close();
-    Serial.println("[CFG] Clock config saved");
+    LOG_PRINTLN("Clock config saved");
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
