@@ -6,8 +6,7 @@
 // Panel strings are rendered left-to-right. ':' or ';' between the second and
 // third visible slots lights the center colon, and '.' lights the previous slot.
 //
-// showPanels() only writes to a display when that panel's text changes, which
-// avoids unnecessary TM1637 traffic on shared/boot-sensitive pins.
+// showPanels() writes every requested panel update directly to the hardware.
 class SegmentDisplay {
 public:
   void begin(uint8_t brightness = 3);
@@ -16,7 +15,8 @@ public:
   void blank();
 
 private:
-  char last_[3][8] = {};
+  uint8_t lastSegments_[3][4] = {};
+  bool cacheValid_[3] = {};
 };
 
 extern SegmentDisplay segmentDisplay;

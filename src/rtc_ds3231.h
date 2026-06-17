@@ -18,4 +18,5 @@ DateTime rtcGetNow();
 
 // SQW 1 Hz interrupt — call after rtcBegin() succeeds, then every loop iteration.
 void rtcBeginSqwProcessing();
-void rtcProcessSqwPulse();
+// Returns true once every kSqwLogIntervalSeconds pulses (caller should log).
+bool rtcProcessSqwPulse();

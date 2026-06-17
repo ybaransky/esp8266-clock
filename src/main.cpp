@@ -2,12 +2,14 @@
 #include <Wire.h>
 
 #include "button.h"
-#include "clock_mode.h"
 #include "config.h"
 #include "display.h"
+#include "display_manager.h"
 #include "hardware.h"
 #include "rtc_ds3231.h"
 #include "web_server.h"
+
+// ─── Button handling ──────────────────────────────────────────────────────────
 
 namespace {
 
@@ -51,6 +53,8 @@ void processButtonEvents() {
 
 }  // namespace
 
+// ─── Arduino entry points ─────────────────────────────────────────────────────
+
 void setup() {
   Serial.begin(74880);
   delay(500);
@@ -71,15 +75,17 @@ void setup() {
 
   ClockConfig cs = configManager.loadClockConfig();
   segmentDisplay.begin(cs.brightness);
-  clockModeEngine.begin(cs);
+  displayManager.begin(cs);
   Serial.printf("[DISP] Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
 
-  {
-    const RtcStatus rtcStatus = rtcGetStatus();
-    if (rtcStatus.lowBattery) {
-      clockModeEngine.showInfo("LOW BAT");
-      Serial.println("[RTC] Low battery — showing info overlay");
-    }
+  if (cs.splashMessage[0] != '\0') {
+    displayManager.showSplash(cs.splashMessage);
+  }
+
+  const RtcStatus rtcStatus = rtcGetStatus();
+  if (rtcStatus.lowBattery) {
+    displayManager.showInfo("LOW BAT");
+    Serial.println("[RTC] Low battery — showing info overlay");
   }
 
   WifiConfig cfg = configManager.loadWifiConfig();
@@ -88,11 +94,17 @@ void setup() {
   buttonBegin();
 }
 
-
 void loop() {
+  uint32_t now = millis();
   buttonTick();
   processButtonEvents();
-  rtcProcessSqwPulse();
-  clockModeEngine.tick(millis());
+  if (rtcProcessSqwPulse()) {
+    Serial.printf("[RTC] SQW trigger: %s  base[%s] overlay[%s]\n",
+                  rtcGetCurrentTimeString().c_str(),
+                  displayManager.baseModeName(),
+                  displayManager.overlayModeName());
+  }
+
+  displayManager.tick(now);
   webHandleClients();
 }

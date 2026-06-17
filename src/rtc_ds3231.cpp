@@ -156,10 +156,11 @@ void rtcBeginSqwProcessing() {
                 Hardware::Pins::RTC_SQW);
 }
 
-void rtcProcessSqwPulse() {
-  if (!consumeSqwPulse()) return;
+bool rtcProcessSqwPulse() {
+  if (!consumeSqwPulse()) return false;
   if (++sqwLogPulseCount >= kSqwLogIntervalSeconds) {
     sqwLogPulseCount = 0;
-    Serial.printf("[RTC] SQW trigger: %s\n", rtc.currentTimeString().c_str());
+    return true;
   }
+  return false;
 }

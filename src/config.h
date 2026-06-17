@@ -4,6 +4,8 @@
 
 #define STORAGE LittleFS
 
+static constexpr int32_t FOREVER = INT32_MAX;
+
 // ── WifiConfig ────────────────────────────────────────────────────────────────
 struct WifiConfig {
     String ssid;

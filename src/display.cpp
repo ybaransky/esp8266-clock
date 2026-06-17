@@ -11,8 +11,6 @@ constexpr uint8_t SEG_DOT = 0x80;
 constexpr uint8_t SEG_VALUE_MASK = 0x7F;
 constexpr size_t PANEL_COUNT = 3;
 constexpr size_t PANEL_WIDTH = 4;
-constexpr size_t CACHE_WIDTH = 8;
-
 TM1637Display displays[PANEL_COUNT] = {
     TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[0]),
     TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[1]),
@@ -134,8 +132,11 @@ uint8_t segmentForChar(char c) {
   return ASCII_SEGMENTS[code - 32] & SEG_VALUE_MASK;
 }
 
-void renderPanel(TM1637Display &display, const char *text) {
-  uint8_t segments[PANEL_WIDTH] = {SEG_BLANK, SEG_BLANK, SEG_BLANK, SEG_BLANK};
+void renderPanelSegments(const char *text, uint8_t segments[PANEL_WIDTH]) {
+  for (size_t index = 0; index < PANEL_WIDTH; ++index) {
+    segments[index] = SEG_BLANK;
+  }
+
   size_t slot = 0;
 
   for (size_t index = 0; text[index] != '\0' && slot < PANEL_WIDTH; ++index) {
@@ -153,13 +154,10 @@ void renderPanel(TM1637Display &display, const char *text) {
 
     segments[slot++] = segmentForChar(value);
   }
-
-  display.setSegments(segments);
 }
 
-void copyPanelCache(char *destination, const char *source) {
-  strncpy(destination, source, CACHE_WIDTH - 1);
-  destination[CACHE_WIDTH - 1] = '\0';
+void copySegments(uint8_t destination[PANEL_WIDTH], const uint8_t source[PANEL_WIDTH]) {
+  memcpy(destination, source, PANEL_WIDTH);
 }
 
 }  // namespace
@@ -179,20 +177,45 @@ void SegmentDisplay::setBrightness(uint8_t level) {
 void SegmentDisplay::showPanels(const char *r1, const char *r2, const char *r3) {
   const char *panels[PANEL_COUNT] = {r1, r2, r3};
 
-  for (size_t index = 0; index < PANEL_COUNT; ++index) {
-    if (strncmp(panels[index], last_[index], CACHE_WIDTH - 1) == 0) continue;
+  for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
+    uint8_t segments[PANEL_WIDTH];
+    renderPanelSegments(panels[panel], segments);
 
-    copyPanelCache(last_[index], panels[index]);
-    renderPanel(displays[index], panels[index]);
+    if (!cacheValid_[panel]) {
+      displays[panel].setSegments(segments);
+      copySegments(lastSegments_[panel], segments);
+      cacheValid_[panel] = true;
+      continue;
+    }
+
+    size_t slot = 0;
+    while (slot < PANEL_WIDTH) {
+      if (segments[slot] == lastSegments_[panel][slot]) {
+        ++slot;
+        continue;
+      }
+
+      const size_t runStart = slot;
+      while (slot < PANEL_WIDTH && segments[slot] != lastSegments_[panel][slot]) {
+        ++slot;
+      }
+
+      const uint8_t runLength = static_cast<uint8_t>(slot - runStart);
+      displays[panel].setSegments(&segments[runStart], runLength,
+                                  static_cast<uint8_t>(runStart));
+    }
+
+    copySegments(lastSegments_[panel], segments);
   }
 }
 
 void SegmentDisplay::blank() {
   const uint8_t blankSegments[PANEL_WIDTH] = {};
-  memset(last_, 0, sizeof(last_));
 
-  for (TM1637Display &display : displays) {
-    display.setSegments(blankSegments);
+  for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
+    displays[panel].setSegments(blankSegments);
+    copySegments(lastSegments_[panel], blankSegments);
+    cacheValid_[panel] = true;
   }
 }
 

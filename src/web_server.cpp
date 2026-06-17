@@ -5,7 +5,7 @@
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
-#include "clock_mode.h"
+#include "clock_state.h"
 #include "config.h"
 #include "format.h"
 #include "hardware.h"
@@ -40,7 +40,7 @@ public:
     WiFi.softAP(ssid, password);
     waitForSoftApIp();
 
-    Serial.printf("AP \"%s\" started  IP: %s\n", ssid, WiFi.softAPIP().toString().c_str());
+    Serial.printf("[WIFI] AP \"%s\" started  IP: %s\n", ssid, WiFi.softAPIP().toString().c_str());
 
     dnsRunning_ = dnsServer_.start(53, "*", WiFi.softAPIP());
     if (!dnsRunning_) {
@@ -63,7 +63,7 @@ public:
     server_.on("/api/wifi",            HTTP_POST, handleApiWifiSaveRoute);
     server_.onNotFound(handleCaptiveRedirectRoute);
     server_.begin();
-    Serial.println("HTTP server started");
+    Serial.println("[WIFI] HTTP server started");
   }
 
   void handleClients() {
@@ -125,9 +125,9 @@ public:
     if (!doc["finalMessage"].isNull()) {
       ClockConfig s = configManager.loadClockConfig();
       snprintf(s.finalMessage, sizeof(s.finalMessage), "%s", doc["finalMessage"].as<const char*>());
-      clockModeEngine.applySettings(s);
+      clockApplySettings(s);
     }
-    clockModeEngine.triggerDemo();
+    clockTriggerDemo();
     // 5-second countdown + 5 seconds of blinking = 10 s preview
     server_.send(200, "application/json", "{\"preview_ms\":10000}");
   }
@@ -209,7 +209,7 @@ public:
     if (!doc["splashMessage"].isNull())   snprintf(s.splashMessage,   sizeof(s.splashMessage),   "%s", doc["splashMessage"].as<const char*>());
     if (!doc["finalMessage"].isNull())    snprintf(s.finalMessage,    sizeof(s.finalMessage),    "%s", doc["finalMessage"].as<const char*>());
     configManager.saveClockConfig(s);
-    clockModeEngine.applySettings(s);
+    clockApplySettings(s);
 
     // ── WiFi settings (optional — reboot required to apply) ───────────────────
     bool wifiChanged = false;
