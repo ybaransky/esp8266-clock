@@ -23,6 +23,7 @@ class WifiConnectionManager {
  public:
   void begin(const WifiConfig& config);
   void tick();
+  void onApClientConnected(const uint8_t* mac);
 
   WifiRuntimeStatus status() const;
   void scanNetworks(JsonDocument& doc);
@@ -34,6 +35,9 @@ class WifiConnectionManager {
 
   WifiConfig config_;
   WifiMode mode_ = WifiMode::kAccessPoint;
+
+  volatile bool apClientConnectedPending_ = false;
+  uint8_t apClientMac_[6] = {};
 };
 
 extern WifiConnectionManager wifiConnectionManager;

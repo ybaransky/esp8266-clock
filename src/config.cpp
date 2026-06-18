@@ -1,31 +1,73 @@
 #include "config.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include "config_validation.h"
 #include "log.h"
+#include "storage_manager.h"
 
 static constexpr const char* CONFIG_PATH = "/config.json";
+static constexpr const char* CONFIG_TMP_PATH = "/config.tmp";
 static constexpr const char* YURICLOC = "YuriCloc";
 static constexpr const char* PASSWORD = "12345678";
 
+static bool writeConfigDocument(JsonDocument& doc, const char* label);
+static void populateDefaultConfigDocument(JsonDocument& doc);
+
 // Opens and deserializes config.json into doc.  Returns false on any failure.
 static bool openAndParse(JsonDocument& doc) {
-    if (!STORAGE.begin()) {
-        LOG_PRINTLN("STORAGE mount failed");
-        return false;
-    }
+    if (!storageManager.ensureMounted("open config")) return false;
     File f = STORAGE.open(CONFIG_PATH, "r");
-    if (!f) return false;  // file doesn't exist yet — not an error
+    if (!f) {
+        LOG_PRINTLN("config.json not found - creating defaults");
+        populateDefaultConfigDocument(doc);
+        if (!writeConfigDocument(doc, "create default config")) {
+            LOG_PRINTLN("Default config.json create failed - using in-memory defaults");
+            return false;
+        }
+        LOG_PRINTLN("Default config.json created");
+        return true;
+    }
 
     DeserializationError err = deserializeJson(doc, f);
     f.close();
     if (err) {
-        LOG_PRINTF("parse error: %s\n", err.c_str());
+        LOG_PRINTF("config.json parse error: %s\n", err.c_str());
         return false;
     }
     return true;
 }
 
-// ── ClockConfig defaults ──────────────────────────────────────────────────────
+static bool writeConfigDocument(JsonDocument& doc, const char* label) {
+    if (!storageManager.ensureMounted(label)) return false;
+
+    STORAGE.remove(CONFIG_TMP_PATH);
+    File fw = STORAGE.open(CONFIG_TMP_PATH, "w");
+    if (!fw) {
+        LOG_PRINTLN("Failed to open config.tmp for writing");
+        return false;
+    }
+
+    const size_t bytes = serializeJson(doc, fw);
+    fw.flush();
+    fw.close();
+    if (bytes == 0) {
+        STORAGE.remove(CONFIG_TMP_PATH);
+        LOG_PRINTLN("Failed to serialize config document");
+        return false;
+    }
+
+    if (!STORAGE.rename(CONFIG_TMP_PATH, CONFIG_PATH)) {
+        STORAGE.remove(CONFIG_PATH);
+        if (!STORAGE.rename(CONFIG_TMP_PATH, CONFIG_PATH)) {
+            STORAGE.remove(CONFIG_TMP_PATH);
+            LOG_PRINTLN("Failed to replace config.json");
+            return false;
+        }
+    }
+    return true;
+}
+
+// -- ClockConfig defaults ------------------------------------------------------
 ClockConfig defaultClockConfig() {
     ClockConfig s;
     s.activeMode    = kPersistentCountdown;
@@ -40,12 +82,35 @@ ClockConfig defaultClockConfig() {
     s.latitude = 0.0f;
     s.longitude = 0.0f;
     s.zipcode[0] = '\0';
-    snprintf(s.timezone, sizeof(s.timezone), "UTC");
+    s.timezone[0] = '\0';
     s.utcOffsetMinutes = 0;
     return s;
 }
 
-// ── WiFi ──────────────────────────────────────────────────────────────────────
+static void populateDefaultConfigDocument(JsonDocument& doc) {
+    const ClockConfig clock = defaultClockConfig();
+    doc.clear();
+    doc["mode"]              = static_cast<int>(clock.activeMode);
+    doc["countdownFmt"]      = clock.countdownFmt;
+    doc["countupFmt"]        = clock.countupFmt;
+    doc["clockFmt"]          = clock.clockFmt;
+    doc["brightness"]        = clock.brightness;
+    doc["countdownDatetime"] = String(clock.countdownDatetime);
+    doc["countupDatetime"]   = String(clock.countupDatetime);
+    doc["splashMessage"]     = String(clock.splashMessage);
+    doc["finalMessage"]      = String(clock.finalMessage);
+    doc["latitude"]          = clock.latitude;
+    doc["longitude"]         = clock.longitude;
+    doc["zipcode"]           = String(clock.zipcode);
+    doc["timezone"]          = String(clock.timezone);
+    doc["utcOffsetMinutes"]  = clock.utcOffsetMinutes;
+    doc["staSsid"]           = "";
+    doc["staPassword"]       = "";
+    doc["apSsid"]            = YURICLOC;
+    doc["apPassword"]        = PASSWORD;
+}
+
+// -- WiFi ----------------------------------------------------------------------
 WifiConfig ConfigManager::loadWifiConfig() {
     WifiConfig cfg{"", "", YURICLOC, PASSWORD};
 
@@ -60,10 +125,8 @@ WifiConfig ConfigManager::loadWifiConfig() {
 }
 
 void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
-    if (!STORAGE.begin()) {
-        LOG_PRINTLN("STORAGE mount failed - cannot save WiFi config");
-        return;
-    }
+    if (!storageManager.ensureMounted("save WiFi config")) return;
+
     // Read existing doc so clock settings are preserved.
     JsonDocument doc;
     File fr = STORAGE.open(CONFIG_PATH, "r");
@@ -74,22 +137,19 @@ void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     doc["apSsid"]          = cfg.apSsid;
     doc["apPassword"]      = cfg.apPassword;
 
-    File fw = STORAGE.open(CONFIG_PATH, "w");
-    if (!fw) { LOG_PRINTLN("Failed to open config.json for writing"); return; }
-    serializeJson(doc, fw);
-    fw.close();
-    LOG_PRINTLN("WiFi config saved");
+    if (writeConfigDocument(doc, "save WiFi config")) {
+        LOG_PRINTLN("WiFi config saved");
+    }
 }
 
-// ── Clock config ──────────────────────────────────────────────────────────────
+// -- Clock config --------------------------------------------------------------
 ClockConfig ConfigManager::loadClockConfig() {
     ClockConfig s = defaultClockConfig();
 
     JsonDocument doc;
     if (!openAndParse(doc)) return s;
 
-    const int rawMode = doc["mode"] | (int)kPersistentCountdown;
-    s.activeMode    = static_cast<PersistentMode>(rawMode <= (int)kPersistentClock ? rawMode : (int)kPersistentCountdown);
+    s.activeMode    = static_cast<PersistentMode>(doc["mode"] | static_cast<int>(s.activeMode));
     s.countdownFmt  = doc["countdownFmt"]  | s.countdownFmt;
     s.countupFmt    = doc["countupFmt"]    | s.countupFmt;
     s.clockFmt      = doc["clockFmt"]      | s.clockFmt;
@@ -103,11 +163,11 @@ ClockConfig ConfigManager::loadClockConfig() {
 
                                                /*123412341234*/
     const char* splash = doc["splashMessage"] | "      hi    ";
-    snprintf(s.splashMessage, sizeof(s.splashMessage), "%s", splash);
+    sanitizeDisplayMessage(splash, s.splashMessage, sizeof(s.splashMessage));
 
                                                 /*123412341234*/
     const char* finalMsg = doc["finalMessage"] | "Good Luc    ";
-    snprintf(s.finalMessage, sizeof(s.finalMessage), "%s", finalMsg);
+    sanitizeDisplayMessage(finalMsg, s.finalMessage, sizeof(s.finalMessage));
 
     s.latitude = doc["latitude"] | s.latitude;
     s.longitude = doc["longitude"] | s.longitude;
@@ -115,41 +175,56 @@ ClockConfig ConfigManager::loadClockConfig() {
     if (zipcode[0]) snprintf(s.zipcode, sizeof(s.zipcode), "%s", zipcode);
 
     const char* timezone = doc["timezone"] | "";
-    if (timezone[0]) snprintf(s.timezone, sizeof(s.timezone), "%s", timezone);
+    char cleanTimezone[sizeof(s.timezone)];
+    sanitizePrintableText(timezone, cleanTimezone, sizeof(cleanTimezone));
+    if (cleanTimezone[0]) snprintf(s.timezone, sizeof(s.timezone), "%s", cleanTimezone);
     s.utcOffsetMinutes = doc["utcOffsetMinutes"] | s.utcOffsetMinutes;
 
-    return s;
+    return sanitizeClockConfig(s);
 }
 
 void ConfigManager::saveClockConfig(const ClockConfig& s) {
-    if (!STORAGE.begin()) {
-        LOG_PRINTLN("STORAGE mount failed - cannot save");
-        return;
-    }
+    if (!storageManager.ensureMounted("save clock config")) return;
+
+    const ClockConfig clean = sanitizeClockConfig(s);
+
     // Read existing doc so WiFi credentials are preserved.
     JsonDocument doc;
     File fr = STORAGE.open(CONFIG_PATH, "r");
     if (fr) { deserializeJson(doc, fr); fr.close(); }
 
-    doc["mode"]              = static_cast<int>(s.activeMode);
-    doc["countdownFmt"]      = s.countdownFmt;
-    doc["countupFmt"]        = s.countupFmt;
-    doc["clockFmt"]          = s.clockFmt;
-    doc["brightness"]        = s.brightness;
-    doc["countdownDatetime"] = s.countdownDatetime;
-    doc["countupDatetime"]   = s.countupDatetime;
-    doc["splashMessage"]     = s.splashMessage;
-    doc["finalMessage"]      = s.finalMessage;
-    doc["latitude"]          = s.latitude;
-    doc["longitude"]         = s.longitude;
-    doc["zipcode"]           = s.zipcode;
-    doc["timezone"]          = s.timezone;
-    doc["utcOffsetMinutes"]  = s.utcOffsetMinutes;
-    File fw = STORAGE.open(CONFIG_PATH, "w");
-    if (!fw) { LOG_PRINTLN("Failed to open config.json for writing"); return; }
-    serializeJson(doc, fw);
-    fw.close();
-    LOG_PRINTLN("Clock config saved");
+    doc["mode"]              = static_cast<int>(clean.activeMode);
+    doc["countdownFmt"]      = clean.countdownFmt;
+    doc["countupFmt"]        = clean.countupFmt;
+    doc["clockFmt"]          = clean.clockFmt;
+    doc["brightness"]        = clean.brightness;
+    doc["countdownDatetime"] = String(clean.countdownDatetime);
+    doc["countupDatetime"]   = String(clean.countupDatetime);
+    doc["splashMessage"]     = String(clean.splashMessage);
+    doc["finalMessage"]      = String(clean.finalMessage);
+    doc["latitude"]          = clean.latitude;
+    doc["longitude"]         = clean.longitude;
+    doc["zipcode"]           = String(clean.zipcode);
+    doc["timezone"]          = String(clean.timezone);
+    doc["utcOffsetMinutes"]  = clean.utcOffsetMinutes;
+    if (writeConfigDocument(doc, "save clock config")) {
+        LOG_PRINTLN("Clock config saved");
+    }
+}
+
+ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
+    const ClockConfig defaults = defaultClockConfig();
+    ClockConfig clean = cfg;
+    clean.activeMode = sanitizePersistentMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
+    clean.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.countdownFmt, defaults.countdownFmt);
+    clean.countupFmt = sanitizeFormatIndex(kFmtGroupCountUp, cfg.countupFmt, defaults.countupFmt);
+    clean.clockFmt = sanitizeFormatIndex(kFmtGroupClock, cfg.clockFmt, defaults.clockFmt);
+    clean.brightness = sanitizeBrightness(cfg.brightness);
+    clean.utcOffsetMinutes = sanitizeUtcOffsetMinutes(cfg.utcOffsetMinutes);
+    sanitizeDisplayMessage(cfg.splashMessage, clean.splashMessage, sizeof(clean.splashMessage));
+    sanitizeDisplayMessage(cfg.finalMessage, clean.finalMessage, sizeof(clean.finalMessage));
+    sanitizePrintableText(cfg.timezone, clean.timezone, sizeof(clean.timezone));
+    return clean;
 }
 
 ConfigManager configManager;

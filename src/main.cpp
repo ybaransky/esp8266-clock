@@ -12,9 +12,22 @@
 #include "web_server.h"
 #include "wifi_connection_manager.h"
 
-// ─── Button handling ──────────────────────────────────────────────────────────
+// --- Button handling ----------------------------------------------------------
 
 namespace {
+
+void printRtcErrorBanner(const char* detail) {
+  Serial.println();
+  Serial.println("############################");
+  Serial.println("#          ERROR           #");
+  Serial.println("#      RTC NOT FOUND       #");
+  Serial.println("############################");
+  if (detail != nullptr && detail[0] != '\0') {
+    Serial.print("# ");
+    Serial.println(detail);
+  }
+  Serial.println();
+}
 
 void handleButtonEvent(ButtonEvent event) {
   switch (event) {
@@ -62,12 +75,13 @@ void processButtonEvents() {
 
 }  // namespace
 
-// ─── Arduino entry points ─────────────────────────────────────────────────────
+// --- Arduino entry points -----------------------------------------------------
 
 void setup() {
   Serial.begin(74880);
   delay(500);
   LOG_PRINTLN("Starting up...");
+  printDeviceInfo();
 
   Wire.begin(Hardware::Pins::I2C_SDA, Hardware::Pins::I2C_SCL);
   Wire.setClock(100000);
@@ -78,9 +92,12 @@ void setup() {
   if (rtcBegin()) {
     rtcBeginSqwProcessing();
   } else {
-    LOG_PRINTF("Init failed: %s\n", rtcGetStatus().error.c_str());
+    const RtcStatus status = rtcGetStatus();
+    printRtcErrorBanner(status.error.c_str());
+    LOG_PRINTF("Init failed: %s\n", status.error.c_str());
   }
   i2cBusScanner.scan();
+
 
   ClockConfig cs = configManager.loadClockConfig();
   segmentDisplay.begin(cs.brightness);
@@ -109,7 +126,10 @@ void loop() {
   buttonTick();
   processButtonEvents();
   if (rtcProcessSqwPulse()) {
-    LOG_PRINTF("SQW trigger: state[%s]\n", displayManager.currentStateName());
+    LOG_PRINTF("SQW: state=%s heap=%u maxBlock=%u\n",
+               displayManager.currentStateName(),
+               ESP.getFreeHeap(),
+               ESP.getMaxFreeBlockSize());
   }
 
   displayManager.tick(now);

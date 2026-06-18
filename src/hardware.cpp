@@ -1,8 +1,11 @@
 #include "hardware.h"
 
 #include <Arduino.h>
+#include <LittleFS.h>
 #include <Wire.h>
 #include "log.h"
+#include "number_format.h"
+#include "storage_manager.h"
 
 namespace {
 
@@ -77,3 +80,104 @@ I2CScanResult I2CBusScanner::lastResult() const {
 }
 
 I2CBusScanner i2cBusScanner;
+
+// ---------------------------------------------------------------------------
+// Device info getters
+// ---------------------------------------------------------------------------
+
+HeapInfo getHeapInfo() {
+  return {
+    ESP.getFreeHeap(),
+    ESP.getMaxFreeBlockSize(),
+    ESP.getHeapFragmentation(),
+  };
+}
+
+FlashInfo getFlashInfo() {
+  return {
+    ESP.getFlashChipSize(),
+    ESP.getFlashChipRealSize(),
+    ESP.getFlashChipSpeed(),
+    ESP.getFlashChipMode(),
+  };
+}
+
+ChipInfo getChipInfo() {
+  return {
+    ESP.getChipId(),
+    static_cast<uint8_t>(ESP.getCpuFreqMHz()),
+    ESP.getSdkVersion(),
+    ESP.getCoreVersion(),
+    ESP.getResetReason(),
+  };
+}
+
+SketchInfo getSketchInfo() {
+  return {
+    ESP.getSketchSize(),
+    ESP.getFreeSketchSpace(),
+  };
+}
+
+StorageInfo getStorageInfo() {
+  if (!storageManager.ensureMounted("device info")) return {false, 0, 0};
+  FSInfo fs;
+  if (!LittleFS.info(fs)) return {false, 0, 0};
+  return {true, fs.totalBytes, fs.usedBytes};
+}
+
+namespace {
+
+const char* flashModeName(FlashMode_t mode) {
+  switch (mode) {
+    case FM_QIO:   return "QIO";
+    case FM_QOUT:  return "QOUT";
+    case FM_DIO:   return "DIO";
+    case FM_DOUT:  return "DOUT";
+    default:       return "unknown";
+  }
+}
+
+}  // namespace
+
+void printDeviceInfo() {
+  const HeapInfo    heap    = getHeapInfo();
+  const FlashInfo   flash   = getFlashInfo();
+  const ChipInfo    chip    = getChipInfo();
+  const SketchInfo  sketch  = getSketchInfo();
+  const StorageInfo storage = getStorageInfo();
+
+  LOG_PRINTF("--- Heap ---\n");
+  LOG_PRINTF("  free=%s  maxBlock=%s  frag=%u%%\n",
+             CommaNumber(heap.freeBytes).c_str(),
+             CommaNumber(heap.maxFreeBlockBytes).c_str(),
+             heap.fragmentationPct);
+
+  LOG_PRINTF("--- Flash ---\n");
+  LOG_PRINTF("  chipSize=%s  realSize=%s  speed=%sHz  mode=%s\n",
+             CommaNumber(flash.chipSizeBytes).c_str(),
+             CommaNumber(flash.realSizeBytes).c_str(),
+             CommaNumber(flash.speedHz).c_str(),
+             flashModeName(flash.mode));
+
+  LOG_PRINTF("--- Chip ---\n");
+  LOG_PRINTF("  id=0x%06X  cpu=%uMHz  sdk=%s  core=%s\n",
+             chip.chipId, chip.cpuFreqMHz,
+             chip.sdkVersion.c_str(), chip.coreVersion.c_str());
+  LOG_PRINTF("  resetReason=%s\n", chip.resetReason.c_str());
+
+  LOG_PRINTF("--- Sketch ---\n");
+  LOG_PRINTF("  size=%s  freeSpace=%s\n",
+             CommaNumber(sketch.sizeBytes).c_str(),
+             CommaNumber(sketch.freeSpaceBytes).c_str());
+
+  LOG_PRINTF("--- Storage ---\n");
+  if (!storage.mounted) {
+    LOG_PRINTF("  LittleFS not mounted\n");
+  } else {
+    LOG_PRINTF("  total=%s  used=%s  free=%s\n",
+               CommaNumber(storage.totalBytes).c_str(),
+               CommaNumber(storage.usedBytes).c_str(),
+               CommaNumber(storage.totalBytes - storage.usedBytes).c_str());
+  }
+}

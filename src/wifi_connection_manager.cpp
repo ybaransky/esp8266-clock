@@ -10,20 +10,24 @@ constexpr uint32_t kStationConnectTimeoutMs = 15000;
 constexpr uint16_t kStationConnectPollMs = 250;
 
 WiFiEventHandler apStationConnectedHandler;
+WifiConnectionManager* gInstance = nullptr;
 
 bool isSecureNetwork(uint8_t encryptionType) {
   return encryptionType != ENC_TYPE_NONE;
 }
 
-void logAccessPointStationConnected(const WiFiEventSoftAPModeStationConnected& event) {
-  LOG_PRINTF("AP client connected  MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-             event.mac[0], event.mac[1], event.mac[2],
-             event.mac[3], event.mac[4], event.mac[5]);
+void onApStationConnected(const WiFiEventSoftAPModeStationConnected& event) {
+  // I2C (used by LOG_PRINTF via logCurrentTime) is unsafe in WiFi event
+  // callbacks - defer to tick() which runs from loop().
+  if (gInstance) {
+    gInstance->onApClientConnected(event.mac);
+  }
 }
 
 }  // namespace
 
 void WifiConnectionManager::begin(const WifiConfig& config) {
+  gInstance = this;
   config_ = config;
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
@@ -40,8 +44,18 @@ void WifiConnectionManager::begin(const WifiConfig& config) {
   startAccessPoint();
 }
 
+void WifiConnectionManager::onApClientConnected(const uint8_t* mac) {
+  memcpy(apClientMac_, mac, 6);
+  apClientConnectedPending_ = true;
+}
+
 void WifiConnectionManager::tick() {
-  // Reserved for future reconnect/backoff behavior.
+  if (apClientConnectedPending_) {
+    apClientConnectedPending_ = false;
+    LOG_PRINTF("AP client connected  MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+               apClientMac_[0], apClientMac_[1], apClientMac_[2],
+               apClientMac_[3], apClientMac_[4], apClientMac_[5]);
+  }
 }
 
 WifiRuntimeStatus WifiConnectionManager::status() const {
@@ -119,7 +133,7 @@ void WifiConnectionManager::startAccessPoint() {
              WiFi.softAPIP().toString().c_str());
 
   apStationConnectedHandler =
-      WiFi.onSoftAPModeStationConnected(logAccessPointStationConnected);
+      WiFi.onSoftAPModeStationConnected(onApStationConnected);
 }
 
 WifiConnectionManager wifiConnectionManager;

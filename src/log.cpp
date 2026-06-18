@@ -1,10 +1,10 @@
 #include "log.h"
 
-#include "rtc_ds3231.h"
-
 #include <string.h>
 
 namespace {
+
+LogTimeProvider timeProvider = nullptr;
 
 const char* baseName(const char* path) {
   const char* fileName = path;
@@ -45,14 +45,14 @@ const char* logSourceName(const char* path) {
 
 const char* logCurrentTime() {
   static char timeText[12];
-  const RtcStatus status = rtcGetStatus();
-  if (!status.present) {
-    snprintf(timeText, sizeof(timeText), "--:--:--");
+  if (timeProvider != nullptr && timeProvider(timeText, sizeof(timeText))) {
     return timeText;
   }
 
-  const DateTime now = rtcGetNow();
-  snprintf(timeText, sizeof(timeText), "%02d:%02d:%02d",
-           now.hour(), now.minute(), now.second());
+  snprintf(timeText, sizeof(timeText), "--:--:--");
   return timeText;
+}
+
+void logSetTimeProvider(LogTimeProvider provider) {
+  timeProvider = provider;
 }

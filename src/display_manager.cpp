@@ -4,7 +4,6 @@
 #include "clock_state.h"
 #include "display.h"
 #include "log.h"
-#include "rtc_ds3231.h"
 
 namespace {
 
@@ -74,10 +73,20 @@ void copyDisplayTitle(char destination[kDisplayRowChars + 1], const char* source
 }  // namespace
 
 void DisplayManager::begin(const ClockConfig& config) {
+  if (clockSource_ == nullptr) {
+    clockSource_ = &systemClockSource();
+  }
   applySettings(config);
 }
 
+void DisplayManager::setClockSource(ClockSource& clockSource) {
+  clockSource_ = &clockSource;
+}
+
 void DisplayManager::applySettings(const ClockConfig& config) {
+  if (clockSource_ == nullptr) {
+    clockSource_ = &systemClockSource();
+  }
   settings_ = config;
   colonVisible_ = true;
   colonMs_ = 0;
@@ -119,7 +128,7 @@ void DisplayManager::showDemo() {
   DisplayState state;
   state.behavior = DisplayBehavior::kCountdown;
   state.payload.formatIndex = kDemoCountdownFormat;
-  state.payload.endTime = rtcGetNow() + TimeSpan(0, 0, 0, 5);
+  state.payload.endTime = clockSource_->now() + TimeSpan(0, 0, 0, 5);
 
   demoCountdownActive_ = true;
   installState(state, {true, nowMs + kDemoCountdownMs}, nowMs, true);
@@ -311,7 +320,7 @@ void DisplayManager::startDemoMessageState(uint32_t nowMs) {
 
 void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
   countupOrigin_ = (strncmp(config.countupDatetime, "now", 3) == 0)
-      ? rtcGetNow()
+      ? clockSource_->now()
       : parseDateTime(config.countupDatetime);
 }
 
@@ -379,7 +388,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   }
   if (!renderElapsed(nowMs, force)) return;
 
-  TimeFields fields = rtcToFields(rtcGetNow());
+  TimeFields fields = rtcToFields(clockSource_->now());
   if (clockHasTenths(currentState_.payload.formatIndex)) {
     fields.tenths = (nowMs % kSecondMs) / kTenthMs;
   }
@@ -392,7 +401,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
 void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const DateTime now = rtcGetNow();
+  const DateTime now = clockSource_->now();
   const long secs = static_cast<long>(currentState_.payload.endTime.unixtime()) -
                     static_cast<long>(now.unixtime());
 
@@ -431,7 +440,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
 void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const DateTime now = rtcGetNow();
+  const DateTime now = clockSource_->now();
   const long secs = static_cast<long>(now.unixtime()) -
                     static_cast<long>(currentState_.payload.startTime.unixtime());
 

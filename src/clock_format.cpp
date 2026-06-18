@@ -3,7 +3,7 @@
 
 namespace {
   // Right-justify a 2-digit elapsed value.
-  // Produces "  " (two spaces) when val == 0 — hides leading zero units
+  // Produces "  " (two spaces) when val == 0 - hides leading zero units
   // (e.g. "0 days" or "0 hours" should not clutter the display).
   void bp(char* out, int val) {
     if (val == 0) { out[0] = ' '; out[1] = ' '; out[2] = '\0'; }
@@ -11,11 +11,11 @@ namespace {
   }
 }
 
-// ── Countdown ─────────────────────────────────────────────────────────────────
+// -- Countdown -----------------------------------------------------------------
 // Padding rules applied below:
-//   dd, hh  → bp() : right-justified, blank when zero
-//   mm, ss  → %02d after ':', else %2d
-//   u       → single digit
+//   dd, hh  -> bp() : right-justified, blank when zero
+//   mm, ss  -> %02d after ':', else %2d
+//   u       -> single digit
 
 void renderCountdown(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3) {
   char dd[4], hh[4];
@@ -71,8 +71,8 @@ void renderCountup(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r
   renderCountdown(idx, f, r1, r2, r3);
 }
 
-// ── Clock ─────────────────────────────────────────────────────────────────────
-// All calendar fields (YYYY, MM, DD) are zero-padded — they are real dates,
+// -- Clock ---------------------------------------------------------------------
+// All calendar fields (YYYY, MM, DD) are zero-padded - they are real dates,
 // not elapsed values, so "0 hours" does not apply.
 // hh uses %02d here for the same reason (a clock at midnight shows "00", not "  ").
 

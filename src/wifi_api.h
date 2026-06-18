@@ -1,0 +1,27 @@
+#pragma once
+
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <ESP8266WebServer.h>
+
+#include "http_responder.h"
+#include "reboot_scheduler.h"
+
+class WifiApi {
+ public:
+  WifiApi(ESP8266WebServer& server,
+          HttpResponder& responder,
+          RebootScheduler& rebootScheduler)
+      : server_(server), responder_(responder), rebootScheduler_(rebootScheduler) {}
+
+  void handleStatus();
+  void handleScan();
+  void handleConnect();
+
+ private:
+  void sendJsonDocument(JsonDocument& doc);
+
+  ESP8266WebServer& server_;
+  HttpResponder& responder_;
+  RebootScheduler& rebootScheduler_;
+};

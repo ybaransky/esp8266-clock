@@ -5,10 +5,17 @@
 #include <RTClib.h>
 #include <Wire.h>
 
+namespace {
+
+bool rtcLogTimeProvider(char* buffer, size_t bufferSize);
+
+}  // namespace
+
 class RtcDs3231 {
 public:
   bool begin() {
     status_ = {false, false, false, false, ""};
+    logSetTimeProvider(nullptr);
 
     if (!probeAddress()) {
       status_.error = "DS3231 not found on I2C address 0x68";
@@ -23,6 +30,7 @@ public:
     }
 
     status_.present = true;
+    logSetTimeProvider(rtcLogTimeProvider);
     logRtcTime("Current RTC time:", rtc_.now());
 
     recoverIfPowerWasLost();
@@ -129,20 +137,51 @@ private:
 
 static RtcDs3231 rtc;
 
+namespace {
+
+bool rtcLogTimeProvider(char* buffer, size_t bufferSize) {
+  if (buffer == nullptr || bufferSize == 0) {
+    return false;
+  }
+
+  const RtcStatus status = rtc.getStatus();
+  if (!status.present) {
+    return false;
+  }
+
+  const DateTime now = rtc.now();
+  snprintf(buffer, bufferSize, "%02d:%02d:%02d",
+           now.hour(), now.minute(), now.second());
+  return true;
+}
+
+}  // namespace
+
 bool rtcBegin()                  { return rtc.begin(); }
 RtcStatus rtcGetStatus()         { return rtc.getStatus(); }
 String rtcGetCurrentTimeString() { return rtc.currentTimeString(); }
 DateTime rtcGetNow()             { return rtc.now(); }
 void rtcSetNow(const DateTime& timeValue) { rtc.setNow(timeValue); }
 
-// ── SQW 1 Hz interrupt processing ─────────────────────────────────────────────
+// -- SQW 1 Hz interrupt processing ---------------------------------------------
 
-static constexpr uint8_t kSqwLogIntervalSeconds = 5;
+static constexpr uint8_t kSqwLogIntervalSeconds = 60;
+static constexpr uint32_t kSqwStartupWarnMs = 3500;
+static constexpr uint32_t kSqwHealthLogIntervalMs = 10000;
 static volatile uint32_t sqwPendingPulseCount    = 0;
+static volatile uint32_t sqwIsrPulseCount        = 0;
 static uint8_t           sqwLogPulseCount        = 0;
+static bool              sqwProcessingStarted    = false;
+static bool              sqwSawPulse             = false;
+static bool              sqwPollingObservedPulse = false;
+static int               sqwLastPolledLevel      = HIGH;
+static uint32_t          sqwProcessingStartedAtMs = 0;
+static uint32_t          sqwLastPulseAtMs         = 0;
+static uint32_t          sqwLastHealthLogMs       = 0;
 
 static void IRAM_ATTR onRtcSqwPulse() {
   sqwPendingPulseCount++;
+  sqwIsrPulseCount++;
 }
 
 static void warnIfSqwSharesInternalLed() {
@@ -151,7 +190,7 @@ static void warnIfSqwSharesInternalLed() {
              Hardware::Pins::RTC_SQW);
 }
 
-static bool consumeSqwPulse() {
+static bool consumeSqwInterruptPulse() {
   noInterrupts();
   const bool pending = sqwPendingPulseCount > 0;
   if (pending) sqwPendingPulseCount--;
@@ -159,12 +198,82 @@ static bool consumeSqwPulse() {
   return pending;
 }
 
+static bool consumeSqwPolledPulse() {
+  const int level = digitalRead(Hardware::Pins::RTC_SQW);
+  const bool rising = sqwLastPolledLevel == LOW && level == HIGH;
+  sqwLastPolledLevel = level;
+  if (rising) {
+    sqwPollingObservedPulse = true;
+  }
+  return rising;
+}
+
+static uint32_t currentSqwIsrPulseCount() {
+  noInterrupts();
+  const uint32_t count = sqwIsrPulseCount;
+  interrupts();
+  return count;
+}
+
+static void logSqwHealthIfNeeded(uint32_t nowMs) {
+  if (!sqwProcessingStarted) return;
+
+  const uint32_t referenceMs = sqwSawPulse ? sqwLastPulseAtMs : sqwProcessingStartedAtMs;
+  if (static_cast<long>(nowMs - referenceMs) < static_cast<long>(kSqwStartupWarnMs)) {
+    return;
+  }
+  if (static_cast<long>(nowMs - sqwLastHealthLogMs) <
+      static_cast<long>(kSqwHealthLogIntervalMs)) {
+    return;
+  }
+
+  sqwLastHealthLogMs = nowMs;
+  LOG_PRINTF("SQW health: no pulse on GPIO%u for %lu ms, pin=%s, isrCount=%lu, pollFallback=%s\n",
+             Hardware::Pins::RTC_SQW,
+             static_cast<unsigned long>(nowMs - referenceMs),
+             digitalRead(Hardware::Pins::RTC_SQW) == HIGH ? "HIGH" : "LOW",
+             static_cast<unsigned long>(currentSqwIsrPulseCount()),
+             sqwPollingObservedPulse ? "used" : "idle");
+}
+
+static bool consumeSqwPulse() {
+  if (consumeSqwInterruptPulse() || consumeSqwPolledPulse()) {
+    sqwSawPulse = true;
+    sqwLastPulseAtMs = millis();
+    return true;
+  }
+  logSqwHealthIfNeeded(millis());
+  return false;
+}
+
 void rtcBeginSqwProcessing() {
   warnIfSqwSharesInternalLed();
   pinMode(Hardware::Pins::RTC_SQW, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(Hardware::Pins::RTC_SQW), onRtcSqwPulse, RISING);
-  LOG_PRINTF("SQW interrupt attached on GPIO%u (RISING, INPUT_PULLUP)\n",
-             Hardware::Pins::RTC_SQW);
+  sqwLastPolledLevel = digitalRead(Hardware::Pins::RTC_SQW);
+  sqwProcessingStartedAtMs = millis();
+  sqwLastPulseAtMs = sqwProcessingStartedAtMs;
+  sqwLastHealthLogMs = 0;
+  sqwSawPulse = false;
+  sqwPollingObservedPulse = false;
+  sqwProcessingStarted = true;
+  sqwLogPulseCount = 0;
+  noInterrupts();
+  sqwPendingPulseCount = 0;
+  sqwIsrPulseCount = 0;
+  interrupts();
+
+  const int interruptNumber = digitalPinToInterrupt(Hardware::Pins::RTC_SQW);
+  if (interruptNumber == NOT_AN_INTERRUPT) {
+    LOG_PRINTF("WARNING: GPIO%u does not support attachInterrupt; SQW polling fallback enabled\n",
+               Hardware::Pins::RTC_SQW);
+    return;
+  }
+
+  attachInterrupt(interruptNumber, onRtcSqwPulse, RISING);
+  LOG_PRINTF("SQW interrupt attached on GPIO%u interrupt=%d (RISING, INPUT_PULLUP, initial=%s)\n",
+             Hardware::Pins::RTC_SQW,
+             interruptNumber,
+             sqwLastPolledLevel == HIGH ? "HIGH" : "LOW");
 }
 
 bool rtcProcessSqwPulse() {

@@ -6,7 +6,7 @@
 
 static constexpr int32_t FOREVER = INT32_MAX;
 
-// ── WifiConfig ────────────────────────────────────────────────────────────────
+// -- WifiConfig ----------------------------------------------------------------
 struct WifiConfig {
     String staSsid;
     String staPassword;
@@ -14,7 +14,7 @@ struct WifiConfig {
     String apPassword;
 };
 
-// ── ClockConfig ───────────────────────────────────────────────────────────────
+// -- ClockConfig ---------------------------------------------------------------
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
   PersistentMode activeMode;  // Persistent mode restored after temporary states.
@@ -22,7 +22,7 @@ struct ClockConfig {
   uint8_t countdownFmt;  // index into kCountdownFormats
   uint8_t countupFmt;    // index into kCountupFormats
   uint8_t clockFmt;      // index into kClockFormats
-  uint8_t brightness;    // TM1637 brightness 0–7
+  uint8_t brightness;    // TM1637 brightness 0-7
 
   char countdownDatetime[20]; // "YYYY-MM-DD HH:MM:SS"
   char countupDatetime[20];   // "YYYY-MM-DD HH:MM:SS" or "now"
@@ -40,7 +40,7 @@ struct ClockConfig {
 // Returns a ClockConfig initialised to sensible defaults.
 ClockConfig defaultClockConfig();
 
-// ── ConfigManager ─────────────────────────────────────────────────────────────
+// -- ConfigManager -------------------------------------------------------------
 class ConfigManager {
 public:
     WifiConfig  loadWifiConfig();
@@ -48,6 +48,7 @@ public:
 
     ClockConfig loadClockConfig();
     void        saveClockConfig(const ClockConfig& cfg);
+    ClockConfig sanitizeClockConfig(const ClockConfig& cfg) const;
 
 };
 

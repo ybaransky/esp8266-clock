@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "log.h"
+#include "storage_manager.h"
 
 namespace {
 
@@ -94,11 +95,15 @@ bool parseLocationRow(const char* row, ZipcodeLocation* location) {
 
 bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* path) {
   if (!isValidZipcode(zipcode) || row == nullptr || rowSize == 0 || path == nullptr) {
+    LOG_PRINTF("Zipcode lookup invalid arguments: zip=\"%s\" row=%s rowSize=%u path=\"%s\"\n",
+               zipcode == nullptr ? "(null)" : zipcode,
+               row == nullptr ? "null" : "set",
+               static_cast<unsigned>(rowSize),
+               path == nullptr ? "(null)" : path);
     return false;
   }
 
-  if (!STORAGE.begin()) {
-    LOG_PRINTLN("STORAGE mount failed - cannot read zipcode file");
+  if (!storageManager.ensureMounted("read zipcode file")) {
     return false;
   }
 
@@ -123,6 +128,7 @@ bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* 
 
   file.close();
   row[0] = '\0';
+  LOG_PRINTF("Zipcode not found in %s: %s\n", path, zipcode);
   return false;
 }
 
@@ -130,6 +136,8 @@ bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* 
 
 bool zipcodeLookupLocation(const char* zipcode, ZipcodeLocation* location, const char* path) {
   if (location == nullptr) {
+    LOG_PRINTF("Zipcode lookup failed: null output for zip=\"%s\"\n",
+               zipcode == nullptr ? "(null)" : zipcode);
     return false;
   }
 
@@ -138,5 +146,12 @@ bool zipcodeLookupLocation(const char* zipcode, ZipcodeLocation* location, const
     return false;
   }
 
-  return parseLocationRow(row, location);
+  if (!parseLocationRow(row, location)) {
+    LOG_PRINTF("Zipcode lookup failed: malformed row for zip=\"%s\": \"%s\"\n",
+               zipcode == nullptr ? "(null)" : zipcode,
+               row);
+    return false;
+  }
+
+  return true;
 }

@@ -1,7 +1,7 @@
 #include "format.h"
 #include <string.h>
 
-// ── Countdown formats ─────────────────────────────────────────────────────────
+// -- Countdown formats ---------------------------------------------------------
 // Tokens: dd=days  hh/mm/ss=zero-padded time  u=tenths
 // Literals: D=days-label  H=hours-label  N=minutes-label
 // Separator: " | " between rows; spaces within a row are display padding.
@@ -16,7 +16,7 @@ static const char* const kCountdownFormats[] = {
   "  dd |    hh |    mm",   // days    | hours         | minutes
 };
 
-// ── Count-Up formats ──────────────────────────────────────────────────────────
+// -- Count-Up formats ----------------------------------------------------------
 static const char* const kCountupFormats[] = {
   "dd D | hh:mm |  ss.u",
   "dd D | hh:mm |    ss",
@@ -28,7 +28,7 @@ static const char* const kCountupFormats[] = {
   "  dd |    hh |    mm",
 };
 
-// ── Clock formats ─────────────────────────────────────────────────────────────
+// -- Clock formats -------------------------------------------------------------
 // Tokens: YYYY=year  MM=month  DD=day-of-month  hh/mm/ss=time  u=tenths
 // The two identical "YYYY | MM:DD | hh:mm" entries differ only in colon blink:
 //   semi-colon means replace with colon and blink the colon every 500ms and show a colon
@@ -48,7 +48,7 @@ static const char* const kClockFormats[] = {
   "   DD |    hh |    mm",   // day       | hours         | minutes
 };
 
-// ── Master lookup table ───────────────────────────────────────────────────────
+// -- Master lookup table -------------------------------------------------------
 const char* const* const kFormatGroups[kFmtGroupCount] = {
   kCountdownFormats,
   kCountupFormats,

@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
+#include "clock_source.h"
 #include "config.h"
 
 enum class DisplayBehavior : uint8_t {
@@ -54,6 +55,7 @@ class DisplayManager {
  public:
   void begin(const ClockConfig& config);
   void applySettings(const ClockConfig& config);
+  void setClockSource(ClockSource& clockSource);
   void setBrightness(uint8_t brightness);
   void tick(uint32_t nowMs);
 
@@ -92,6 +94,7 @@ class DisplayManager {
   void renderMessage(uint32_t nowMs, bool force);
   void renderPagedMessage(uint32_t nowMs, bool force);
 
+  ClockSource* clockSource_ = nullptr;          // Provides current wall time for renderers.
   ClockConfig settings_ = defaultClockConfig();  // Persisted display settings currently applied.
   DisplayState defaultState_;                    // State restored after temporary states.
   DisplayState currentState_;                    // State rendered on each tick.
