@@ -37,6 +37,11 @@ ClockConfig defaultClockConfig() {
     snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "now");
     snprintf(s.splashMessage, sizeof(s.splashMessage), "YuriCloc");
     snprintf(s.finalMessage,  sizeof(s.finalMessage),  "Good Luc");
+    s.latitude = 0.0f;
+    s.longitude = 0.0f;
+    s.zipcode[0] = '\0';
+    snprintf(s.timezone, sizeof(s.timezone), "UTC");
+    s.utcOffsetMinutes = 0;
     return s;
 }
 
@@ -104,6 +109,15 @@ ClockConfig ConfigManager::loadClockConfig() {
     const char* finalMsg = doc["finalMessage"] | "Good Luc    ";
     snprintf(s.finalMessage, sizeof(s.finalMessage), "%s", finalMsg);
 
+    s.latitude = doc["latitude"] | s.latitude;
+    s.longitude = doc["longitude"] | s.longitude;
+    const char* zipcode = doc["zipcode"] | "";
+    if (zipcode[0]) snprintf(s.zipcode, sizeof(s.zipcode), "%s", zipcode);
+
+    const char* timezone = doc["timezone"] | "";
+    if (timezone[0]) snprintf(s.timezone, sizeof(s.timezone), "%s", timezone);
+    s.utcOffsetMinutes = doc["utcOffsetMinutes"] | s.utcOffsetMinutes;
+
     return s;
 }
 
@@ -126,6 +140,11 @@ void ConfigManager::saveClockConfig(const ClockConfig& s) {
     doc["countupDatetime"]   = s.countupDatetime;
     doc["splashMessage"]     = s.splashMessage;
     doc["finalMessage"]      = s.finalMessage;
+    doc["latitude"]          = s.latitude;
+    doc["longitude"]         = s.longitude;
+    doc["zipcode"]           = s.zipcode;
+    doc["timezone"]          = s.timezone;
+    doc["utcOffsetMinutes"]  = s.utcOffsetMinutes;
     File fw = STORAGE.open(CONFIG_PATH, "w");
     if (!fw) { LOG_PRINTLN("Failed to open config.json for writing"); return; }
     serializeJson(doc, fw);

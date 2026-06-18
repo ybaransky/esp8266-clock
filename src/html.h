@@ -1,8 +1,12 @@
 #pragma once
 
-extern const char INDEX_HTML[];
-extern const char CONFIG_HTML[];
-extern const char WIFI_HTML[];
-extern const char CONFIG_JSON_HTML[];
-extern const char TIME_SYNC_HTML[];
-extern const char MESSAGE_HTML[];
+#include <Arduino.h>
+
+extern const char INDEX_HTML[] PROGMEM;
+extern const char SETTINGS_HTML[] PROGMEM;
+extern const char CONFIG_HTML[] PROGMEM;
+extern const char WIFI_HTML[] PROGMEM;
+extern const char CONFIG_JSON_HTML[] PROGMEM;
+extern const char TIME_SYNC_HTML[] PROGMEM;
+extern const char MESSAGE_HTML[] PROGMEM;
+extern const char GEOGRAPHY_HTML[] PROGMEM;

@@ -5,6 +5,7 @@
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
+#include <LittleFS.h>
 #include "clock_state.h"
 #include "config.h"
 #include "format.h"
@@ -13,13 +14,16 @@
 #include "log.h"
 #include "rtc_ds3231.h"
 #include "wifi_connection_manager.h"
+#include "zipcode.h"
 
 // Forward declarations for server route callbacks.
 static void handleRootRoute();
+static void handleSettingsRoute();
 static void handleConfigGetRoute();
 static void handleFormatRoute();
 static void handleTimeSyncRoute();
 static void handleMessageRoute();
+static void handleGeographyRoute();
 static void handleWifiRoute();
 static void handleApiDemoTestRoute();
 static void handleApiMessageTestRoute();
@@ -30,6 +34,10 @@ static void handleApiTimeSyncRoute();
 static void handleApiFormatsRoute();
 static void handleApiGetConfigRoute();
 static void handleApiSaveConfigRoute();
+static void handleApiZipcodeLookupRoute();
+static void handleApiListFilesRoute();
+static void handleApiReadFileRoute();
+static void handleApiDeleteFileRoute();
 static void handleApiWifiStatusRoute();
 static void handleApiWifiScanRoute();
 static void handleApiWifiConnectRoute();
@@ -50,10 +58,12 @@ public:
     }
 
     server_.on("/",                    HTTP_GET,  handleRootRoute);
+    server_.on("/settings",            HTTP_GET,  handleSettingsRoute);
     server_.on("/config",              HTTP_GET,  handleConfigGetRoute);
     server_.on("/format",              HTTP_GET,  handleFormatRoute);
     server_.on("/time-sync",           HTTP_GET,  handleTimeSyncRoute);
     server_.on("/messages",            HTTP_GET,  handleMessageRoute);
+    server_.on("/geography",           HTTP_GET,  handleGeographyRoute);
     server_.on("/wifi",                HTTP_GET,  handleWifiRoute);
     server_.on("/api/demo/test",       HTTP_POST, handleApiDemoTestRoute);
     server_.on("/api/message/test",    HTTP_POST, handleApiMessageTestRoute);
@@ -64,6 +74,10 @@ public:
     server_.on("/api/formats",         HTTP_GET,  handleApiFormatsRoute);
     server_.on("/api/config",          HTTP_GET,  handleApiGetConfigRoute);
     server_.on("/api/config",          HTTP_POST, handleApiSaveConfigRoute);
+    server_.on("/api/zipcode/lookup",  HTTP_GET,  handleApiZipcodeLookupRoute);
+    server_.on("/api/files",           HTTP_GET,  handleApiListFilesRoute);
+    server_.on("/api/file",            HTTP_GET,  handleApiReadFileRoute);
+    server_.on("/api/file",            HTTP_DELETE, handleApiDeleteFileRoute);
     server_.on("/api/wifi/status",     HTTP_GET,  handleApiWifiStatusRoute);
     server_.on("/api/wifi/scan",       HTTP_GET,  handleApiWifiScanRoute);
     server_.on("/api/wifi/connect",    HTTP_POST, handleApiWifiConnectRoute);
@@ -95,7 +109,20 @@ public:
   // ── GET / ────────────────────────────────────────────────────────────────────
   void handleRoot() {
     logRequest(200);
-    server_.send_P(200, "text/html", INDEX_HTML);
+    ClockConfig config = configManager.loadClockConfig();
+    String ssid;
+    String ip;
+    getNetworkInfo(ssid, ip);
+
+    String page(FPSTR(INDEX_HTML));
+    page.replace("__DEVICE_NAME__", ssid.isEmpty() ? "Clock" : ssid);
+    page.replace("__INITIAL_MODE__", modeName(config.activeMode));
+    server_.send(200, "text/html", page);
+  }
+
+  void handleSettings() {
+    logRequest(200);
+    server_.send_P(200, "text/html", SETTINGS_HTML);
   }
 
   // ── GET /config ───────────────────────────────────────────────────────────────
@@ -117,6 +144,11 @@ public:
   void handleMessage() {
     logRequest(200);
     server_.send_P(200, "text/html", MESSAGE_HTML);
+  }
+
+  void handleGeography() {
+    logRequest(200);
+    server_.send_P(200, "text/html", GEOGRAPHY_HTML);
   }
 
   // ── GET /wifi ─────────────────────────────────────────────────────────────────
@@ -268,21 +300,8 @@ public:
   // ── GET /api/config ───────────────────────────────────────────────────────────
   void handleApiGetConfig() {
     logRequest(200);
-    const ClockConfig s   = configManager.loadClockConfig();
-    const WifiConfig      cfg = configManager.loadWifiConfig();
     JsonDocument doc;
-    doc["mode"]            = static_cast<int>(s.activeMode);
-    doc["countdownFmt"]    = s.countdownFmt;
-    doc["countupFmt"]      = s.countupFmt;
-    doc["clockFmt"]        = s.clockFmt;
-    doc["brightness"]      = s.brightness;
-    doc["countdownDatetime"] = s.countdownDatetime;
-    doc["countupDatetime"]    = s.countupDatetime;
-    doc["splashMessage"]   = s.splashMessage;
-    doc["finalMessage"]    = s.finalMessage;
-    doc["staSsid"]         = cfg.staSsid;
-    doc["apSsid"]          = cfg.apSsid;
-    // password is never returned — client sends a new one only if changing it
+    populateConfigJson(doc);
     String json;
     serializeJson(doc, json);
     server_.send(200, "application/json", json);
@@ -309,6 +328,18 @@ public:
     if (!doc["countupDatetime"].isNull())    snprintf(s.countupDatetime,    sizeof(s.countupDatetime),    "%s", doc["countupDatetime"].as<const char*>());
     if (!doc["splashMessage"].isNull())   snprintf(s.splashMessage,   sizeof(s.splashMessage),   "%s", doc["splashMessage"].as<const char*>());
     if (!doc["finalMessage"].isNull())    snprintf(s.finalMessage,    sizeof(s.finalMessage),    "%s", doc["finalMessage"].as<const char*>());
+    if (!doc["latitude"].isNull())         s.latitude = doc["latitude"].as<float>();
+    if (!doc["longitude"].isNull())        s.longitude = doc["longitude"].as<float>();
+    if (!doc["zipcode"].isNull()) {
+      const char* zipcode = doc["zipcode"].as<const char*>();
+      if (zipcode == nullptr || (zipcode[0] != '\0' && !isValidZipcode(zipcode))) {
+        server_.send(400, "application/json", "{\"error\":\"ZIP code must be 5 digits\"}");
+        return;
+      }
+      snprintf(s.zipcode, sizeof(s.zipcode), "%s", zipcode);
+    }
+    if (!doc["timezone"].isNull())         snprintf(s.timezone, sizeof(s.timezone), "%s", doc["timezone"].as<const char*>());
+    if (!doc["utcOffsetMinutes"].isNull()) s.utcOffsetMinutes = constrain(doc["utcOffsetMinutes"].as<int>(), -840, 840);
     configManager.saveClockConfig(s);
     clockApplySettings(s);
 
@@ -390,6 +421,106 @@ public:
     server_.send(302, "text/plain", "");
   }
 
+  void handleApiZipcodeLookup() {
+    logRequest(200);
+    const String zipcode = server_.arg("zip");
+    if (!isValidZipcode(zipcode.c_str())) {
+      server_.send(400, "application/json", "{\"error\":\"ZIP code must be 5 digits\"}");
+      return;
+    }
+
+    ZipcodeLocation location;
+    if (!zipcodeLookupLocation(zipcode.c_str(), &location)) {
+      server_.send(404, "application/json", "{\"error\":\"ZIP code not found\"}");
+      return;
+    }
+
+    char json[96];
+    snprintf(json, sizeof(json),
+             "{\"zipcode\":\"%s\",\"latitude\":%.6f,\"longitude\":%.6f}",
+             location.zipcode, location.latitude, location.longitude);
+    server_.send(200, "application/json", json);
+  }
+
+  void handleApiListFiles() {
+    logRequest(200);
+    if (!STORAGE.begin()) {
+      server_.send(500, "application/json", "{\"error\":\"Storage mount failed\"}");
+      return;
+    }
+
+    server_.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server_.send(200, "application/json", "");
+    server_.sendContent("{\"files\":[");
+
+    bool first = true;
+    Dir dir = STORAGE.openDir("/");
+    while (dir.next()) {
+      if (!first) {
+        server_.sendContent(",");
+      }
+      first = false;
+
+      char item[96];
+      snprintf(item, sizeof(item), "{\"name\":\"%s\",\"size\":%u}",
+               dir.fileName().c_str(),
+               static_cast<unsigned>(dir.fileSize()));
+      server_.sendContent(item);
+      yield();
+    }
+
+    server_.sendContent("]}");
+  }
+
+  void handleApiReadFile() {
+    logRequest(200);
+    const String path = normalizedFilePath(server_.arg("name"));
+    if (path.isEmpty()) {
+      server_.send(400, "text/plain", "Invalid file name");
+      return;
+    }
+    if (!STORAGE.begin()) {
+      server_.send(500, "text/plain", "Storage mount failed");
+      return;
+    }
+
+    File file = STORAGE.open(path, "r");
+    if (!file) {
+      server_.send(404, "text/plain", "Not found");
+      return;
+    }
+
+    if (path == "/config.json") {
+      printConfigFileToSerial(file);
+      file.seek(0, SeekSet);
+    }
+
+    server_.streamFile(file, "text/plain");
+    file.close();
+  }
+
+  void handleApiDeleteFile() {
+    logRequest(200);
+    const String path = normalizedFilePath(server_.arg("name"));
+    if (path.isEmpty()) {
+      server_.send(400, "application/json", "{\"error\":\"Invalid file name\"}");
+      return;
+    }
+    if (!STORAGE.begin()) {
+      server_.send(500, "application/json", "{\"error\":\"Storage mount failed\"}");
+      return;
+    }
+    if (!STORAGE.exists(path)) {
+      server_.send(404, "application/json", "{\"error\":\"Not found\"}");
+      return;
+    }
+    if (!STORAGE.remove(path)) {
+      server_.send(500, "application/json", "{\"error\":\"Delete failed\"}");
+      return;
+    }
+    server_.send(200, "application/json", "{\"message\":\"Deleted\"}");
+  }
+
 private:
   static const char *methodName(HTTPMethod method) {
     switch (method) {
@@ -400,6 +531,87 @@ private:
       case HTTP_PATCH:  return "PATCH";
       default:          return "OTHER";
     }
+  }
+
+  static const char* modeName(PersistentMode mode) {
+    switch (mode) {
+      case kPersistentCountdown: return "countdown";
+      case kPersistentCountup: return "countup";
+      case kPersistentClock: return "clock";
+      default: return "clock";
+    }
+  }
+
+  String normalizedFilePath(const String& requestedName) {
+    if (requestedName.isEmpty() || requestedName.indexOf("..") >= 0) {
+      return String();
+    }
+
+    String path = requestedName;
+    if (!path.startsWith("/")) {
+      path = "/" + path;
+    }
+    if (path.length() <= 1 || path.endsWith("/")) {
+      return String();
+    }
+    return path;
+  }
+
+  void printConfigFileToSerial(File& file) {
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, file);
+    if (err) {
+      Serial.printf("config.json parse error=%s\n", err.c_str());
+      return;
+    }
+
+    const size_t count = doc.size();
+    const char* keys[32];
+    size_t keyCount = 0;
+    for (JsonPair pair : doc.as<JsonObject>()) {
+      if (keyCount < count && keyCount < 32) {
+        keys[keyCount++] = pair.key().c_str();
+      }
+    }
+
+    for (size_t i = 0; i < keyCount; ++i) {
+      for (size_t j = i + 1; j < keyCount; ++j) {
+        if (strcmp(keys[j], keys[i]) < 0) {
+          const char* temp = keys[i];
+          keys[i] = keys[j];
+          keys[j] = temp;
+        }
+      }
+    }
+
+    for (size_t i = 0; i < keyCount; ++i) {
+      Serial.print(keys[i]);
+      Serial.print('=');
+      serializeJson(doc[keys[i]], Serial);
+      Serial.println();
+    }
+  }
+
+  void populateConfigJson(JsonDocument& doc) {
+    const ClockConfig s = configManager.loadClockConfig();
+    const WifiConfig cfg = configManager.loadWifiConfig();
+    doc["mode"] = static_cast<int>(s.activeMode);
+    doc["countdownFmt"] = s.countdownFmt;
+    doc["countupFmt"] = s.countupFmt;
+    doc["clockFmt"] = s.clockFmt;
+    doc["brightness"] = s.brightness;
+    doc["countdownDatetime"] = s.countdownDatetime;
+    doc["countupDatetime"] = s.countupDatetime;
+    doc["splashMessage"] = s.splashMessage;
+    doc["finalMessage"] = s.finalMessage;
+    doc["latitude"] = s.latitude;
+    doc["longitude"] = s.longitude;
+    doc["zipcode"] = s.zipcode;
+    doc["timezone"] = s.timezone;
+    doc["utcOffsetMinutes"] = s.utcOffsetMinutes;
+    doc["staSsid"] = cfg.staSsid;
+    doc["apSsid"] = cfg.apSsid;
+    doc["apPassword"] = cfg.apPassword;
   }
 
   void logRequest(int status) {
@@ -419,10 +631,12 @@ private:
 static WebPortal portal;
 
 static void handleRootRoute()            { portal.handleRoot(); }
+static void handleSettingsRoute()        { portal.handleSettings(); }
 static void handleConfigGetRoute()       { portal.handleConfigGet(); }
 static void handleFormatRoute()          { portal.handleFormat(); }
 static void handleTimeSyncRoute()        { portal.handleTimeSync(); }
 static void handleMessageRoute()         { portal.handleMessage(); }
+static void handleGeographyRoute()       { portal.handleGeography(); }
 static void handleWifiRoute()            { portal.handleWifi(); }
 static void handleApiDemoTestRoute()     { portal.handleApiDemoTest(); }
 static void handleApiMessageTestRoute()  { portal.handleApiMessageTest(); }
@@ -433,6 +647,10 @@ static void handleApiTimeSyncRoute()     { portal.handleApiTimeSync(); }
 static void handleApiFormatsRoute()      { portal.handleApiFormats(); }
 static void handleApiGetConfigRoute()    { portal.handleApiGetConfig(); }
 static void handleApiSaveConfigRoute()   { portal.handleApiSaveConfig(); }
+static void handleApiZipcodeLookupRoute(){ portal.handleApiZipcodeLookup(); }
+static void handleApiListFilesRoute()    { portal.handleApiListFiles(); }
+static void handleApiReadFileRoute()     { portal.handleApiReadFile(); }
+static void handleApiDeleteFileRoute()   { portal.handleApiDeleteFile(); }
 static void handleApiWifiStatusRoute()   { portal.handleApiWifiStatus(); }
 static void handleApiWifiScanRoute()     { portal.handleApiWifiScan(); }
 static void handleApiWifiConnectRoute()  { portal.handleApiWifiConnect(); }

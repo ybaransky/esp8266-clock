@@ -9,8 +9,16 @@ namespace {
 constexpr uint32_t kStationConnectTimeoutMs = 15000;
 constexpr uint16_t kStationConnectPollMs = 250;
 
+WiFiEventHandler apStationConnectedHandler;
+
 bool isSecureNetwork(uint8_t encryptionType) {
   return encryptionType != ENC_TYPE_NONE;
+}
+
+void logAccessPointStationConnected(const WiFiEventSoftAPModeStationConnected& event) {
+  LOG_PRINTF("AP client connected  MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+             event.mac[0], event.mac[1], event.mac[2],
+             event.mac[3], event.mac[4], event.mac[5]);
 }
 
 }  // namespace
@@ -109,6 +117,9 @@ void WifiConnectionManager::startAccessPoint() {
   LOG_PRINTF("AP \"%s\" started  IP: %s\n",
              config_.apSsid.c_str(),
              WiFi.softAPIP().toString().c_str());
+
+  apStationConnectedHandler =
+      WiFi.onSoftAPModeStationConnected(logAccessPointStationConnected);
 }
 
 WifiConnectionManager wifiConnectionManager;

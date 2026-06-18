@@ -65,7 +65,6 @@ class DisplayManager {
                  bool repeat = false);
   void clearInfo();
 
-  const char* defaultStateName() const;
   const char* currentStateName() const;
 
  private:

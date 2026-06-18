@@ -108,8 +108,6 @@ void DisplayManager::showSplash(const char* message) {
   const uint32_t nowMs = millis();
   DisplayState state;
   state.behavior = DisplayBehavior::kMessage;
-  state.blink = false;
-  state.payload.formatIndex = 0;
   copyMessage(state.payload.message, message);
 
   installState(state, {true, nowMs + kSplashDurationMs}, nowMs, true);
@@ -120,7 +118,6 @@ void DisplayManager::showDemo() {
   const uint32_t nowMs = millis();
   DisplayState state;
   state.behavior = DisplayBehavior::kCountdown;
-  state.blink = false;
   state.payload.formatIndex = kDemoCountdownFormat;
   state.payload.endTime = rtcGetNow() + TimeSpan(0, 0, 0, 5);
 
@@ -134,7 +131,6 @@ void DisplayManager::showInfo(const char* message, int32_t durationMs) {
   DisplayState state;
   state.behavior = DisplayBehavior::kMessage;
   state.blink = true;
-  state.payload.formatIndex = 0;
   copyMessage(state.payload.message, message);
 
   const bool expires = durationMs != FOREVER;
@@ -154,7 +150,6 @@ void DisplayManager::showPages(const DisplayPage* pages,
   DisplayState state;
   const uint32_t nowMs = millis();
   state.behavior = DisplayBehavior::kPagedMessage;
-  state.blink = false;
   state.payload.paged.pageCount =
       pageCount < kMaxDisplayPages ? pageCount : kMaxDisplayPages;
   state.payload.paged.currentPage = 0;
@@ -189,17 +184,12 @@ void DisplayManager::clearInfo() {
   }
 }
 
-const char* DisplayManager::defaultStateName() const {
-  return behaviorName(defaultState_.behavior);
-}
-
 const char* DisplayManager::currentStateName() const {
   return behaviorName(currentState_.behavior);
 }
 
 DisplayState DisplayManager::stateForConfiguredMode(PersistentMode mode) const {
   DisplayState state;
-  state.blink = false;
 
   switch (mode) {
     case kPersistentCountup:
@@ -307,7 +297,6 @@ void DisplayManager::startDemoMessageState(uint32_t nowMs) {
   DisplayState state;
   state.behavior = DisplayBehavior::kMessage;
   state.blink = true;
-  state.payload.formatIndex = kDemoCountdownFormat;
   copyMessage(state.payload.message, settings_.finalMessage);
 
   demoCountdownActive_ = false;
@@ -407,7 +396,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   const long secs = static_cast<long>(currentState_.payload.endTime.unixtime()) -
                     static_cast<long>(now.unixtime());
 
-  if (!hasPreviousState_ && !demoCountdownActive_ && currentState_.behavior == DisplayBehavior::kCountdown && secs <= 0) {
+  if (!hasPreviousState_ && !demoCountdownActive_ && secs <= 0) {
     DisplayState finalState;
     finalState.behavior = DisplayBehavior::kMessage;
     finalState.blink = false;

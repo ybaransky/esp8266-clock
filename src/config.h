@@ -29,6 +29,12 @@ struct ClockConfig {
 
   char splashMessage[64];
   char finalMessage[64];
+
+  float latitude;
+  float longitude;
+  char zipcode[6];
+  char timezone[40];          // IANA timezone, e.g. "America/New_York".
+  int16_t utcOffsetMinutes;   // Current browser offset fallback.
 };
 
 // Returns a ClockConfig initialised to sensible defaults.
