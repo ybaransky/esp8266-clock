@@ -127,7 +127,7 @@ The web server should serve the same pages regardless of WiFi mode:
 GET  /
 GET  /config
 GET  /format
-GET  /time-sync
+GET  /time
 GET  /wifi
 GET  /demo
 

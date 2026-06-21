@@ -34,6 +34,7 @@ hr{border:0;border-top:1px solid #333;margin:18px 0}
 function $(id){return document.getElementById(id);}
 var configuredMode='__INITIAL_MODE__';
 var demoTimer=null;
+var statusTimer=null;
 function showMode(mode){
   ['countdown','clock','countup','demo'].forEach(function(m){
     $('mode-'+m).classList.toggle('current',m===mode);
@@ -43,7 +44,11 @@ function showConfiguredMode(){
   showMode(configuredMode);
 }
 showConfiguredMode();
-function setStatus(s){$('st').textContent=s||'';}
+function setStatus(s,clearMs){
+  if(statusTimer){clearTimeout(statusTimer);statusTimer=null;}
+  $('st').textContent=s||'';
+  if(clearMs)statusTimer=setTimeout(function(){statusTimer=null;$('st').textContent='';},clearMs);
+}
 function setMode(mode){
   if(demoTimer){clearTimeout(demoTimer);demoTimer=null;}
   fetch('/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:mode})})
@@ -56,7 +61,7 @@ function runDemo(){
   fetch('/api/demo/test',{method:'POST'})
     .then(r=>r.json()).then(d=>{
       if(d.error){setStatus(d.error);showConfiguredMode();return;}
-      demoTimer=setTimeout(function(){demoTimer=null;setStatus('Demo finished.');showConfiguredMode();},d.preview_ms||10000);
+      demoTimer=setTimeout(function(){demoTimer=null;setStatus('Demo finished.',5000);showConfiguredMode();},d.preview_ms||10000);
     }).catch(()=>{setStatus('Demo failed');showConfiguredMode();});
 }
 </script>
@@ -80,8 +85,9 @@ h1{font-size:2em;margin:0 0 18px}
 <a class="btn" href="/format">Formats</a>
 <a class="btn" href="/messages">Messages</a>
 <a class="btn" href="/wifi">Networks</a>
-<a class="btn" href="/location">Location</a>
-<a class="btn" href="/time-sync">Time Sync</a>
+<a class="btn" href="/location">Set Location</a>
+<a class="btn" href="/time">Set Time</a>
+<a class="btn" href="/sunset">Sunset Calculator</a>
 <a class="btn" href="/config">Directory</a>
 <a class="home" href="/">&#8592; Home</a>
 </body></html>
@@ -114,7 +120,7 @@ a{color:#6af;font-size:1rem}
 
 <label>Mode
 <select id="mode" onchange="updateSections()">
-  <option value="0">Countdown</option>
+  <option value="0">Count Down</option>
   <option value="1">Count Up</option>
   <option value="2">Clock</option>
 </select></label>
@@ -203,6 +209,12 @@ function updateSections(){
   $('sec-countup').style.display=m===1?'':'none';
   $('sec-clock').style.display=m===2?'':'none';
 }
+function modeNameFromValue(value){
+  return ['countdown','countup','clock'][parseInt(value)]||'countdown';
+}
+function modeValueFromName(name){
+  return {countdown:0,countup:1,clock:2}[name]||0;
+}
 function toggleStart(cb){
   $('start').disabled=cb.checked;
 }
@@ -221,18 +233,19 @@ Promise.all([
   fetch('/api/config').then(function(r){return r.json();})
 ]).then(function(res){
   var f=res[0],d=res[1];
-  fill('sel-cd',f.countdown,d.countdownFmt||0,'format','countdownFmt');
-  fill('sel-cu',f.countup,d.countupFmt||0,'format','countupFmt');
-  fill('sel-ck',f.clock,d.clockFmt||1,'format','clockFmt');
-  setFieldFromConfig('format','mode','mode',d.mode,d.mode!==undefined?d.mode:0);
-  setFieldFromConfig('format','target','countdownDatetime',d.countdownDatetime,dtl(d.countdownDatetime));
-  var isNow=(d.countupDatetime==='now'||!d.countupDatetime);
+  var display=d.display||{},modes=display.modes||{},countdown=modes.countdown||{},countup=modes.countup||{},clock=modes.clock||{};
+  fill('sel-cd',f.countdown,countdown.format||0,'format','display.modes.countdown.format');
+  fill('sel-cu',f.countup,countup.format||0,'format','display.modes.countup.format');
+  fill('sel-ck',f.clock,clock.format||1,'format','display.modes.clock.format');
+  setFieldFromConfig('format','mode','display.activeMode',display.activeMode,modeValueFromName(display.activeMode));
+  setFieldFromConfig('format','target','display.modes.countdown.end',countdown.end,dtl(countdown.end));
+  var isNow=(countup.start==='now'||!countup.start);
   $('startNow').checked=isNow;
-  if(!isNow)setFieldFromConfig('format','start','countupDatetime',d.countupDatetime,dtl(d.countupDatetime));
+  if(!isNow)setFieldFromConfig('format','start','display.modes.countup.start',countup.start,dtl(countup.start));
   else $('start').value='';
   $('start').disabled=isNow;
-  var b=d.brightness!==undefined?d.brightness:4;
-  setFieldFromConfig('format','brite','brightness',d.brightness,b);
+  var b=display.brightness!==undefined?display.brightness:4;
+  setFieldFromConfig('format','brite','display.brightness',display.brightness,b);
   $('briteVal').textContent=b;
   updateSections();
 }).catch(function(){$('st').textContent='Load failed';});
@@ -240,13 +253,15 @@ Promise.all([
 function save(){
   var isNow=$('startNow').checked;
   var body={
-    mode:parseInt($('mode').value),
-    countdownFmt:parseInt($('sel-cd').value),
-    countupFmt:parseInt($('sel-cu').value),
-    clockFmt:parseInt($('sel-ck').value),
-    brightness:parseInt($('brite').value),
-    countdownDatetime:fdtOrUndef($('target').value),
-    countupDatetime:isNow?'now':fdt($('start').value)
+    display:{
+      activeMode:modeNameFromValue($('mode').value),
+      brightness:parseInt($('brite').value),
+      modes:{
+        countdown:{format:parseInt($('sel-cd').value),end:fdtOrUndef($('target').value)},
+        countup:{format:parseInt($('sel-cu').value),start:isNow?'now':fdt($('start').value)},
+        clock:{format:parseInt($('sel-ck').value)}
+      }
+    }
   };
   fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body)
@@ -332,8 +347,9 @@ function setFieldFromConfig(page,id,field,configValue,fieldValue){
 function setStatus(s){$('st').textContent=s||'';}
 function loadConfig(){
   fetch('/api/config').then(function(r){return r.json();}).then(function(d){
-    setFieldFromConfig('wifi','staSsid','staSsid',d.staSsid,d.staSsid||'');
-    setFieldFromConfig('wifi','apSsid','apSsid',d.apSsid,d.apSsid||'');
+    var wifi=d.wifi||{},station=wifi.station||{},accessPoint=wifi.accessPoint||{};
+    setFieldFromConfig('wifi','staSsid','wifi.station.ssid',station.ssid,station.ssid||'');
+    setFieldFromConfig('wifi','apSsid','wifi.accessPoint.ssid',accessPoint.ssid,accessPoint.ssid||'');
   }).catch(function(){});
 }
 function signalLevel(rssi){
@@ -393,9 +409,9 @@ function connect(){
   }).catch(function(){setStatus('Connect failed');});
 }
 function saveAp(){
-  var body={apSsid:$('apSsid').value};
+  var body={wifi:{accessPoint:{ssid:$('apSsid').value}}};
   var pw=$('apPw').value;
-  if(pw)body.apPassword=pw;
+  if(pw)body.wifi.accessPoint.password=pw;
   fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify(body)
   }).then(function(r){return r.json();}).then(function(d){
@@ -543,43 +559,64 @@ loadDirectory();
 const char TIME_SYNC_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Time Sync</title><style>
+<title>Set Time</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:2rem;margin:0 0 6px;text-align:center}
-p{font-size:1.05rem;line-height:1.5;color:#ccc}
+p{font-size:1.05rem;line-height:1.5;color:#ccc;text-align:center}
 .now{margin:16px 0;font-size:1.05rem;line-height:1.5}
+.syncPanel{background:#1b1b1b;border:1px solid #333;border-radius:8px;padding:4px 12px 12px;margin:14px 0 18px}
+.syncPanel .now{margin:0 0 12px}
 .timetable{width:100%;border-collapse:collapse;table-layout:fixed}
 .timetable th,.timetable td{border-bottom:1px solid #333;padding:6px 8px}
 .timetable tr:last-child td{border-bottom:0}
-.timetable th{color:#8af;font-size:.9rem;font-weight:normal;text-align:center}
-.timetable .label{width:18%;color:#aaa;text-align:right;white-space:nowrap}
+.timetable th{color:#8af;font-size:1.1rem;font-weight:normal;text-align:center}
+.timetable .rowLabel{width:34%}
+.timetable .dstLabelCol{width:15%}
+.timetable .dstValueCol{width:16%}
+.timetable .label{color:#aaa;text-align:right;white-space:nowrap}
 .timetable .value{font-family:monospace;font-size:1.05rem;text-align:center;white-space:nowrap}
 .timetable input{width:100%;box-sizing:border-box;padding:7px;background:#202020;color:#eee;
   border:1px solid #555;border-radius:5px;font-family:monospace;font-size:1rem;text-align:center}
-.timetable-gap td{height:.8em;border-bottom:none!important;padding:0}
-.timetable .narrow{width:80%;display:block;margin:0 auto}
+.timetable input[type=checkbox]{width:auto;display:block;margin:0 auto}
+.zipRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.zipRow button{margin-top:0;padding:8px 12px;font-size:.95rem;white-space:nowrap}
 button{margin-top:10px;padding:14px 28px;font-size:1.1rem;background:#3a9;border:none;
   color:#fff;border-radius:8px;cursor:pointer}
+button.secondary{background:#357}
 button:active{background:#2a8}
+button.secondary:active{background:#246}
 .actions{display:flex;justify-content:center;gap:10px}
 #st{margin-top:12px;font-size:1rem;color:#8d8;min-height:1.4em}
 a{color:#6af;font-size:1rem}
 </style></head>
 <body>
-<h1>Time Sync</h1>
-<p>This sets the real-time clock to the current date and time reported by this browser.</p>
+<h1>Set Time</h1>
+<div class="syncPanel">
 <div class="now">
   <table class="timetable">
-    <tr><th class="label"></th><th>Device</th><th>Browser</th></tr>
-    <tr><td class="label">Time</td><td class="value" id="deviceTime">--</td><td class="value" id="browserTime">--</td></tr>
-    <tr><td class="label">Date</td><td class="value" id="deviceDate">--</td><td class="value" id="browserDate">--</td></tr>
-    <tr class="timetable-gap"><td colspan="3"></td></tr>
-    <tr><td class="label"></td><th colspan="2">Device</th></tr>
-    <tr><td class="label">Timezone</td><td colspan="2"><input type="text" id="deviceTimezone" maxlength="39" class="narrow"></td></tr>
-    <tr><td class="label">UTC offset</td><td colspan="2"><input type="number" id="deviceOffset" min="-840" max="840" step="1" class="narrow"></td></tr>
+    <colgroup><col class="rowLabel"><col><col class="dstLabelCol"><col class="dstValueCol"></colgroup>
+    <tr><th class="label"></th><th colspan="3">Browser</th></tr>
+    <tr><td class="label">Time</td><td class="value" colspan="3" id="browserTime">--</td></tr>
+    <tr><td class="label">Date</td><td class="value" colspan="3" id="browserDate">--</td></tr>
+    <tr><td class="label">Timezone</td><td class="value" colspan="3" id="browserTimezone">--</td></tr>
+    <tr><td class="label">UTC offset</td><td class="value" id="browserOffset">--</td><td class="label">DST</td><td class="value" id="browserDst">--</td></tr>
   </table>
 </div>
-<div class="actions"><button onclick="syncTime()">Synchronize Clocks</button></div>
+<div class="actions"><button onclick="setValuesFromBrowser()">Set Values from Browser</button></div>
+</div>
+<div class="syncPanel">
+<div class="now">
+  <table class="timetable">
+    <colgroup><col class="rowLabel"><col><col class="dstLabelCol"><col class="dstValueCol"></colgroup>
+    <tr><th class="label"></th><th colspan="3">Device</th></tr>
+    <tr><td class="label">Time</td><td colspan="3"><input type="time" id="deviceTime" step="1"></td></tr>
+    <tr><td class="label">Date</td><td colspan="3"><input type="date" id="deviceDate"></td></tr>
+    <tr><td class="label">Timezone</td><td colspan="3"><input type="text" id="deviceTimezone" maxlength="39"></td></tr>
+    <tr><td class="label">UTC offset</td><td><input type="number" id="deviceOffset" min="-840" max="840" step="1"></td><td class="label">DST</td><td><input type="checkbox" id="deviceDst"></td></tr>
+  </table>
+</div>
+<div class="actions"><button onclick="setValuesExplicitly()">Set Values Explicitly.</button></div>
+</div>
 <div id="st"></div>
 <p><a href="/">&#8592; Home</a></p>
 <script>
@@ -603,62 +640,225 @@ function browserTimezone(){
   catch(e){return 'UTC';}
 }
 function browserOffsetMinutes(){return -new Date().getTimezoneOffset();}
+function browserIsDst(date){
+  var year=date.getFullYear();
+  var janOffset=new Date(year,0,1).getTimezoneOffset();
+  var julOffset=new Date(year,6,1).getTimezoneOffset();
+  return date.getTimezoneOffset()<Math.max(janOffset,julOffset);
+}
 function showNow(){
   var n=new Date();
-  $('browserDate').textContent=formatDate(n);
+  $('browserDate').textContent=formatDisplayDate(n);
   $('browserTime').textContent=formatTime(n);
-}
-function populateDeviceFieldsFromBrowser(n){
-  $('browserDate').textContent=formatDate(n);
-  $('browserTime').textContent=formatTime(n);
-  $('deviceDate').textContent=formatDate(n);
-  $('deviceTime').textContent=formatTime(n);
-  $('deviceTimezone').value=browserTimezone();
-  $('deviceOffset').value=browserOffsetMinutes();
+  $('browserTimezone').textContent=browserTimezone();
+  $('browserOffset').textContent=browserOffsetMinutes();
+  $('browserDst').textContent=browserIsDst(n)?'true':'false';
 }
 function showDeviceNow(){
   fetch('/api/time').then(function(r){return r.json();}).then(function(d){
-    $('deviceDate').textContent=d.date||'--';
-    $('deviceTime').textContent=d.time||'--';
+    $('deviceDate').value=d.date||'';
+    $('deviceTime').value=d.time||'';
   }).catch(function(){
-    $('deviceDate').textContent='unavailable';
-    $('deviceTime').textContent='unavailable';
+    $('deviceDate').value='';
+    $('deviceTime').value='';
   });
 }
 function pad(n){return String(n).padStart(2,'0');}
 function formatDate(n){return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());}
+function formatDisplayDate(n){return n.toLocaleDateString();}
 function formatTime(n){return pad(n.getHours())+':'+pad(n.getMinutes())+':'+pad(n.getSeconds());}
 function loadTimeSettings(){
   fetch('/api/config').then(function(r){return r.json();}).then(function(d){
-    setFieldFromConfig('time-sync','deviceTimezone','timezone',d.timezone,d.timezone||browserTimezone());
-    setFieldFromConfig('time-sync','deviceOffset','utcOffsetMinutes',d.utcOffsetMinutes,d.utcOffsetMinutes!==undefined?d.utcOffsetMinutes:browserOffsetMinutes());
+    var timezone=((d.time||{}).timezone)||{};
+    setFieldFromConfig('set-time','deviceTimezone','time.timezone.name',timezone.name,timezone.name||browserTimezone());
+    setFieldFromConfig('set-time','deviceOffset','time.timezone.utcOffsetMinutes',timezone.utcOffsetMinutes,timezone.utcOffsetMinutes!==undefined?timezone.utcOffsetMinutes:browserOffsetMinutes());
+    $('deviceDst').checked=!!((d.time||{}).dst);
   }).catch(function(){
     $('deviceTimezone').value=browserTimezone();
     $('deviceOffset').value=browserOffsetMinutes();
+    $('deviceDst').checked=browserIsDst(new Date());
   });
 }
 showNow();showDeviceNow();loadTimeSettings();
 setInterval(showNow,1000);
-setInterval(showDeviceNow,1000);
-function setStatus(s){$('st').textContent=s||'';}
-function saveTimeSettings(){
-  var off=parseInt($('deviceOffset').value,10);
-  if(!isFinite(off)||off<-840||off>840){setStatus('Offset must be -840 to 840');return Promise.reject('offset');}
-  return fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({timezone:$('deviceTimezone').value||browserTimezone(),utcOffsetMinutes:off})
-  }).then(function(r){return r.json();});
+function setStatus(s,clearMs){
+  if(statusTimer){clearTimeout(statusTimer);statusTimer=null;}
+  $('st').textContent=s||'';
+  if(clearMs)statusTimer=setTimeout(function(){statusTimer=null;$('st').textContent='';},clearMs);
 }
-function syncTime(){
-  var n=new Date();
-  populateDeviceFieldsFromBrowser(n);
-  var body={year:n.getFullYear(),month:n.getMonth()+1,day:n.getDate(),hour:n.getHours(),minute:n.getMinutes(),second:n.getSeconds()};
-  fetch('/api/time/sync',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+function syncDevice(dateText,timeText,timezoneName,offsetValue,dstValue){
+  var off=parseInt(offsetValue,10);
+  if(!isFinite(off)||off<-840||off>840){setStatus('Offset must be -840 to 840');return Promise.reject('offset');}
+  var m=String(dateText+' '+timeText).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if(!m){setStatus('Date and time are required');return Promise.reject('datetime');}
+  var body={year:parseInt(m[1]),month:parseInt(m[2]),day:parseInt(m[3]),hour:parseInt(m[4]),minute:parseInt(m[5]),second:parseInt(m[6]||'0')};
+  fetch('/api/time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     .then(function(r){return r.json();}).then(function(d){
       if(d.error){setStatus(d.error);return;}
-      return saveTimeSettings().then(function(t){setStatus(t.message||d.message);showDeviceNow();});
+      return fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({time:{timezone:{name:timezoneName||browserTimezone(),utcOffsetMinutes:off},dst:!!dstValue}})
+      }).then(function(r){return r.json();}).then(function(t){
+        setStatus(t.message||d.message);
+        $('deviceDate').value=dateText;
+        $('deviceTime').value=timeText;
+        $('deviceTimezone').value=timezoneName||browserTimezone();
+        $('deviceOffset').value=off;
+        $('deviceDst').checked=!!dstValue;
+      });
     })
-    .catch(function(e){if(e!=='offset')setStatus('Time sync failed');});
+    .catch(function(e){if(e!=='offset'&&e!=='datetime')setStatus('Time sync failed');});
 }
+function setValuesFromBrowser(){
+  var n=new Date();
+  showNow();
+  syncDevice(formatDate(n),formatTime(n),browserTimezone(),browserOffsetMinutes(),browserIsDst(n));
+}
+function setValuesExplicitly(){
+  syncDevice($('deviceDate').value,$('deviceTime').value,$('deviceTimezone').value,$('deviceOffset').value,$('deviceDst').checked);
+}
+</script>
+</body></html>
+)rawliteral";
+
+// Sunset
+
+const char SUNSET_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html><html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sunset Calculator</title><style>
+body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
+h1{font-size:2rem;margin:0 0 6px;text-align:center}
+.syncPanel{background:#1b1b1b;border:1px solid #333;border-radius:8px;padding:4px 12px 12px;margin:14px 0 18px}
+.timetable{width:100%;border-collapse:collapse;table-layout:fixed}
+.timetable th,.timetable td{border-bottom:1px solid #333;padding:6px 8px}
+.timetable tr:last-child td{border-bottom:0}
+.timetable th{color:#8af;font-size:1.1rem;font-weight:normal;text-align:center}
+.timetable .rowLabel{width:34%}
+.timetable .dstLabelCol{width:15%}
+.timetable .dstValueCol{width:16%}
+.timetable .label{color:#aaa;text-align:right;white-space:nowrap}
+.timetable input{width:100%;box-sizing:border-box;padding:7px;background:#202020;color:#eee;
+  border:1px solid #555;border-radius:5px;font-family:monospace;font-size:1rem;text-align:center}
+.timetable input[type=checkbox]{width:auto;display:block;margin:0 auto}
+.locationTable th,.locationTable td{text-align:center}
+.locationTable .coordCol{width:40%}
+.zipLookup{display:grid;grid-template-columns:max-content 6.5em 1fr;gap:8px;align-items:center}
+.zipLookup .zipLabel{color:#aaa;text-align:right;white-space:nowrap}
+.zipLookup button{width:100%;margin-top:0;padding:8px 16px;font-size:1rem}
+.locationTable #lat,.locationTable #lon{padding:10px 6px}
+button{margin-top:10px;padding:14px 28px;font-size:1.1rem;background:#3a9;border:none;
+  color:#fff;border-radius:8px;cursor:pointer}
+button.secondary{background:#357}
+button:active{background:#2a8}
+button.secondary:active{background:#246}
+.actions{display:flex;justify-content:center;gap:10px}
+#result{margin:16px 0 4px;min-height:2.8rem;color:#8d8;text-align:center;font-size:2rem;font-family:monospace}
+#st{margin-top:12px;font-size:1rem;color:#f88;min-height:1.4em;text-align:center}
+p{font-size:1.05rem;line-height:1.5;color:#ccc;text-align:center}
+a{color:#6af;font-size:1rem}
+</style></head>
+<body>
+<h1>Sunset Calculator</h1>
+<div class="syncPanel">
+  <table class="timetable locationTable">
+    <colgroup><col class="coordCol"><col class="coordCol"></colgroup>
+    <tr><th>Latitude</th><th>Longitude</th></tr>
+    <tr>
+      <td><input type="number" id="lat" min="-90" max="90" step="0.000001"></td>
+      <td><input type="number" id="lon" min="-180" max="180" step="0.000001"></td>
+    </tr>
+    <tr><td colspan="2"><div class="zipLookup"><span class="zipLabel">Zipcode</span><input type="text" id="zip" inputmode="numeric" maxlength="5" size="6" pattern="[0-9]{5}"><button class="secondary" onclick="getFromZipcode()">Compute</button></div></td></tr>
+  </table>
+</div>
+<div class="syncPanel">
+  <table class="timetable">
+    <colgroup><col class="rowLabel"><col><col class="dstLabelCol"><col class="dstValueCol"></colgroup>
+    <tr><td class="label">Date</td><td colspan="3"><input type="date" id="date"></td></tr>
+    <tr><td class="label">Timezone</td><td colspan="3"><input type="text" id="timezone" maxlength="39"></td></tr>
+    <tr><td class="label">UTC offset</td><td><input type="number" id="offset" min="-840" max="840" step="1"></td><td class="label">DST</td><td><input type="checkbox" id="dst"></td></tr>
+  </table>
+</div>
+<div class="actions"><button onclick="computeSunset()">Compute sunset</button></div>
+<div id="result"></div>
+<div id="st"></div>
+<p><a href="/">&#8592; Home</a></p>
+<script>
+function $(id){return document.getElementById(id);}
+function setStatus(s){$('st').textContent=s||'';}
+function setResult(s){$('result').textContent=s||'';}
+function browserOffsetMinutes(){return -new Date().getTimezoneOffset();}
+function loadInitialValues(){
+  Promise.all([
+    fetch('/api/config').then(function(r){return r.json();}),
+    fetch('/api/time').then(function(r){return r.json();})
+  ]).then(function(values){
+    var cfg=values[0]||{}, now=values[1]||{};
+    var location=cfg.location||{};
+    var time=cfg.time||{};
+    var timezone=time.timezone||{};
+    $('lat').value=location.latitude!==undefined?location.latitude:'';
+    $('lon').value=location.longitude!==undefined?location.longitude:'';
+    $('zip').value=location.zipcode||'';
+    $('date').value=now.date||'';
+    $('timezone').value=timezone.name||'';
+    $('offset').value=timezone.utcOffsetMinutes!==undefined?timezone.utcOffsetMinutes:browserOffsetMinutes();
+    $('dst').checked=!!time.dst;
+  }).catch(function(){setStatus('Load failed');});
+}
+function readNumber(id,label,min,max){
+  var value=parseFloat($(id).value);
+  if(!isFinite(value)||value<min||value>max)throw new Error(label+' must be '+min+' to '+max);
+  return value;
+}
+function readOffset(){
+  var value=parseInt($('offset').value,10);
+  if(!isFinite(value)||value<-840||value>840)throw new Error('UTC offset must be -840 to 840');
+  return value;
+}
+function validZip(value){return /^[0-9]{5}$/.test(value);}
+function getFromZipcode(){
+  setStatus('');
+  setResult('');
+  var zip=$('zip').value;
+  if(!validZip(zip)){setStatus('ZIP code must be 5 digits');return;}
+  setStatus('Looking up...');
+  fetch('/api/zipcode/lookup?zip='+encodeURIComponent(zip))
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.error){setStatus(d.error);return;}
+      $('lat').value=Number(d.latitude).toFixed(6);
+      $('lon').value=Number(d.longitude).toFixed(6);
+      setStatus('');
+    }).catch(function(){setStatus('ZIP lookup failed');});
+}
+function computeSunset(){
+  setStatus('');
+  setResult('');
+  var body;
+  try{
+    if(!$('date').value)throw new Error('Date is required');
+    body={
+      location:{
+        latitude:readNumber('lat','Latitude',-90,90),
+        longitude:readNumber('lon','Longitude',-180,180)
+      },
+      time:{
+        date:$('date').value,
+        time:'00:00:00',
+        timezone:{name:$('timezone').value,utcOffsetMinutes:readOffset()},
+        dst:$('dst').checked
+      }
+    };
+  }catch(e){
+    setStatus(e.message);
+    return;
+  }
+  fetch('/api/sunset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){return r.json();}).then(function(d){
+      if(d.error){setStatus(d.error);return;}
+      setResult(d.time);
+    }).catch(function(){setStatus('Sunset calculation failed');});
+}
+loadInitialValues();
 </script>
 </body></html>
 )rawliteral";
@@ -741,8 +941,9 @@ function split(prefix,value,field){
 }
 function setStatus(s){$('st').textContent=s||'';}
 fetch('/api/config').then(function(r){return r.json();}).then(function(d){
-  split('s',d.splashMessage||'','splashMessage');
-  split('f',d.finalMessage||'','finalMessage');
+  var messages=((d.display||{}).messages)||{};
+  split('s',messages.splash||'','display.messages.splash');
+  split('f',messages.final||'','display.messages.final');
 }).catch(function(){setStatus('Load failed');});
 function testMsg(prefix){
   setStatus('Previewing for 5 seconds...');
@@ -755,7 +956,7 @@ function testMsg(prefix){
 function runDemo(){
   setStatus('Running demo...');
   fetch('/api/demo/test',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({finalMessage:msg('f')})
+    body:JSON.stringify({display:{messages:{final:msg('f')}}})
   }).then(function(r){return r.json();}).then(function(d){
     if(d.error){setStatus(d.error);return;}
     setTimeout(function(){setStatus('Demo finished.');},d.preview_ms||10000);
@@ -763,7 +964,7 @@ function runDemo(){
 }
 function save(){
   fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({splashMessage:msg('s'),finalMessage:msg('f')})
+    body:JSON.stringify({display:{messages:{splash:msg('s'),final:msg('f')}}})
   }).then(function(r){return r.json();}).then(function(d){
     setStatus(d.message||d.error);
   }).catch(function(){setStatus('Save failed');});
@@ -837,7 +1038,7 @@ if(!name){
 const char LOCATION_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Location</title><style>
+<title>Set Location</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:2em;margin-bottom:14px;text-align:center}
 .field{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin-top:14px;font-size:1.1em;color:#aaa}
@@ -850,26 +1051,24 @@ button.secondary{background:#357}
 button:active{background:#2a8}
 button.secondary:active{background:#246}
 .actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+.lookupActions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.lookupActions button{width:100%;margin-top:0;padding-left:10px;padding-right:10px}
 #st{margin-top:12px;font-size:.9em;color:#8d8;min-height:1.2em;text-align:center}
-.substatus{font-size:.9em;color:#f88;min-height:1em;text-align:center;margin-top:6px}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}.blinking{animation:blink 2s step-end infinite}
+.substatus{font-size:.9em;color:#f88;min-height:44px;text-align:center;display:flex;align-items:center;justify-content:center}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}.blinking{animation:blink 1s step-end infinite}
 a{color:#6af;font-size:.9em}
 </style></head>
 <body>
-<h1>Location</h1>
+<h1>Set Location</h1>
 <label class="field"><span>Latitude</span><input type="text" id="lat" inputmode="decimal" pattern="-?[0-9]+(\.[0-9]+)?" placeholder="40.7128"></label>
 <label class="field"><span>Longitude</span><input type="text" id="lon" inputmode="decimal" pattern="-?[0-9]+(\.[0-9]+)?" placeholder="-74.0060"></label>
-<div class="actions">
-  <button class="secondary" onclick="useBrowser()">Get Coordinates from Browser</button>
-</div>
-<div id="st-browser" class="substatus"></div>
-<hr style="border-color:#333;margin:20px 0">
 <label class="field"><span>ZIP code</span><input type="text" id="zip" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="10001"></label>
-<div class="actions">
-  <button class="secondary" onclick="computeZip()">Get Coordinates from Zipcode</button>
+<div class="lookupActions">
+  <button class="secondary" onclick="computeZip()">Get From Zipcode</button>
+  <button class="secondary" onclick="useBrowser()">Get From Browser</button>
 </div>
-<div id="st-zip" class="substatus"></div>
-<hr style="border-color:#333;margin:20px 0">
+<div id="st-lookup" class="substatus"></div>
+<hr style="border-color:#333;margin:0 0 20px">
 <div class="actions">
   <button onclick="save()">Save Location</button>
 </div>
@@ -898,8 +1097,7 @@ function showSubstatus(id,s,err){
   el.textContent=s||'';el.className='substatus'+(err&&s?' blinking':'');
   if(err&&s)_subT[id]=setTimeout(function(){el.textContent='';el.className='substatus';},5000);
 }
-function setBrowserStatus(s,err){showSubstatus('st-browser',s,err);}
-function setZipStatus(s,err){showSubstatus('st-zip',s,err);}
+function setLookupStatus(s,err){showSubstatus('st-lookup',s,err);}
 function jsonFetch(url,options){
   return fetch(url,options).then(function(r){
     return r.json().then(function(d){
@@ -913,18 +1111,19 @@ fetch('/api/config').then(function(r){
   if(!r.ok)throw new Error('HTTP '+r.status);
   return r.json();
 }).then(function(d){
-  setFieldFromConfig('location','zip','zipcode',d.zipcode,d.zipcode||'');
-  setFieldFromConfig('location','lat','latitude',d.latitude,d.latitude!==undefined?d.latitude:'');
-  setFieldFromConfig('location','lon','longitude',d.longitude,d.longitude!==undefined?d.longitude:'');
+  var location=d.location||{};
+  setFieldFromConfig('location','zip','location.zipcode',location.zipcode,location.zipcode||'');
+  setFieldFromConfig('location','lat','location.latitude',location.latitude,location.latitude!==undefined?location.latitude:'');
+  setFieldFromConfig('location','lon','location.longitude',location.longitude,location.longitude!==undefined?location.longitude:'');
 }).catch(function(e){setStatus('Load failed: '+e.message);});
 function useBrowser(){
-  if(!navigator.geolocation){setBrowserStatus('Browser location unavailable',true);return;}
-  setBrowserStatus('Requesting location...');
+  if(!navigator.geolocation){setLookupStatus('Browser location unavailable',true);return;}
+  setLookupStatus('Requesting location...');
   navigator.geolocation.getCurrentPosition(function(pos){
     $('lat').value=pos.coords.latitude.toFixed(6);
     $('lon').value=pos.coords.longitude.toFixed(6);
-    setBrowserStatus('');
-  },function(){setBrowserStatus('Location blocked or unavailable',true);},
+    setLookupStatus('');
+  },function(){setLookupStatus('Location blocked or unavailable',true);},
   {enableHighAccuracy:false,timeout:10000,maximumAge:600000});
 }
 function validNumber(value,min,max){
@@ -935,14 +1134,14 @@ function validNumber(value,min,max){
 function validZip(value){return /^[0-9]{5}$/.test(value);}
 function computeZip(){
   var zip=$('zip').value;
-  if(!validZip(zip)){setZipStatus('ZIP code must be 5 digits',true);return;}
-  setZipStatus('Looking up...');
+  if(!validZip(zip)){setLookupStatus('ZIP code must be 5 digits',true);return;}
+  setLookupStatus('Looking up...');
   jsonFetch('/api/zipcode/lookup?zip='+encodeURIComponent(zip)).then(function(d){
-    if(d.error){setZipStatus(d.error+' - coordinates left unchanged',true);return;}
+    if(d.error){setLookupStatus(d.error+' - coordinates left unchanged',true);return;}
     $('lat').value=Number(d.latitude).toFixed(6);
     $('lon').value=Number(d.longitude).toFixed(6);
-    setZipStatus('');
-  }).catch(function(e){setZipStatus('ZIP lookup failed: '+e.message+' - coordinates left unchanged',true);});
+    setLookupStatus('');
+  }).catch(function(e){setLookupStatus('ZIP lookup failed: '+e.message+' - coordinates left unchanged',true);});
 }
 function save(){
   var zip=$('zip').value;
@@ -951,9 +1150,11 @@ function save(){
   if(!validNumber($('lon').value,-180,180)){setStatus('Longitude must be -180 to 180');return;}
   jsonFetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      zipcode:zip,
-      latitude:parseFloat($('lat').value),
-      longitude:parseFloat($('lon').value)
+      location:{
+        zipcode:zip,
+        latitude:parseFloat($('lat').value),
+        longitude:parseFloat($('lon').value)
+      }
     })
   }).then(function(d){
     setStatus(d.message||d.error);

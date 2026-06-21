@@ -13,14 +13,7 @@ class PageApi {
       : server_(server), responder_(responder) {}
 
   void handleRoot(const WifiRuntimeStatus& status);
-  void handleSettings();
-  void handleConfigDirectory();
-  void handleFormat();
-  void handleTimeSync();
-  void handleMessage();
-  void handleLocation();
-  void handleWifi();
-  void handleViewFile();
+  void sendHtml(PGM_P html);
 
  private:
   static const char* modeName(PersistentMode mode);

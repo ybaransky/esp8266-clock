@@ -17,13 +17,13 @@ void WifiApi::handleStatus() {
   doc["ip"] = status.ip;
   doc["apSsid"] = status.apSsid;
   doc["apIp"] = status.apIp;
-  sendJsonDocument(doc);
+  responder_.sendJsonDocument(200, doc);
 }
 
 void WifiApi::handleScan() {
   JsonDocument doc;
   wifiConnectionManager.scanNetworks(doc);
-  sendJsonDocument(doc);
+  responder_.sendJsonDocument(200, doc);
 }
 
 void WifiApi::handleConnect() {
@@ -45,9 +45,3 @@ void WifiApi::handleConnect() {
   rebootScheduler_.scheduleReboot(kRebootDelayMs);
 }
 
-void WifiApi::sendJsonDocument(JsonDocument& doc) {
-  String json;
-  json.reserve(measureJson(doc));
-  serializeJson(doc, json);
-  responder_.sendJson(200, json.c_str());
-}

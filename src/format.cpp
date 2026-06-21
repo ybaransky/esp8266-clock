@@ -3,13 +3,13 @@
 
 // -- Countdown formats ---------------------------------------------------------
 // Tokens: dd=days  hh/mm/ss=zero-padded time  u=tenths
-// Literals: D=days-label  H=hours-label  N=minutes-label
+// Literals: d=days-label  H=hours-label  N=minutes-label
 // Separator: " | " between rows; spaces within a row are display padding.
 static const char* const kCountdownFormats[] = {
-  "dd D | hh:mm |  ss.u",   // days  D | hours:minutes | seconds.tenths
-  "dd D | hh:mm |    ss",   // days  D | hours:minutes | seconds
-  "dd D | hh  H | mm:ss",   // days  D | hours  H      | minutes:seconds
-  "dd D | hh  H |  mm N",   // days  D | hours  H      | minutes  N
+  "dd d | hh:mm |  ss.u",   // days  d | hours:minutes | seconds.tenths
+  "dd d | hh:mm |    ss",   // days  d | hours:minutes | seconds
+  "dd d | hh  H | mm:ss",   // days  d | hours  H      | minutes:seconds
+  "dd d | hh  H |  mm N",   // days  d | hours  H      | minutes  N
   "  dd | hh:mm |  ss.u",   // days    | hours:minutes | seconds.tenths
   "  dd | hh:mm |    ss",   // days    | hours:minutes | seconds
   "  dd |    hh | mm:ss",   // days    | hours         | minutes:seconds
@@ -18,10 +18,10 @@ static const char* const kCountdownFormats[] = {
 
 // -- Count-Up formats ----------------------------------------------------------
 static const char* const kCountupFormats[] = {
-  "dd D | hh:mm |  ss.u",
-  "dd D | hh:mm |    ss",
-  "dd D | hh  H | mm:ss",
-  "dd D | hh  H |  mm N",
+  "dd d | hh:mm |  ss.u",
+  "dd d | hh:mm |    ss",
+  "dd d | hh  H | mm:ss",
+  "dd d | hh  H |  mm N",
   "  dd | hh:mm |  ss.u",
   "  dd | hh:mm |    ss",
   "  dd |    hh | mm:ss",

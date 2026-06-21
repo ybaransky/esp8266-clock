@@ -7,6 +7,7 @@
 
 #include "config_api.h"
 #include "file_api.h"
+#include "html.h"
 #include "http_responder.h"
 #include "log.h"
 #include "page_api.h"
@@ -34,38 +35,44 @@ class WebPortal : public RebootScheduler {
       }
     }
 
-    server_.on("/", HTTP_GET, []() { portal.handleRoot(); });
-    server_.on("/settings", HTTP_GET, []() { portal.handleSettings(); });
-    server_.on("/config", HTTP_GET, []() { portal.handleConfigDirectory(); });
-    server_.on("/format", HTTP_GET, []() { portal.handleFormat(); });
-    server_.on("/time-sync", HTTP_GET, []() { portal.handleTimeSyncPage(); });
-    server_.on("/messages", HTTP_GET, []() { portal.handleMessagePage(); });
-    server_.on("/location", HTTP_GET, []() { portal.handleLocation(); });
-    server_.on("/wifi", HTTP_GET, []() { portal.handleWifiPage(); });
-    server_.on("/view", HTTP_GET, []() { portal.handleViewFile(); });
+    server_.on("/", HTTP_GET, []() {
+      portal.pageApi_.handleRoot(wifiConnectionManager.status());
+    });
+    server_.on("/settings", HTTP_GET, []() { portal.pageApi_.sendHtml(SETTINGS_HTML); });
+    server_.on("/config", HTTP_GET, []() { portal.pageApi_.sendHtml(CONFIG_JSON_HTML); });
+    server_.on("/format", HTTP_GET, []() { portal.pageApi_.sendHtml(CONFIG_HTML); });
+    server_.on("/time", HTTP_GET, []() { portal.pageApi_.sendHtml(TIME_SYNC_HTML); });
+    server_.on("/sunset", HTTP_GET, []() { portal.pageApi_.sendHtml(SUNSET_HTML); });
+    server_.on("/messages", HTTP_GET, []() { portal.pageApi_.sendHtml(MESSAGE_HTML); });
+    server_.on("/location", HTTP_GET, []() { portal.pageApi_.sendHtml(LOCATION_HTML); });
+    server_.on("/wifi", HTTP_GET, []() { portal.pageApi_.sendHtml(WIFI_HTML); });
+    server_.on("/view", HTTP_GET, []() { portal.pageApi_.sendHtml(VIEW_FILE_HTML); });
 
-    server_.on("/api/demo/test", HTTP_POST, []() { portal.handleApiDemoTest(); });
-    server_.on("/api/message/test", HTTP_POST, []() { portal.handleApiMessageTest(); });
-    server_.on("/api/mode", HTTP_POST, []() { portal.handleApiSetMode(); });
-    server_.on("/api/brightness", HTTP_POST, []() { portal.handleApiBrightness(); });
-    server_.on("/api/time", HTTP_GET, []() { portal.handleApiTime(); });
-    server_.on("/api/time/sync", HTTP_POST, []() { portal.handleApiTimeSync(); });
-    server_.on("/api/formats", HTTP_GET, []() { portal.handleApiFormats(); });
-    server_.on("/api/config", HTTP_GET, []() { portal.handleApiGetConfig(); });
-    server_.on("/api/config", HTTP_POST, []() { portal.handleApiSaveConfig(); });
-    server_.on("/api/zipcode/lookup", HTTP_GET, []() { portal.handleApiZipcodeLookup(); });
-    server_.on("/api/field-mismatch", HTTP_POST, []() { portal.handleApiFieldMismatch(); });
+    server_.on("/api/demo/test", HTTP_POST, []() { portal.configApi_.handleDemoTest(); });
+    server_.on("/api/message/test", HTTP_POST, []() { portal.configApi_.handleMessageTest(); });
+    server_.on("/api/mode", HTTP_POST, []() { portal.configApi_.handleSetMode(); });
+    server_.on("/api/brightness", HTTP_POST, []() { portal.configApi_.handleBrightness(); });
+    server_.on("/api/time", HTTP_GET, []() { portal.configApi_.handleTime(); });
+    server_.on("/api/time", HTTP_POST, []() { portal.configApi_.handleTimeSync(); });
+    server_.on("/api/formats", HTTP_GET, []() { portal.configApi_.handleFormats(); });
+    server_.on("/api/config", HTTP_GET, []() { portal.configApi_.handleGetConfig(); });
+    server_.on("/api/config", HTTP_POST, []() { portal.configApi_.handleSaveConfig(); });
+    server_.on("/api/sunset", HTTP_POST, []() { portal.configApi_.handleSunset(); });
+    server_.on("/api/zipcode/lookup", HTTP_GET,
+               []() { portal.configApi_.handleZipcodeLookup(); });
+    server_.on("/api/field-mismatch", HTTP_POST,
+               []() { portal.configApi_.handleFieldMismatch(); });
 
-    server_.on("/api/files", HTTP_GET, []() { portal.handleApiListFiles(); });
-    server_.on("/api/file", HTTP_GET, []() { portal.handleApiReadFile(); });
-    server_.on("/api/file", HTTP_DELETE, []() { portal.handleApiDeleteFile(); });
+    server_.on("/api/files", HTTP_GET, []() { portal.fileApi_.handleListFiles(); });
+    server_.on("/api/file", HTTP_GET, []() { portal.fileApi_.handleReadFile(); });
+    server_.on("/api/file", HTTP_DELETE, []() { portal.fileApi_.handleDeleteFile(); });
     server_.on("/api/file/upload", HTTP_POST,
-               []() { portal.handleApiFileUpload(); },
-               []() { portal.handleApiFileUploadData(); });
+               []() { portal.fileApi_.handleUpload(); },
+               []() { portal.fileApi_.handleUploadData(); });
 
-    server_.on("/api/wifi/status", HTTP_GET, []() { portal.handleApiWifiStatus(); });
-    server_.on("/api/wifi/scan", HTTP_GET, []() { portal.handleApiWifiScan(); });
-    server_.on("/api/wifi/connect", HTTP_POST, []() { portal.handleApiWifiConnect(); });
+    server_.on("/api/wifi/status", HTTP_GET, []() { portal.wifiApi_.handleStatus(); });
+    server_.on("/api/wifi/scan", HTTP_GET, []() { portal.wifiApi_.handleScan(); });
+    server_.on("/api/wifi/connect", HTTP_POST, []() { portal.wifiApi_.handleConnect(); });
 
     server_.onNotFound([]() { portal.handleCaptiveRedirect(); });
     server_.begin();
@@ -97,38 +104,6 @@ class WebPortal : public RebootScheduler {
   void scheduleReboot(uint32_t delayMs) override {
     pendingRebootMs_ = millis() + delayMs;
   }
-
-  void handleRoot() { pageApi_.handleRoot(wifiConnectionManager.status()); }
-  void handleSettings() { pageApi_.handleSettings(); }
-  void handleConfigDirectory() { pageApi_.handleConfigDirectory(); }
-  void handleFormat() { pageApi_.handleFormat(); }
-  void handleTimeSyncPage() { pageApi_.handleTimeSync(); }
-  void handleMessagePage() { pageApi_.handleMessage(); }
-  void handleLocation() { pageApi_.handleLocation(); }
-  void handleWifiPage() { pageApi_.handleWifi(); }
-  void handleViewFile() { pageApi_.handleViewFile(); }
-
-  void handleApiDemoTest() { configApi_.handleDemoTest(); }
-  void handleApiMessageTest() { configApi_.handleMessageTest(); }
-  void handleApiSetMode() { configApi_.handleSetMode(); }
-  void handleApiBrightness() { configApi_.handleBrightness(); }
-  void handleApiTime() { configApi_.handleTime(); }
-  void handleApiTimeSync() { configApi_.handleTimeSync(); }
-  void handleApiFormats() { configApi_.handleFormats(); }
-  void handleApiGetConfig() { configApi_.handleGetConfig(); }
-  void handleApiSaveConfig() { configApi_.handleSaveConfig(); }
-  void handleApiZipcodeLookup() { configApi_.handleZipcodeLookup(); }
-  void handleApiFieldMismatch() { configApi_.handleFieldMismatch(); }
-
-  void handleApiListFiles() { fileApi_.handleListFiles(); }
-  void handleApiReadFile() { fileApi_.handleReadFile(); }
-  void handleApiDeleteFile() { fileApi_.handleDeleteFile(); }
-  void handleApiFileUpload() { fileApi_.handleUpload(); }
-  void handleApiFileUploadData() { fileApi_.handleUploadData(); }
-
-  void handleApiWifiStatus() { wifiApi_.handleStatus(); }
-  void handleApiWifiScan() { wifiApi_.handleScan(); }
-  void handleApiWifiConnect() { wifiApi_.handleConnect(); }
 
   void handleCaptiveRedirect() {
     if (wifiConnectionManager.status().mode != WifiMode::kAccessPoint) {

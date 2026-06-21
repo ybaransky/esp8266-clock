@@ -59,45 +59,4 @@ private:
 
 extern I2CBusScanner i2cBusScanner;
 
-// ---------------------------------------------------------------------------
-// Device info structs and getters
-// ---------------------------------------------------------------------------
-
-struct HeapInfo {
-  uint32_t freeBytes;
-  uint32_t maxFreeBlockBytes;
-  uint8_t  fragmentationPct;
-};
-
-struct FlashInfo {
-  uint32_t   chipSizeBytes;
-  uint32_t   realSizeBytes;
-  uint32_t   speedHz;
-  FlashMode_t mode;
-};
-
-struct ChipInfo {
-  uint32_t chipId;
-  uint8_t  cpuFreqMHz;
-  String   sdkVersion;
-  String   coreVersion;
-  String   resetReason;
-};
-
-struct SketchInfo {
-  uint32_t sizeBytes;
-  uint32_t freeSpaceBytes;
-};
-
-struct StorageInfo {
-  bool   mounted;
-  size_t totalBytes;
-  size_t usedBytes;
-};
-
-HeapInfo    getHeapInfo();
-FlashInfo   getFlashInfo();
-ChipInfo    getChipInfo();
-SketchInfo  getSketchInfo();
-StorageInfo getStorageInfo();
-void        printDeviceInfo();
+void printDeviceInfo();

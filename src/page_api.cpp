@@ -15,36 +15,8 @@ void PageApi::handleRoot(const WifiRuntimeStatus& status) {
   server_.send(200, "text/html", page);
 }
 
-void PageApi::handleSettings() {
-  responder_.sendProgmem(200, "text/html", SETTINGS_HTML);
-}
-
-void PageApi::handleConfigDirectory() {
-  responder_.sendProgmem(200, "text/html", CONFIG_JSON_HTML);
-}
-
-void PageApi::handleFormat() {
-  responder_.sendProgmem(200, "text/html", CONFIG_HTML);
-}
-
-void PageApi::handleTimeSync() {
-  responder_.sendProgmem(200, "text/html", TIME_SYNC_HTML);
-}
-
-void PageApi::handleMessage() {
-  responder_.sendProgmem(200, "text/html", MESSAGE_HTML);
-}
-
-void PageApi::handleLocation() {
-  responder_.sendProgmem(200, "text/html", LOCATION_HTML);
-}
-
-void PageApi::handleWifi() {
-  responder_.sendProgmem(200, "text/html", WIFI_HTML);
-}
-
-void PageApi::handleViewFile() {
-  responder_.sendProgmem(200, "text/html", VIEW_FILE_HTML);
+void PageApi::sendHtml(PGM_P html) {
+  responder_.sendProgmem(200, "text/html", html);
 }
 
 const char* PageApi::modeName(PersistentMode mode) {

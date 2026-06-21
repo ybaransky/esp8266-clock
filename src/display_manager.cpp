@@ -261,7 +261,6 @@ void DisplayManager::installState(const DisplayState& state,
   lastRenderMs_ = 0;
   blinkOn_ = true;
   blinkMs_ = nowMs;
-  segmentDisplay.blank();
 
   logStateTransition(oldState, currentState_,
                      rememberPrevious ? "temporary state" : "state install");
@@ -292,7 +291,6 @@ void DisplayManager::restorePreviousState(uint32_t nowMs) {
     currentTransition_ = {false, 0};
     hasPreviousState_ = false;
     lastRenderMs_ = 0;
-    segmentDisplay.blank();
     logStateTransition(oldState, currentState_, "restore previous");
     renderCurrentState(nowMs, true);
     return;
@@ -314,8 +312,8 @@ void DisplayManager::startDemoMessageState(uint32_t nowMs) {
   lastRenderMs_ = 0;
   blinkOn_ = true;
   blinkMs_ = nowMs;
-  segmentDisplay.blank();
   logStateTransition(oldState, currentState_, "demo final message");
+  renderCurrentState(nowMs, true);
 }
 
 void DisplayManager::updateCountupOrigin(const ClockConfig& config) {

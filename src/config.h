@@ -35,6 +35,7 @@ struct ClockConfig {
   char zipcode[6];
   char timezone[40];          // IANA timezone, e.g. "America/New_York".
   int16_t utcOffsetMinutes;   // Current browser offset fallback.
+  bool dst;                    // True when daylight saving time is active.
 };
 
 // Returns a ClockConfig initialised to sensible defaults.

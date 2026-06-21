@@ -17,6 +17,13 @@ void HttpResponder::sendJson(int status, const char* body) {
   send(status, "application/json", body);
 }
 
+void HttpResponder::sendJsonDocument(int status, JsonDocument& doc) {
+  String json;
+  json.reserve(measureJson(doc));
+  serializeJson(doc, json);
+  sendJson(status, json.c_str());
+}
+
 void HttpResponder::sendJsonError(int status, const char* message) {
   char body[96];
   snprintf(body, sizeof(body), "{\"error\":\"%s\"}", message);

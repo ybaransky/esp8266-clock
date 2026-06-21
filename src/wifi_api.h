@@ -19,8 +19,6 @@ class WifiApi {
   void handleConnect();
 
  private:
-  void sendJsonDocument(JsonDocument& doc);
-
   ESP8266WebServer& server_;
   HttpResponder& responder_;
   RebootScheduler& rebootScheduler_;

@@ -12,6 +12,9 @@ static constexpr const char* PASSWORD = "12345678";
 
 static bool writeConfigDocument(JsonDocument& doc, const char* label);
 static void populateDefaultConfigDocument(JsonDocument& doc);
+static const char* persistentModeName(PersistentMode mode);
+static void populateClockConfigDocument(JsonDocument& doc, const ClockConfig& clock);
+static void populateWifiConfigDocument(JsonDocument& doc, const WifiConfig& wifi);
 
 // Opens and deserializes config.json into doc.  Returns false on any failure.
 static bool openAndParse(JsonDocument& doc) {
@@ -84,30 +87,71 @@ ClockConfig defaultClockConfig() {
     s.zipcode[0] = '\0';
     s.timezone[0] = '\0';
     s.utcOffsetMinutes = 0;
+    s.dst = false;
     return s;
 }
 
 static void populateDefaultConfigDocument(JsonDocument& doc) {
     const ClockConfig clock = defaultClockConfig();
+    const WifiConfig wifi{"", "", YURICLOC, PASSWORD};
     doc.clear();
-    doc["mode"]              = static_cast<int>(clock.activeMode);
-    doc["countdownFmt"]      = clock.countdownFmt;
-    doc["countupFmt"]        = clock.countupFmt;
-    doc["clockFmt"]          = clock.clockFmt;
-    doc["brightness"]        = clock.brightness;
-    doc["countdownDatetime"] = String(clock.countdownDatetime);
-    doc["countupDatetime"]   = String(clock.countupDatetime);
-    doc["splashMessage"]     = String(clock.splashMessage);
-    doc["finalMessage"]      = String(clock.finalMessage);
-    doc["latitude"]          = clock.latitude;
-    doc["longitude"]         = clock.longitude;
-    doc["zipcode"]           = String(clock.zipcode);
-    doc["timezone"]          = String(clock.timezone);
-    doc["utcOffsetMinutes"]  = clock.utcOffsetMinutes;
-    doc["staSsid"]           = "";
-    doc["staPassword"]       = "";
-    doc["apSsid"]            = YURICLOC;
-    doc["apPassword"]        = PASSWORD;
+    populateClockConfigDocument(doc, clock);
+    populateWifiConfigDocument(doc, wifi);
+}
+
+static const char* persistentModeName(PersistentMode mode) {
+    switch (mode) {
+        case kPersistentCountdown:
+            return "countdown";
+        case kPersistentCountup:
+            return "countup";
+        case kPersistentClock:
+            return "clock";
+    }
+    return "countdown";
+}
+
+static void populateClockConfigDocument(JsonDocument& doc, const ClockConfig& clock) {
+    JsonObject display = doc["display"].to<JsonObject>();
+    display["activeMode"] = persistentModeName(clock.activeMode);
+    display["brightness"] = clock.brightness;
+
+    JsonObject messages = display["messages"].to<JsonObject>();
+    messages["splash"] = String(clock.splashMessage);
+    messages["final"] = String(clock.finalMessage);
+
+    JsonObject modes = display["modes"].to<JsonObject>();
+    JsonObject countdown = modes["countdown"].to<JsonObject>();
+    countdown["format"] = clock.countdownFmt;
+    countdown["end"] = String(clock.countdownDatetime);
+
+    JsonObject countup = modes["countup"].to<JsonObject>();
+    countup["format"] = clock.countupFmt;
+    countup["start"] = String(clock.countupDatetime);
+
+    JsonObject clockMode = modes["clock"].to<JsonObject>();
+    clockMode["format"] = clock.clockFmt;
+
+    JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
+    timezone["name"] = String(clock.timezone);
+    timezone["utcOffsetMinutes"] = clock.utcOffsetMinutes;
+    doc["time"]["dst"] = clock.dst;
+
+    JsonObject location = doc["location"].to<JsonObject>();
+    location["zipcode"] = String(clock.zipcode);
+    location["latitude"] = clock.latitude;
+    location["longitude"] = clock.longitude;
+}
+
+static void populateWifiConfigDocument(JsonDocument& doc, const WifiConfig& wifi) {
+    JsonObject wifiDoc = doc["wifi"].to<JsonObject>();
+    JsonObject station = wifiDoc["station"].to<JsonObject>();
+    station["ssid"] = wifi.staSsid;
+    station["password"] = wifi.staPassword;
+
+    JsonObject accessPoint = wifiDoc["accessPoint"].to<JsonObject>();
+    accessPoint["ssid"] = wifi.apSsid;
+    accessPoint["password"] = wifi.apPassword;
 }
 
 // -- WiFi ----------------------------------------------------------------------
@@ -117,25 +161,20 @@ WifiConfig ConfigManager::loadWifiConfig() {
     JsonDocument doc;
     if (!openAndParse(doc)) return cfg;
 
-    cfg.staSsid         = doc["staSsid"]         | "";
-    cfg.staPassword     = doc["staPassword"]     | "";
-    cfg.apSsid          = doc["apSsid"]          | YURICLOC;
-    cfg.apPassword      = doc["apPassword"]      | PASSWORD;
+    cfg.staSsid         = doc["wifi"]["station"]["ssid"]             | "";
+    cfg.staPassword     = doc["wifi"]["station"]["password"]         | "";
+    cfg.apSsid          = doc["wifi"]["accessPoint"]["ssid"]         | YURICLOC;
+    cfg.apPassword      = doc["wifi"]["accessPoint"]["password"]     | PASSWORD;
     return cfg;
 }
 
 void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     if (!storageManager.ensureMounted("save WiFi config")) return;
 
-    // Read existing doc so clock settings are preserved.
     JsonDocument doc;
-    File fr = STORAGE.open(CONFIG_PATH, "r");
-    if (fr) { deserializeJson(doc, fr); fr.close(); }
-
-    doc["staSsid"]         = cfg.staSsid;
-    doc["staPassword"]     = cfg.staPassword;
-    doc["apSsid"]          = cfg.apSsid;
-    doc["apPassword"]      = cfg.apPassword;
+    const ClockConfig clock = loadClockConfig();
+    populateClockConfigDocument(doc, clock);
+    populateWifiConfigDocument(doc, cfg);
 
     if (writeConfigDocument(doc, "save WiFi config")) {
         LOG_PRINTLN("WiFi config saved");
@@ -149,36 +188,42 @@ ClockConfig ConfigManager::loadClockConfig() {
     JsonDocument doc;
     if (!openAndParse(doc)) return s;
 
-    s.activeMode    = static_cast<PersistentMode>(doc["mode"] | static_cast<int>(s.activeMode));
-    s.countdownFmt  = doc["countdownFmt"]  | s.countdownFmt;
-    s.countupFmt    = doc["countupFmt"]    | s.countupFmt;
-    s.clockFmt      = doc["clockFmt"]      | s.clockFmt;
-    s.brightness    = doc["brightness"]    | s.brightness;
+    PersistentMode mode;
+    const String activeMode = doc["display"]["activeMode"] | persistentModeName(s.activeMode);
+    if (persistentModeFromName(activeMode, &mode)) {
+        s.activeMode = mode;
+    }
 
-    const char* target = doc["countdownDatetime"] | "";
-    if (target[0]) snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "%s", target);
+    s.countdownFmt  = doc["display"]["modes"]["countdown"]["format"]  | s.countdownFmt;
+    s.countupFmt    = doc["display"]["modes"]["countup"]["format"]    | s.countupFmt;
+    s.clockFmt      = doc["display"]["modes"]["clock"]["format"]      | s.clockFmt;
+    s.brightness    = doc["display"]["brightness"]                    | s.brightness;
 
-    const char* start = doc["countupDatetime"] | "";
+    const char* end = doc["display"]["modes"]["countdown"]["end"] | "";
+    if (end[0]) snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "%s", end);
+
+    const char* start = doc["display"]["modes"]["countup"]["start"] | "";
     if (start[0])  snprintf(s.countupDatetime,  sizeof(s.countupDatetime),   "%s", start);
 
                                                /*123412341234*/
-    const char* splash = doc["splashMessage"] | "      hi    ";
+    const char* splash = doc["display"]["messages"]["splash"] | "      hi    ";
     sanitizeDisplayMessage(splash, s.splashMessage, sizeof(s.splashMessage));
 
                                                 /*123412341234*/
-    const char* finalMsg = doc["finalMessage"] | "Good Luc    ";
+    const char* finalMsg = doc["display"]["messages"]["final"] | "Good Luc    ";
     sanitizeDisplayMessage(finalMsg, s.finalMessage, sizeof(s.finalMessage));
 
-    s.latitude = doc["latitude"] | s.latitude;
-    s.longitude = doc["longitude"] | s.longitude;
-    const char* zipcode = doc["zipcode"] | "";
+    s.latitude = doc["location"]["latitude"] | s.latitude;
+    s.longitude = doc["location"]["longitude"] | s.longitude;
+    const char* zipcode = doc["location"]["zipcode"] | "";
     if (zipcode[0]) snprintf(s.zipcode, sizeof(s.zipcode), "%s", zipcode);
 
-    const char* timezone = doc["timezone"] | "";
+    const char* timezone = doc["time"]["timezone"]["name"] | "";
     char cleanTimezone[sizeof(s.timezone)];
     sanitizePrintableText(timezone, cleanTimezone, sizeof(cleanTimezone));
     if (cleanTimezone[0]) snprintf(s.timezone, sizeof(s.timezone), "%s", cleanTimezone);
-    s.utcOffsetMinutes = doc["utcOffsetMinutes"] | s.utcOffsetMinutes;
+    s.utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | s.utcOffsetMinutes;
+    s.dst = doc["time"]["dst"] | s.dst;
 
     return sanitizeClockConfig(s);
 }
@@ -188,25 +233,10 @@ void ConfigManager::saveClockConfig(const ClockConfig& s) {
 
     const ClockConfig clean = sanitizeClockConfig(s);
 
-    // Read existing doc so WiFi credentials are preserved.
     JsonDocument doc;
-    File fr = STORAGE.open(CONFIG_PATH, "r");
-    if (fr) { deserializeJson(doc, fr); fr.close(); }
-
-    doc["mode"]              = static_cast<int>(clean.activeMode);
-    doc["countdownFmt"]      = clean.countdownFmt;
-    doc["countupFmt"]        = clean.countupFmt;
-    doc["clockFmt"]          = clean.clockFmt;
-    doc["brightness"]        = clean.brightness;
-    doc["countdownDatetime"] = String(clean.countdownDatetime);
-    doc["countupDatetime"]   = String(clean.countupDatetime);
-    doc["splashMessage"]     = String(clean.splashMessage);
-    doc["finalMessage"]      = String(clean.finalMessage);
-    doc["latitude"]          = clean.latitude;
-    doc["longitude"]         = clean.longitude;
-    doc["zipcode"]           = String(clean.zipcode);
-    doc["timezone"]          = String(clean.timezone);
-    doc["utcOffsetMinutes"]  = clean.utcOffsetMinutes;
+    const WifiConfig wifi = loadWifiConfig();
+    populateClockConfigDocument(doc, clean);
+    populateWifiConfigDocument(doc, wifi);
     if (writeConfigDocument(doc, "save clock config")) {
         LOG_PRINTLN("Clock config saved");
     }

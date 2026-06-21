@@ -26,6 +26,7 @@ class ConfigApi {
   void handleFormats();
   void handleGetConfig();
   void handleSaveConfig();
+  void handleSunset();
   void handleZipcodeLookup();
   void handleFieldMismatch();
 
@@ -33,7 +34,6 @@ class ConfigApi {
   void populateConfigJson(JsonDocument& doc);
   void logConfigResponse(const ClockConfig& clockConfig,
                          const WifiConfig& wifiConfig) const;
-  void sendJsonDocument(JsonDocument& doc);
 
   ESP8266WebServer& server_;
   HttpResponder& responder_;

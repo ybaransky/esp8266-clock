@@ -30,18 +30,17 @@ You are a senior software engineer with 15+ years of experience. When providing 
 ## ESP8266 CLOCK PROJECT CONVENTIONS
 
 ### Hardware pin map
-| Signal | Pin | GPIO | Notes |
-|---|---|---|---|
-| TM1637 CLK (shared) | D5 | GPIO14 | All 3 displays |
-| TM1637 `SEGMENT_DIO[0]` | D6 | GPIO12 | Safe |
-| TM1637 `SEGMENT_DIO[1]` | D4 | GPIO2  | Shares with INTERNAL_LED; both idle HIGH |
-| TM1637 `SEGMENT_DIO[2]` | D0 | GPIO16 | No interrupts; fine for DIO |
-| DS3231 SDA | D2 | GPIO4 | Hardware I2C |
-| DS3231 SCL | D1 | GPIO5 | Hardware I2C |
-| DS3231 SQW | D7 | GPIO13 | RISING interrupt, INPUT_PULLUP, 1Hz |
-| Button | D3 | GPIO0 | INPUT_PULLUP, pressed = LOW; do not hold at boot |
-| Internal LED | D4 | GPIO2 | Active-low; shared with TM1637 DIO[1] - LED flickers during transmit |
-| D8 | - | GPIO15 | **Unused - must stay LOW at boot (strapping pin); do not connect** |
+|        Signal | Pin |   GPIO | Notes                                                                |
+|    TM1637 CLK |  D5 | GPIO14 | (shared); all 3 displays                                             |
+| TM1637 DIO[0] |  D6 | GPIO12 | Safe                                                                 |
+| TM1637 DIO[1] |  D4 |  GPIO2 | Shares with INTERNAL_LED; both idle HIGH                             |
+| TM1637 DIO[2] |  D0 | GPIO16 | No interrupts; fine for DIO                                          |
+|    DS3231 SDA |  D2 |  GPIO4 | Hardware I2C                                                         |
+|    DS3231 SCL |  D1 |  GPIO5 | Hardware I2C                                                         |
+|    DS3231 SQW |  D7 | GPIO13 | RISING interrupt, INPUT_PULLUP, 1Hz                                  |
+|        Button |  D3 |  GPIO0 | INPUT_PULLUP, pressed = LOW; do not hold at boot                     |
+|  Internal LED |  D4 |  GPIO2 | Active-low; shared with TM1637 DIO[1] - LED flickers during transmit |
+|            D8 |   - | GPIO15 | **Unused - must stay LOW at boot (strapping pin); do not connect**   |
 
 ### Pin boot constraints
 - **GPIO15 (D8)**: must be LOW - leave unconnected; any pull-up prevents boot/flash.
@@ -95,7 +94,7 @@ The display system has four layers:
 
 ### Geography
 - **`zipcode.h/cpp`**: `zipcodeLookupLocation(zipcode, &out, path)` - searches `/zipcodes.txt` on LittleFS; `isValidZipcode(zipcode)`.
-- **`sunset_calculator.h/cpp`**: `calculateSunset(localDate, location)` - returns a `DateTime` for local sunset given a `Location` (lat/lon).
+- **`sunset_calculator.h/cpp`**: `calculateSunset(localDate, location)` - uses SolarCalculator to return a `DateTime` for local sunset given a `Location` (lat/lon/UTC offset).
 
 ### Storage / config
 - `ClockConfig` (in `config.h`) holds: `activeMode`, format indices, `countdownDatetime[20]`, `countupDatetime[20]`, `splashMessage[64]`, `finalMessage[64]`, `brightness`, `latitude`, `longitude`, `zipcode[6]`, `timezone[40]`, `utcOffsetMinutes`.
@@ -112,7 +111,7 @@ The display system has four layers:
   - `scanNetworks(doc)`, `connectAndSave(ssid, password)` for web-driven network switching.
 - **`web_server.h/cpp`**: `webBegin()`, `webHandleClients()` (must be called every loop), `networkGetInfo(ssid, ip)`.
   - Runs `DNSServer` for captive portal only when in AP mode.
-  - UI pages: `GET /`, `/settings`, `/config`, `/format`, `/time-sync`, `/messages`, `/location`, `/wifi`.
-  - REST API: `POST /api/config`, `GET /api/config`, `GET /api/formats`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time/sync`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
+  - UI pages: `GET /`, `/settings`, `/config`, `/format`, `/time`, `/sunset`, `/messages`, `/location`, `/wifi`.
+  - REST API: `POST /api/config`, `GET /api/config`, `GET /api/formats`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
   - File management: `GET /api/files`, `GET|DELETE /api/file`, `POST /api/file/upload`, `GET /view`.
 - `webHandleClients()` must be called every loop iteration.

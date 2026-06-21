@@ -1,6 +1,7 @@
 #include "config_api.h"
 
 #include <ArduinoJson.h>
+#include <math.h>
 
 #include "clock_state.h"
 #include "config.h"
@@ -8,11 +9,75 @@
 #include "format.h"
 #include "log.h"
 #include "rtc_ds3231.h"
+#include "sunset_calculator.h"
 #include "zipcode.h"
 
 namespace {
 
 constexpr uint32_t kRebootDelayMs = 1500;
+
+const char* persistentModeName(PersistentMode mode) {
+  switch (mode) {
+    case kPersistentCountdown:
+      return "countdown";
+    case kPersistentCountup:
+      return "countup";
+    case kPersistentClock:
+      return "clock";
+  }
+  return "countdown";
+}
+
+bool isLeapYear(int year) {
+  return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+}
+
+int daysInMonth(int year, int month) {
+  static const uint8_t kDaysByMonth[] = {
+      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  if (month < 1 || month > 12) {
+    return 0;
+  }
+  if (month == 2 && isLeapYear(year)) {
+    return 29;
+  }
+  return kDaysByMonth[month - 1];
+}
+
+bool parseIsoDate(const char* text, int* year, int* month, int* day) {
+  int consumed = 0;
+  if (text == nullptr || sscanf(text, "%d-%d-%d%n",
+                                year,
+                                month,
+                                day,
+                                &consumed) != 3 ||
+      text[consumed] != '\0') {
+    return false;
+  }
+  return *year >= 2020 && *year <= 2099 &&
+         *month >= 1 && *month <= 12 &&
+         *day >= 1 && *day <= daysInMonth(*year, *month);
+}
+
+bool parseTimeOfDay(const char* text, int* hour, int* minute, int* second) {
+  int consumed = 0;
+  *second = 0;
+  if (text == nullptr) {
+    return false;
+  }
+  const int matchedWithSeconds =
+      sscanf(text, "%d:%d:%d%n", hour, minute, second, &consumed);
+  if (matchedWithSeconds != 3 || text[consumed] != '\0') {
+    consumed = 0;
+    if (sscanf(text, "%d:%d%n", hour, minute, &consumed) != 2 ||
+        text[consumed] != '\0') {
+      return false;
+    }
+  }
+  return *hour >= 0 && *hour <= 23 &&
+         *minute >= 0 && *minute <= 59 &&
+         *second >= 0 && *second <= 59;
+}
 
 }  // namespace
 
@@ -25,9 +90,10 @@ void ConfigApi::handleDemoTest() {
       responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
       return;
     }
-    if (!doc["finalMessage"].isNull()) {
+    JsonVariant finalMessage = doc["display"]["messages"]["final"];
+    if (!finalMessage.isNull()) {
       ClockConfig cfg = configManager.loadClockConfig();
-      sanitizeDisplayMessage(doc["finalMessage"].as<const char*>(),
+      sanitizeDisplayMessage(finalMessage.as<const char*>(),
                              cfg.finalMessage,
                              sizeof(cfg.finalMessage));
       clockApplySettings(cfg);
@@ -109,7 +175,7 @@ void ConfigApi::handleTimeSync() {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, server_.arg("plain"));
   if (err) {
-    LOG_PRINTF("/api/time/sync failed: invalid JSON: %s\n", err.c_str());
+    LOG_PRINTF("/api/time failed: invalid JSON: %s\n", err.c_str());
     responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
     return;
   }
@@ -123,7 +189,7 @@ void ConfigApi::handleTimeSync() {
   if (year < 2020 || year > 2099 || month < 1 || month > 12 ||
       day < 1 || day > 31 || hour < 0 || hour > 23 ||
       minute < 0 || minute > 59 || second < 0 || second > 59) {
-    LOG_PRINTF("/api/time/sync failed: invalid time %04d-%02d-%02d %02d:%02d:%02d\n",
+    LOG_PRINTF("/api/time failed: invalid time %04d-%02d-%02d %02d:%02d:%02d\n",
                year, month, day, hour, minute, second);
     responder_.sendJson(400, "{\"error\":\"Invalid time\"}");
     return;
@@ -149,13 +215,13 @@ void ConfigApi::handleFormats() {
   for (uint8_t i = 0; i < formatCount(kFmtGroupClock); ++i) {
     clock.add(getFormat(kFmtGroupClock, i));
   }
-  sendJsonDocument(doc);
+  responder_.sendJsonDocument(200, doc);
 }
 
 void ConfigApi::handleGetConfig() {
   JsonDocument doc;
   populateConfigJson(doc);
-  sendJsonDocument(doc);
+  responder_.sendJsonDocument(200, doc);
 }
 
 void ConfigApi::handleSaveConfig() {
@@ -168,54 +234,70 @@ void ConfigApi::handleSaveConfig() {
   }
 
   ClockConfig clockConfig = configManager.loadClockConfig();
-  if (!doc["mode"].isNull()) {
-    clockConfig.activeMode = sanitizePersistentMode(doc["mode"].as<int>(),
-                                                    clockConfig.activeMode);
+  JsonVariant display = doc["display"];
+  JsonVariant modes = display["modes"];
+  JsonVariant messages = display["messages"];
+  JsonVariant time = doc["time"];
+  JsonVariant timezone = time["timezone"];
+  JsonVariant location = doc["location"];
+  JsonVariant wifi = doc["wifi"];
+  JsonVariant station = wifi["station"];
+  JsonVariant accessPoint = wifi["accessPoint"];
+
+  if (!display["activeMode"].isNull()) {
+    PersistentMode nextMode;
+    const String mode = display["activeMode"] | "";
+    if (!persistentModeFromName(mode, &nextMode)) {
+      LOG_PRINTF("/api/config save failed: invalid activeMode=\"%s\"\n", mode.c_str());
+      responder_.sendJson(400, "{\"error\":\"Invalid active mode\"}");
+      return;
+    }
+    clockConfig.activeMode = nextMode;
   }
-  if (!doc["countdownFmt"].isNull()) {
+  if (!modes["countdown"]["format"].isNull()) {
     clockConfig.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown,
-                                                   doc["countdownFmt"].as<int>(),
+                                                   modes["countdown"]["format"].as<int>(),
                                                    clockConfig.countdownFmt);
   }
-  if (!doc["countupFmt"].isNull()) {
+  if (!modes["countup"]["format"].isNull()) {
     clockConfig.countupFmt = sanitizeFormatIndex(kFmtGroupCountUp,
-                                                 doc["countupFmt"].as<int>(),
+                                                 modes["countup"]["format"].as<int>(),
                                                  clockConfig.countupFmt);
   }
-  if (!doc["clockFmt"].isNull()) {
+  if (!modes["clock"]["format"].isNull()) {
     clockConfig.clockFmt = sanitizeFormatIndex(kFmtGroupClock,
-                                               doc["clockFmt"].as<int>(),
+                                               modes["clock"]["format"].as<int>(),
                                                clockConfig.clockFmt);
   }
-  if (!doc["brightness"].isNull()) {
-    clockConfig.brightness = sanitizeBrightness(doc["brightness"].as<int>());
+  if (!display["brightness"].isNull()) {
+    clockConfig.brightness = sanitizeBrightness(display["brightness"].as<int>());
   }
-  if (!doc["countdownDatetime"].isNull()) {
+  if (!modes["countdown"]["end"].isNull()) {
     snprintf(clockConfig.countdownDatetime, sizeof(clockConfig.countdownDatetime),
-             "%s", doc["countdownDatetime"].as<const char*>());
+             "%s", modes["countdown"]["end"].as<const char*>());
   }
-  if (!doc["countupDatetime"].isNull()) {
+  if (!modes["countup"]["start"].isNull()) {
     snprintf(clockConfig.countupDatetime, sizeof(clockConfig.countupDatetime),
-             "%s", doc["countupDatetime"].as<const char*>());
+             "%s", modes["countup"]["start"].as<const char*>());
   }
-  if (!doc["splashMessage"].isNull()) {
-    sanitizeDisplayMessage(doc["splashMessage"].as<const char*>(),
+  if (!messages["splash"].isNull()) {
+    sanitizeDisplayMessage(messages["splash"].as<const char*>(),
                            clockConfig.splashMessage,
                            sizeof(clockConfig.splashMessage));
   }
-  if (!doc["finalMessage"].isNull()) {
-    sanitizeDisplayMessage(doc["finalMessage"].as<const char*>(),
+  if (!messages["final"].isNull()) {
+    sanitizeDisplayMessage(messages["final"].as<const char*>(),
                            clockConfig.finalMessage,
                            sizeof(clockConfig.finalMessage));
   }
-  if (!doc["latitude"].isNull()) {
-    clockConfig.latitude = doc["latitude"].as<float>();
+  if (!location["latitude"].isNull()) {
+    clockConfig.latitude = location["latitude"].as<float>();
   }
-  if (!doc["longitude"].isNull()) {
-    clockConfig.longitude = doc["longitude"].as<float>();
+  if (!location["longitude"].isNull()) {
+    clockConfig.longitude = location["longitude"].as<float>();
   }
-  if (!doc["zipcode"].isNull()) {
-    const char* zipcode = doc["zipcode"].as<const char*>();
+  if (!location["zipcode"].isNull()) {
+    const char* zipcode = location["zipcode"].as<const char*>();
     if (zipcode == nullptr || (zipcode[0] != '\0' && !isValidZipcode(zipcode))) {
       LOG_PRINTF("/api/config save failed: invalid zipcode=\"%s\"\n",
                  zipcode == nullptr ? "(null)" : zipcode);
@@ -224,34 +306,37 @@ void ConfigApi::handleSaveConfig() {
     }
     snprintf(clockConfig.zipcode, sizeof(clockConfig.zipcode), "%s", zipcode);
   }
-  if (!doc["timezone"].isNull()) {
-    sanitizePrintableText(doc["timezone"].as<const char*>(),
+  if (!timezone["name"].isNull()) {
+    sanitizePrintableText(timezone["name"].as<const char*>(),
                           clockConfig.timezone,
                           sizeof(clockConfig.timezone));
   }
-  if (!doc["utcOffsetMinutes"].isNull()) {
+  if (!timezone["utcOffsetMinutes"].isNull()) {
     clockConfig.utcOffsetMinutes =
-        sanitizeUtcOffsetMinutes(doc["utcOffsetMinutes"].as<int>());
+        sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
+  }
+  if (!time["dst"].isNull()) {
+    clockConfig.dst = time["dst"].as<bool>();
   }
 
   configManager.saveClockConfig(clockConfig);
   clockApplySettings(configManager.sanitizeClockConfig(clockConfig));
 
   bool wifiChanged = false;
-  if (!doc["staSsid"].isNull() || !doc["staPassword"].isNull() ||
-      !doc["apSsid"].isNull() || !doc["apPassword"].isNull()) {
+  if (!station["ssid"].isNull() || !station["password"].isNull() ||
+      !accessPoint["ssid"].isNull() || !accessPoint["password"].isNull()) {
     WifiConfig wifiConfig = configManager.loadWifiConfig();
-    if (!doc["staSsid"].isNull()) {
-      wifiConfig.staSsid = doc["staSsid"].as<String>();
+    if (!station["ssid"].isNull()) {
+      wifiConfig.staSsid = station["ssid"].as<String>();
     }
-    if (!doc["staPassword"].isNull()) {
-      wifiConfig.staPassword = doc["staPassword"].as<String>();
+    if (!station["password"].isNull()) {
+      wifiConfig.staPassword = station["password"].as<String>();
     }
-    if (!doc["apSsid"].isNull()) {
-      wifiConfig.apSsid = doc["apSsid"].as<String>();
+    if (!accessPoint["ssid"].isNull()) {
+      wifiConfig.apSsid = accessPoint["ssid"].as<String>();
     }
-    if (!doc["apPassword"].isNull()) {
-      wifiConfig.apPassword = doc["apPassword"].as<String>();
+    if (!accessPoint["password"].isNull()) {
+      wifiConfig.apPassword = accessPoint["password"].as<String>();
     }
     configManager.saveWifiConfig(wifiConfig);
     wifiChanged = true;
@@ -263,6 +348,117 @@ void ConfigApi::handleSaveConfig() {
   } else {
     responder_.sendJson(200, "{\"message\":\"Saved\"}");
   }
+}
+
+void ConfigApi::handleSunset() {
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
+  if (err) {
+    LOG_PRINTF("/api/sunset failed: invalid JSON: %s\n", err.c_str());
+    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  const float latitude = doc["location"]["latitude"] | NAN;
+  const float longitude = doc["location"]["longitude"] | NAN;
+  const char* dateTextArg = doc["time"]["date"] | "";
+  const char* timeTextArg = doc["time"]["time"] | "";
+  LOG_PRINTF("/api/sunset request: raw date=\"%s\" raw time=\"%s\" lat=%.6f lon=%.6f offset=%d dst=%s\n",
+             dateTextArg,
+             timeTextArg,
+             latitude,
+             longitude,
+             doc["time"]["timezone"]["utcOffsetMinutes"] | 0,
+             (doc["time"]["dst"] | false) ? "true" : "false");
+
+  if (!isfinite(latitude) || latitude < -90.0f || latitude > 90.0f ||
+      !isfinite(longitude) || longitude < -180.0f || longitude > 180.0f) {
+    LOG_PRINTF("/api/sunset failed: invalid coordinates lat=%.6f lon=%.6f\n",
+               latitude,
+               longitude);
+    responder_.sendJson(400, "{\"error\":\"Latitude or longitude is invalid\"}");
+    return;
+  }
+
+  int year = 0;
+  int month = 0;
+  int day = 0;
+  if (!parseIsoDate(dateTextArg, &year, &month, &day)) {
+    LOG_PRINTF("/api/sunset failed: invalid date=\"%s\"\n", dateTextArg);
+    responder_.sendJson(400, "{\"error\":\"Date is invalid\"}");
+    return;
+  }
+
+  int hour = 0;
+  int minute = 0;
+  int second = 0;
+  if (!parseTimeOfDay(timeTextArg, &hour, &minute, &second)) {
+    LOG_PRINTF("/api/sunset failed: invalid time=\"%s\"\n", timeTextArg);
+    responder_.sendJson(400, "{\"error\":\"Time is invalid\"}");
+    return;
+  }
+
+  const int utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | 0;
+  if (utcOffsetMinutes < -840 || utcOffsetMinutes > 840) {
+    LOG_PRINTF("/api/sunset failed: invalid UTC offset=%d\n", utcOffsetMinutes);
+    responder_.sendJson(400, "{\"error\":\"UTC offset is invalid\"}");
+    return;
+  }
+  char timezone[40];
+  sanitizePrintableText(doc["time"]["timezone"]["name"] | "",
+                        timezone,
+                        sizeof(timezone));
+  const bool dst = doc["time"]["dst"] | false;
+
+  const Location location{latitude,
+                          longitude,
+                          static_cast<int16_t>(utcOffsetMinutes)};
+  const DateTime calculatorDate(year, month, day, 0, 0, 0);
+  LOG_PRINTF("Sunset calculator args: localDate=%04d-%02d-%02d latitude=%.6f longitude=%.6f utcOffsetMinutes=%d\n",
+             calculatorDate.year(),
+             calculatorDate.month(),
+             calculatorDate.day(),
+             location.latitude,
+             location.longitude,
+             location.utcOffsetMinutes);
+  const DateTime sunset = calculateSunset(calculatorDate, location);
+  LOG_PRINTF("Sunset calculator response: localSunset=%04d-%02d-%02d %02d:%02d:%02d\n",
+             sunset.year(),
+             sunset.month(),
+             sunset.day(),
+             sunset.hour(),
+             sunset.minute(),
+             sunset.second());
+
+  LOG_PRINTF("/api/sunset success: lat=%.6f lon=%.6f date=%04d-%02d-%02d offset=%d dst=%s sunset=%02d:%02d:%02d\n",
+             latitude,
+             longitude,
+             year,
+             month,
+             day,
+             utcOffsetMinutes,
+             dst ? "true" : "false",
+             sunset.hour(),
+             sunset.minute(),
+             sunset.second());
+
+  char dateText[16];
+  char timeText[12];
+  char dateTimeText[28];
+  snprintf(dateText, sizeof(dateText), "%04d-%02d-%02d",
+           sunset.year(), sunset.month(), sunset.day());
+  snprintf(timeText, sizeof(timeText), "%02d:%02d:%02d",
+           sunset.hour(), sunset.minute(), sunset.second());
+  snprintf(dateTimeText, sizeof(dateTimeText), "%s %s", dateText, timeText);
+
+  JsonDocument response;
+  response["date"] = dateText;
+  response["time"] = timeText;
+  response["dateTime"] = dateTimeText;
+  response["timezone"] = timezone;
+  response["utcOffsetMinutes"] = utcOffsetMinutes;
+  response["dst"] = dst;
+  responder_.sendJsonDocument(200, response);
 }
 
 void ConfigApi::handleZipcodeLookup() {
@@ -327,23 +523,43 @@ void ConfigApi::populateConfigJson(JsonDocument& doc) {
   const WifiConfig wifiConfig = configManager.loadWifiConfig();
   logConfigResponse(clockConfig, wifiConfig);
 
-  doc["mode"] = static_cast<int>(clockConfig.activeMode);
-  doc["countdownFmt"] = clockConfig.countdownFmt;
-  doc["countupFmt"] = clockConfig.countupFmt;
-  doc["clockFmt"] = clockConfig.clockFmt;
-  doc["brightness"] = clockConfig.brightness;
-  doc["countdownDatetime"] = String(clockConfig.countdownDatetime);
-  doc["countupDatetime"] = String(clockConfig.countupDatetime);
-  doc["splashMessage"] = String(clockConfig.splashMessage);
-  doc["finalMessage"] = String(clockConfig.finalMessage);
-  doc["latitude"] = clockConfig.latitude;
-  doc["longitude"] = clockConfig.longitude;
-  doc["zipcode"] = String(clockConfig.zipcode);
-  doc["timezone"] = String(clockConfig.timezone);
-  doc["utcOffsetMinutes"] = clockConfig.utcOffsetMinutes;
-  doc["staSsid"] = wifiConfig.staSsid;
-  doc["apSsid"] = wifiConfig.apSsid;
-  doc["apPassword"] = wifiConfig.apPassword;
+  JsonObject display = doc["display"].to<JsonObject>();
+  display["activeMode"] = persistentModeName(clockConfig.activeMode);
+  display["brightness"] = clockConfig.brightness;
+
+  JsonObject messages = display["messages"].to<JsonObject>();
+  messages["splash"] = String(clockConfig.splashMessage);
+  messages["final"] = String(clockConfig.finalMessage);
+
+  JsonObject modes = display["modes"].to<JsonObject>();
+  JsonObject countdown = modes["countdown"].to<JsonObject>();
+  countdown["format"] = clockConfig.countdownFmt;
+  countdown["end"] = String(clockConfig.countdownDatetime);
+
+  JsonObject countup = modes["countup"].to<JsonObject>();
+  countup["format"] = clockConfig.countupFmt;
+  countup["start"] = String(clockConfig.countupDatetime);
+
+  JsonObject clock = modes["clock"].to<JsonObject>();
+  clock["format"] = clockConfig.clockFmt;
+
+  JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
+  timezone["name"] = String(clockConfig.timezone);
+  timezone["utcOffsetMinutes"] = clockConfig.utcOffsetMinutes;
+  doc["time"]["dst"] = clockConfig.dst;
+
+  JsonObject location = doc["location"].to<JsonObject>();
+  location["zipcode"] = String(clockConfig.zipcode);
+  location["latitude"] = clockConfig.latitude;
+  location["longitude"] = clockConfig.longitude;
+
+  JsonObject wifi = doc["wifi"].to<JsonObject>();
+  JsonObject station = wifi["station"].to<JsonObject>();
+  station["ssid"] = wifiConfig.staSsid;
+
+  JsonObject accessPoint = wifi["accessPoint"].to<JsonObject>();
+  accessPoint["ssid"] = wifiConfig.apSsid;
+  accessPoint["password"] = wifiConfig.apPassword;
 }
 
 void ConfigApi::logConfigResponse(const ClockConfig& clockConfig,
@@ -360,21 +576,16 @@ void ConfigApi::logConfigResponse(const ClockConfig& clockConfig,
   LOG_PRINTF("/api/config response: splashMessage=\"%s\" finalMessage=\"%s\"\n",
              clockConfig.splashMessage,
              clockConfig.finalMessage);
-  LOG_PRINTF("/api/config response: latitude=%.6f longitude=%.6f zipcode=\"%s\" timezone=\"%s\" utcOffsetMinutes=%d\n",
+  LOG_PRINTF("/api/config response: latitude=%.6f longitude=%.6f zipcode=\"%s\" timezone=\"%s\" utcOffsetMinutes=%d dst=%s\n",
              clockConfig.latitude,
              clockConfig.longitude,
              clockConfig.zipcode,
              clockConfig.timezone,
-             clockConfig.utcOffsetMinutes);
+             clockConfig.utcOffsetMinutes,
+             clockConfig.dst ? "true" : "false");
   LOG_PRINTF("/api/config response: staSsid=\"%s\" apSsid=\"%s\" apPassword=<%u chars>\n",
              wifiConfig.staSsid.c_str(),
              wifiConfig.apSsid.c_str(),
              wifiConfig.apPassword.length());
 }
 
-void ConfigApi::sendJsonDocument(JsonDocument& doc) {
-  String json;
-  json.reserve(measureJson(doc));
-  serializeJson(doc, json);
-  responder_.sendJson(200, json.c_str());
-}

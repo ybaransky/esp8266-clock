@@ -1,1 +1,45 @@
-{"mode":0,"countdownFmt":0,"countupFmt":0,"clockFmt":1,"justification":1,"brightness":3,"countdownDatetime":"2026-07-04 00:00:00","countupDatetime":"now","splashMessage":"YuriCloc","finalMessage":"Good Luc","latitude":0,"longitude":0,"timezone":"America/New_York","utcOffsetMinutes":-240}
+{
+  "display": {
+    "activeMode": "countdown",
+    "brightness": 3,
+    "messages": {
+      "splash": "YuriCloc",
+      "final": "Good Luc"
+    },
+    "modes": {
+      "countdown": {
+        "format": 0,
+        "end": "2026-07-04 00:00:00"
+      },
+      "countup": {
+        "format": 0,
+        "start": "now"
+      },
+      "clock": {
+        "format": 1
+      }
+    }
+  },
+  "time": {
+    "timezone": {
+      "name": "America/New_York",
+      "utcOffsetMinutes": -240
+    },
+    "dst": true
+  },
+  "location": {
+    "zipcode": "",
+    "latitude": 0,
+    "longitude": 0
+  },
+  "wifi": {
+    "station": {
+      "ssid": "",
+      "password": ""
+    },
+    "accessPoint": {
+      "ssid": "YuriCloc",
+      "password": "12345678"
+    }
+  }
+}

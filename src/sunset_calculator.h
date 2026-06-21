@@ -5,8 +5,8 @@
 struct Location {
   float latitude;
   float longitude;
+  int16_t utcOffsetMinutes = 0;
 };
 
-// Stub for Friday mode. The real astronomical implementation belongs behind
-// this function so Friday mode can stay focused on phase and target selection.
+// Returns local sunset time for the given local date and location.
 DateTime calculateSunset(const DateTime& localDate, const Location& location);

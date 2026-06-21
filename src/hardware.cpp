@@ -14,6 +14,38 @@ struct I2CDeviceAddressLabel {
   const char *name;
 };
 
+struct HeapInfo {
+  uint32_t freeBytes;
+  uint32_t maxFreeBlockBytes;
+  uint8_t fragmentationPct;
+};
+
+struct FlashInfo {
+  uint32_t chipSizeBytes;
+  uint32_t realSizeBytes;
+  uint32_t speedHz;
+  FlashMode_t mode;
+};
+
+struct ChipInfo {
+  uint32_t chipId;
+  uint8_t cpuFreqMHz;
+  String sdkVersion;
+  String coreVersion;
+  String resetReason;
+};
+
+struct SketchInfo {
+  uint32_t sizeBytes;
+  uint32_t freeSpaceBytes;
+};
+
+struct StorageInfo {
+  bool mounted;
+  size_t totalBytes;
+  size_t usedBytes;
+};
+
 constexpr I2CDeviceAddressLabel KNOWN_I2C_DEVICES[] = {
     {0x20, "PCF8574 GPIO expander / LCD backpack"},
     {0x21, "PCF8574 GPIO expander / LCD backpack"},
@@ -43,47 +75,6 @@ constexpr I2CDeviceAddressLabel KNOWN_I2C_DEVICES[] = {
     {0x76, "BME280 / BMP280 / BMP388 pressure sensor"},
     {0x77, "BME280 / BMP280 / BMP388 pressure sensor"},
 };
-
-}  // namespace
-
-const char *I2CBusScanner::deviceNameForAddress(uint8_t address) {
-  for (const I2CDeviceAddressLabel &device : KNOWN_I2C_DEVICES) {
-    if (device.address == address) {
-      return device.name;
-    }
-  }
-  return "unknown";
-}
-
-void I2CBusScanner::scan() {
-  LOG_PRINTLN("Scanning I2C bus...");
-  size_t found = 0;
-  lastScanCount_ = 0;
-
-  for (uint8_t address = FIRST_VALID_ADDRESS; address <= LAST_VALID_ADDRESS; address++) {
-    Wire.beginTransmission(address);
-    if (Wire.endTransmission() == 0) {
-      LOG_PRINTF("Found device at 0x%02X: (%s)\n", address, deviceNameForAddress(address));
-      if (found < ADDRESS_CAPACITY) {
-        lastScanAddresses_[found] = address;
-      }
-      found++;
-    }
-  }
-
-  lastScanCount_ = (found < ADDRESS_CAPACITY) ? found : ADDRESS_CAPACITY;
-  LOG_PRINTF("Scan complete. %u device(s) found.\n", static_cast<unsigned>(found));
-}
-
-I2CScanResult I2CBusScanner::lastResult() const {
-  return {lastScanAddresses_, lastScanCount_};
-}
-
-I2CBusScanner i2cBusScanner;
-
-// ---------------------------------------------------------------------------
-// Device info getters
-// ---------------------------------------------------------------------------
 
 HeapInfo getHeapInfo() {
   return {
@@ -126,8 +117,6 @@ StorageInfo getStorageInfo() {
   return {true, fs.totalBytes, fs.usedBytes};
 }
 
-namespace {
-
 const char* flashModeName(FlashMode_t mode) {
   switch (mode) {
     case FM_QIO:   return "QIO";
@@ -140,6 +129,41 @@ const char* flashModeName(FlashMode_t mode) {
 
 }  // namespace
 
+const char *I2CBusScanner::deviceNameForAddress(uint8_t address) {
+  for (const I2CDeviceAddressLabel &device : KNOWN_I2C_DEVICES) {
+    if (device.address == address) {
+      return device.name;
+    }
+  }
+  return "unknown";
+}
+
+void I2CBusScanner::scan() {
+  LOG_PRINTLN("Scanning I2C bus...");
+  size_t found = 0;
+  lastScanCount_ = 0;
+
+  for (uint8_t address = FIRST_VALID_ADDRESS; address <= LAST_VALID_ADDRESS; address++) {
+    Wire.beginTransmission(address);
+    if (Wire.endTransmission() == 0) {
+      LOG_PRINTF("Found device at 0x%02X: (%s)\n", address, deviceNameForAddress(address));
+      if (found < ADDRESS_CAPACITY) {
+        lastScanAddresses_[found] = address;
+      }
+      found++;
+    }
+  }
+
+  lastScanCount_ = (found < ADDRESS_CAPACITY) ? found : ADDRESS_CAPACITY;
+  LOG_PRINTF("Scan complete. %u device(s) found.\n", static_cast<unsigned>(found));
+}
+
+I2CScanResult I2CBusScanner::lastResult() const {
+  return {lastScanAddresses_, lastScanCount_};
+}
+
+I2CBusScanner i2cBusScanner;
+
 void printDeviceInfo() {
   const HeapInfo    heap    = getHeapInfo();
   const FlashInfo   flash   = getFlashInfo();
@@ -147,35 +171,32 @@ void printDeviceInfo() {
   const SketchInfo  sketch  = getSketchInfo();
   const StorageInfo storage = getStorageInfo();
 
-  LOG_PRINTF("--- Heap ---\n");
-  LOG_PRINTF("  free=%s  maxBlock=%s  frag=%u%%\n",
+  LOG_PRINTF("Heap: free=%s  maxBlock=%s  frag=%u%%\n",
              CommaNumber(heap.freeBytes).c_str(),
              CommaNumber(heap.maxFreeBlockBytes).c_str(),
              heap.fragmentationPct);
 
-  LOG_PRINTF("--- Flash ---\n");
-  LOG_PRINTF("  chipSize=%s  realSize=%s  speed=%sHz  mode=%s\n",
+  LOG_PRINTF("Flash: chipSize=%s  realSize=%s  speed=%sHz  mode=%s\n",
              CommaNumber(flash.chipSizeBytes).c_str(),
              CommaNumber(flash.realSizeBytes).c_str(),
              CommaNumber(flash.speedHz).c_str(),
              flashModeName(flash.mode));
 
-  LOG_PRINTF("--- Chip ---\n");
-  LOG_PRINTF("  id=0x%06X  cpu=%uMHz  sdk=%s  core=%s\n",
-             chip.chipId, chip.cpuFreqMHz,
-             chip.sdkVersion.c_str(), chip.coreVersion.c_str());
-  LOG_PRINTF("  resetReason=%s\n", chip.resetReason.c_str());
+  LOG_PRINTF("Chip: id=0x%06X  cpu=%uMHz  sdk=%s  core=%s  resetReason=%s\n",
+             chip.chipId,
+             chip.cpuFreqMHz,
+             chip.sdkVersion.c_str(),
+             chip.coreVersion.c_str(),
+             chip.resetReason.c_str());
 
-  LOG_PRINTF("--- Sketch ---\n");
-  LOG_PRINTF("  size=%s  freeSpace=%s\n",
+  LOG_PRINTF("Sketch: size=%s  freeSpace=%s\n",
              CommaNumber(sketch.sizeBytes).c_str(),
              CommaNumber(sketch.freeSpaceBytes).c_str());
 
-  LOG_PRINTF("--- Storage ---\n");
   if (!storage.mounted) {
-    LOG_PRINTF("  LittleFS not mounted\n");
+    LOG_PRINTF("Storage: LittleFS not mounted\n");
   } else {
-    LOG_PRINTF("  total=%s  used=%s  free=%s\n",
+    LOG_PRINTF("Storage: total=%s  used=%s  free=%s\n",
                CommaNumber(storage.totalBytes).c_str(),
                CommaNumber(storage.usedBytes).c_str(),
                CommaNumber(storage.totalBytes - storage.usedBytes).c_str());
