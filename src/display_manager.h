@@ -78,6 +78,10 @@ class DisplayManager {
                  bool repeat = false);
   void clearInfo();
 
+  // Replaces the default state (the state restored after temporary overlays).
+  // If no temporary overlay is active, also updates the current display immediately.
+  void setDefaultState(const DisplayState& state);
+
   const char* currentStateName() const;
 
  private:

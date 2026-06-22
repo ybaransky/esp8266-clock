@@ -127,7 +127,7 @@ void FileApi::handleListFiles() {
              static_cast<unsigned>(fs.totalBytes),
              static_cast<unsigned>(fs.usedBytes));
   } else {
-    strcpy(footer, "]}");
+    snprintf(footer, sizeof(footer), "]}");
   }
   txBytes += strlen(footer);
   responder_.logRequest(200, txBytes);

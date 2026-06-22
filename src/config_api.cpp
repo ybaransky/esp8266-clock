@@ -85,8 +85,7 @@ bool applyZipcode(const char* label, const char* zipcode,
 // -- handleSaveConfig sub-helpers ----------------------------------------------
 
 // Returns false if activeMode is provided but invalid.
-static bool applyDisplayFields(JsonVariant display, JsonVariant modes,
-                               JsonVariant messages, ClockConfig& cfg) {
+static bool applyModeAndFormats(JsonVariant display, JsonVariant modes, ClockConfig& cfg) {
   if (!display["activeMode"].isNull()) {
     PersistentMode nextMode;
     const String mode = display["activeMode"] | "";
@@ -111,8 +110,26 @@ static bool applyDisplayFields(JsonVariant display, JsonVariant modes,
                                        modes["clock"]["format"].as<int>(),
                                        cfg.clockFmt);
   }
+  if (!modes["friday"]["clockFormat"].isNull()) {
+    cfg.fridayClockFmt = sanitizeFormatIndex(kFmtGroupClock,
+                                             modes["friday"]["clockFormat"].as<int>(),
+                                             cfg.fridayClockFmt);
+  }
+  if (!modes["friday"]["toFridaySunsetFormat"].isNull()) {
+    cfg.fridayToFridaySunsetFmt = sanitizeFormatIndex(kFmtGroupCountdown,
+                                                      modes["friday"]["toFridaySunsetFormat"].as<int>(),
+                                                      cfg.fridayToFridaySunsetFmt);
+  }
+  if (!modes["friday"]["toSaturdaySunsetFormat"].isNull()) {
+    cfg.fridayToSatSunsetFmt = sanitizeFormatIndex(kFmtGroupCountdown,
+                                                   modes["friday"]["toSaturdaySunsetFormat"].as<int>(),
+                                                   cfg.fridayToSatSunsetFmt);
+  }
   if (!display["brightness"].isNull()) {
     cfg.brightness = sanitizeBrightness(display["brightness"].as<int>());
+  }
+  if (!display["clock12Hour"].isNull()) {
+    cfg.clockUse12Hour = display["clock12Hour"].as<bool>();
   }
   if (!modes["countdown"]["end"].isNull()) {
     snprintf(cfg.countdownDatetime, sizeof(cfg.countdownDatetime),
@@ -122,6 +139,10 @@ static bool applyDisplayFields(JsonVariant display, JsonVariant modes,
     snprintf(cfg.countupDatetime, sizeof(cfg.countupDatetime),
              "%s", modes["countup"]["start"].as<const char*>());
   }
+  return true;
+}
+
+static void applyMessageFields(JsonVariant messages, ClockConfig& cfg) {
   if (!messages["splash"].isNull()) {
     sanitizeDisplayMessage(messages["splash"].as<const char*>(),
                            cfg.splashMessage, sizeof(cfg.splashMessage));
@@ -130,7 +151,6 @@ static bool applyDisplayFields(JsonVariant display, JsonVariant modes,
     sanitizeDisplayMessage(messages["final"].as<const char*>(),
                            cfg.finalMessage, sizeof(cfg.finalMessage));
   }
-  return true;
 }
 
 // Returns false if a zipcode field is present but malformed.
@@ -184,15 +204,20 @@ static void applyTimezoneFields(JsonVariant time, ClockConfig& cfg) {
 
 // -- API handlers --------------------------------------------------------------
 
+bool ConfigApi::parseJsonBody(JsonDocument& doc, const char* route) {
+  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
+  if (err) {
+    LOG_PRINTF("%s failed: invalid JSON: %s\n", route, err.c_str());
+    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
+    return false;
+  }
+  return true;
+}
+
 void ConfigApi::handleDemoTest() {
   if (server_.hasArg("plain") && server_.arg("plain").length() > 0) {
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-    if (err) {
-      LOG_PRINTF("/api/demo/test failed: invalid JSON: %s\n", err.c_str());
-      responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-      return;
-    }
+    if (!parseJsonBody(doc, "/api/demo/test")) return;
     JsonVariant finalMessage = doc["display"]["messages"]["final"];
     if (!finalMessage.isNull()) {
       ClockConfig cfg = configManager.loadClockConfig();
@@ -209,12 +234,7 @@ void ConfigApi::handleDemoTest() {
 
 void ConfigApi::handleMessageTest() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/message/test failed: invalid JSON: %s\n", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!parseJsonBody(doc, "/api/message/test")) return;
 
   char message[64];
   sanitizeDisplayMessage(doc["message"] | "", message, sizeof(message));
@@ -224,12 +244,7 @@ void ConfigApi::handleMessageTest() {
 
 void ConfigApi::handleSetMode() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/mode failed: invalid JSON: %s\n", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!parseJsonBody(doc, "/api/mode")) return;
 
   PersistentMode nextMode;
   const String mode = doc["mode"] | "";
@@ -248,12 +263,7 @@ void ConfigApi::handleSetMode() {
 
 void ConfigApi::handleBrightness() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/brightness failed: invalid JSON: %s\n", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!parseJsonBody(doc, "/api/brightness")) return;
   if (doc["brightness"].isNull()) {
     LOG_PRINTLN("/api/brightness failed: brightness required");
     responder_.sendJson(400, "{\"error\":\"Brightness required\"}");
@@ -276,12 +286,7 @@ void ConfigApi::handleTime() {
 
 void ConfigApi::handleTimeSync() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/time failed: invalid JSON: %s\n", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!parseJsonBody(doc, "/api/time")) return;
 
   const int year = doc["year"] | 0;
   const int month = doc["month"] | 0;
@@ -329,12 +334,7 @@ void ConfigApi::handleGetConfig() {
 
 void ConfigApi::handleSaveConfig() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/config save failed: invalid JSON: %s\n", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!parseJsonBody(doc, "/api/config")) return;
 
   ClockConfig clockConfig = configManager.loadClockConfig();
   JsonVariant display     = doc["display"];
@@ -347,10 +347,11 @@ void ConfigApi::handleSaveConfig() {
   JsonVariant station     = wifi["station"];
   JsonVariant accessPoint = wifi["accessPoint"];
 
-  if (!applyDisplayFields(display, modes, messages, clockConfig)) {
+  if (!applyModeAndFormats(display, modes, clockConfig)) {
     responder_.sendJson(400, "{\"error\":\"Invalid active mode\"}");
     return;
   }
+  applyMessageFields(messages, clockConfig);
 
   if (!applyLocationFields(location, clockConfig)) {
     responder_.sendJson(400, "{\"error\":\"ZIP code must be 5 digits\"}");
@@ -389,12 +390,7 @@ void ConfigApi::handleSaveConfig() {
 
 void ConfigApi::handleSunset() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/sunset failed: invalid JSON: %s\n", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!parseJsonBody(doc, "/api/sunset")) return;
 
   const float latitude = doc["location"]["latitude"] | NAN;
   const float longitude = doc["location"]["longitude"] | NAN;
@@ -501,12 +497,7 @@ void ConfigApi::handleZipcodeLookup() {
 
 void ConfigApi::handleFieldMismatch() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/field-mismatch failed: invalid JSON: %s\n", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!parseJsonBody(doc, "/api/field-mismatch")) return;
 
   char page[32], field[32], configValue[80], acceptedValue[80], reason[80];
   sanitizePrintableText(doc["page"]          | "", page,          sizeof(page));

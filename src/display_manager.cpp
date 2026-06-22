@@ -3,6 +3,7 @@
 #include "clock_format.h"
 #include "clock_state.h"
 #include "display.h"
+#include "friday_mode.h"
 #include "log.h"
 
 namespace {
@@ -214,9 +215,25 @@ DisplayState DisplayManager::stateForConfiguredMode(PersistentMode mode) const {
       state.payload.countdown.endTime = parseDateTime(settings_.countdownDatetime);
       state.payload.countdown.formatIndex = settings_.countdownFmt;
       break;
+    case kPersistentFriday:
+      // FridayModeController will call setDefaultState() on the next tick.
+      // Use the friday clock format as a safe initial state.
+      state.behavior = DisplayBehavior::kClock;
+      state.payload.clock.formatIndex = settings_.fridayClockFmt;
+      break;
   }
 
   return state;
+}
+
+void DisplayManager::setDefaultState(const DisplayState& state) {
+  defaultState_ = state;
+  if (!hasPreviousState_) {
+    demoCountdownActive_ = false;
+    const uint32_t nowMs = millis();
+    installState(defaultState_, {false, 0}, nowMs, false);
+    renderCurrentState(nowMs, true);
+  }
 }
 
 const char* DisplayManager::behaviorName(DisplayBehavior behavior) const {
@@ -369,6 +386,10 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
   TimeFields fields = rtcToFields(clockSource_->now());
+  if (settings_.clockUse12Hour) {
+    fields.hours = fields.hours % 12;
+    if (fields.hours == 0) fields.hours = 12;
+  }
   if (clockHasTenths(formatIndex)) {
     fields.tenths = (nowMs % kSecondMs) / kTenthMs;
   }
@@ -499,6 +520,7 @@ DisplayManager displayManager;
 
 void clockApplySettings(const ClockConfig& cfg) {
   displayManager.applySettings(cfg);
+  fridayModeApplySettings(cfg);
 }
 
 void clockSetBrightness(uint8_t brightness) {

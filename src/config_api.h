@@ -31,6 +31,9 @@ class ConfigApi {
   void handleFieldMismatch();
 
  private:
+  // Deserializes the request body into doc. On failure, logs, sends 400, and returns false.
+  bool parseJsonBody(JsonDocument& doc, const char* route);
+
   void populateConfigJson(JsonDocument& doc);
   void logConfigResponse(const ClockConfig& clockConfig,
                          const WifiConfig& wifiConfig) const;

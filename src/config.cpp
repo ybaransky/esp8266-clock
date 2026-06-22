@@ -84,6 +84,9 @@ ClockConfig defaultClockConfig() {
     s.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
     s.countupFmt    = 0;
     s.clockFmt      = 6; // " YYYY | MM:DD | hh:mm" (blinking colon)
+    s.fridayClockFmt          = 6;
+    s.fridayToFridaySunsetFmt = 0;
+    s.fridayToSatSunsetFmt    = 0;
     s.brightness    = 3;
     snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "2026-07-04 00:00:00");
     snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "now");
@@ -94,6 +97,7 @@ ClockConfig defaultClockConfig() {
     s.timezone[0] = '\0';
     s.utcOffsetMinutes = 0;
     s.dst = false;
+    s.clockUse12Hour = false;
     return s;
 }
 
@@ -124,60 +128,64 @@ void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
 
 // -- Clock config --------------------------------------------------------------
 ClockConfig ConfigManager::loadClockConfig() {
-    ClockConfig s = defaultClockConfig();
+    ClockConfig cfg = defaultClockConfig();
 
     JsonDocument doc;
-    if (!openAndParse(doc)) return s;
+    if (!openAndParse(doc)) return cfg;
 
     PersistentMode mode;
-    const String activeMode = doc["display"]["activeMode"] | persistentModeName(s.activeMode);
+    const String activeMode = doc["display"]["activeMode"] | persistentModeName(cfg.activeMode);
     if (persistentModeFromName(activeMode, &mode)) {
-        s.activeMode = mode;
+        cfg.activeMode = mode;
     }
 
-    s.countdownFmt  = doc["display"]["modes"]["countdown"]["format"] | s.countdownFmt;
-    s.countupFmt    = doc["display"]["modes"]["countup"]["format"]   | s.countupFmt;
-    s.clockFmt      = doc["display"]["modes"]["clock"]["format"]     | s.clockFmt;
-    s.brightness    = doc["display"]["brightness"]                   | s.brightness;
+    cfg.countdownFmt  = doc["display"]["modes"]["countdown"]["format"] | cfg.countdownFmt;
+    cfg.countupFmt    = doc["display"]["modes"]["countup"]["format"]   | cfg.countupFmt;
+    cfg.clockFmt      = doc["display"]["modes"]["clock"]["format"]     | cfg.clockFmt;
+    cfg.fridayClockFmt          = doc["display"]["modes"]["friday"]["clockFormat"]            | cfg.fridayClockFmt;
+    cfg.fridayToFridaySunsetFmt = doc["display"]["modes"]["friday"]["toFridaySunsetFormat"]  | cfg.fridayToFridaySunsetFmt;
+    cfg.fridayToSatSunsetFmt    = doc["display"]["modes"]["friday"]["toSaturdaySunsetFormat"] | cfg.fridayToSatSunsetFmt;
+    cfg.brightness    = doc["display"]["brightness"]                   | cfg.brightness;
 
     const char* end = doc["display"]["modes"]["countdown"]["end"] | "";
-    if (end[0]) snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "%s", end);
+    if (end[0]) snprintf(cfg.countdownDatetime, sizeof(cfg.countdownDatetime), "%s", end);
 
     const char* start = doc["display"]["modes"]["countup"]["start"] | "";
-    if (start[0]) snprintf(s.countupDatetime, sizeof(s.countupDatetime), "%s", start);
+    if (start[0]) snprintf(cfg.countupDatetime, sizeof(cfg.countupDatetime), "%s", start);
 
                                                /*123412341234*/
     const char* splash = doc["display"]["messages"]["splash"] | "      hi    ";
-    sanitizeDisplayMessage(splash, s.splashMessage, sizeof(s.splashMessage));
+    sanitizeDisplayMessage(splash, cfg.splashMessage, sizeof(cfg.splashMessage));
 
                                                 /*123412341234*/
     const char* finalMsg = doc["display"]["messages"]["final"] | "Good Luc    ";
-    sanitizeDisplayMessage(finalMsg, s.finalMessage, sizeof(s.finalMessage));
+    sanitizeDisplayMessage(finalMsg, cfg.finalMessage, sizeof(cfg.finalMessage));
 
     JsonVariantConst location = doc["location"];
-    s.location.latitude  = location["latitude"]  | s.location.latitude;
-    s.location.longitude = location["longitude"] | s.location.longitude;
+    cfg.location.latitude  = location["latitude"]  | cfg.location.latitude;
+    cfg.location.longitude = location["longitude"] | cfg.location.longitude;
     const char* zipcode = location["zipcode"] | "";
     if (zipcode[0]) {
-        snprintf(s.location.zipcode, sizeof(s.location.zipcode), "%s", zipcode);
+        snprintf(cfg.location.zipcode, sizeof(cfg.location.zipcode), "%s", zipcode);
     }
 
     JsonVariantConst sunset = doc["sunset"];
-    s.sunsetTest.latitude  = sunset["latitude"]  | s.sunsetTest.latitude;
-    s.sunsetTest.longitude = sunset["longitude"] | s.sunsetTest.longitude;
+    cfg.sunsetTest.latitude  = sunset["latitude"]  | cfg.sunsetTest.latitude;
+    cfg.sunsetTest.longitude = sunset["longitude"] | cfg.sunsetTest.longitude;
     const char* sunsetZipcode = sunset["zipcode"] | "";
     if (sunsetZipcode[0]) {
-        snprintf(s.sunsetTest.zipcode, sizeof(s.sunsetTest.zipcode), "%s", sunsetZipcode);
+        snprintf(cfg.sunsetTest.zipcode, sizeof(cfg.sunsetTest.zipcode), "%s", sunsetZipcode);
     }
 
     const char* timezone = doc["time"]["timezone"]["name"] | "";
-    char cleanTimezone[sizeof(s.timezone)];
+    char cleanTimezone[sizeof(cfg.timezone)];
     sanitizePrintableText(timezone, cleanTimezone, sizeof(cleanTimezone));
-    if (cleanTimezone[0]) snprintf(s.timezone, sizeof(s.timezone), "%s", cleanTimezone);
-    s.utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | s.utcOffsetMinutes;
-    s.dst = doc["time"]["dst"] | s.dst;
+    if (cleanTimezone[0]) snprintf(cfg.timezone, sizeof(cfg.timezone), "%s", cleanTimezone);
+    cfg.utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | cfg.utcOffsetMinutes;
+    cfg.dst = doc["time"]["dst"] | cfg.dst;
+    cfg.clockUse12Hour = doc["display"]["clock12Hour"] | cfg.clockUse12Hour;
 
-    return sanitizeClockConfig(s);
+    return sanitizeClockConfig(cfg);
 }
 
 void ConfigManager::saveClockConfig(const ClockConfig& s) {
@@ -198,6 +206,9 @@ ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
     clean.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.countdownFmt, defaults.countdownFmt);
     clean.countupFmt   = sanitizeFormatIndex(kFmtGroupCountUp,   cfg.countupFmt,   defaults.countupFmt);
     clean.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.clockFmt,     defaults.clockFmt);
+    clean.fridayClockFmt          = sanitizeFormatIndex(kFmtGroupClock,     cfg.fridayClockFmt,          defaults.fridayClockFmt);
+    clean.fridayToFridaySunsetFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.fridayToFridaySunsetFmt, defaults.fridayToFridaySunsetFmt);
+    clean.fridayToSatSunsetFmt    = sanitizeFormatIndex(kFmtGroupCountdown, cfg.fridayToSatSunsetFmt,    defaults.fridayToSatSunsetFmt);
     clean.brightness   = sanitizeBrightness(cfg.brightness);
     clean.utcOffsetMinutes = sanitizeUtcOffsetMinutes(cfg.utcOffsetMinutes);
     sanitizeDisplayMessage(cfg.splashMessage, clean.splashMessage, sizeof(clean.splashMessage));

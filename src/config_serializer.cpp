@@ -7,8 +7,9 @@
 
 void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject display = doc["display"].to<JsonObject>();
-  display["activeMode"] = persistentModeName(clock.activeMode);
-  display["brightness"] = clock.brightness;
+  display["activeMode"]  = persistentModeName(clock.activeMode);
+  display["brightness"]  = clock.brightness;
+  display["clock12Hour"] = clock.clockUse12Hour;
 
   JsonObject messages = display["messages"].to<JsonObject>();
   messages["splash"] = String(clock.splashMessage);
@@ -26,6 +27,11 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
 
   JsonObject clockMode = modes["clock"].to<JsonObject>();
   clockMode["format"] = clock.clockFmt;
+
+  JsonObject friday = modes["friday"].to<JsonObject>();
+  friday["clockFormat"]            = clock.fridayClockFmt;
+  friday["toFridaySunsetFormat"]   = clock.fridayToFridaySunsetFmt;
+  friday["toSaturdaySunsetFormat"] = clock.fridayToSatSunsetFmt;
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
   timezone["name"]           = String(clock.timezone);

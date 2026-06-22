@@ -43,4 +43,5 @@ enum PersistentMode : uint8_t {
   kPersistentCountdown = 0,
   kPersistentCountup   = 1,
   kPersistentClock     = 2,
+  kPersistentFriday    = 3,
 };

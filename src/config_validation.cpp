@@ -5,13 +5,14 @@ const char* persistentModeName(PersistentMode mode) {
     case kPersistentCountdown: return "countdown";
     case kPersistentCountup:   return "countup";
     case kPersistentClock:     return "clock";
+    case kPersistentFriday:    return "friday";
   }
   return "countdown";
 }
 
 PersistentMode sanitizePersistentMode(int rawMode, PersistentMode fallback) {
   if (rawMode < static_cast<int>(kPersistentCountdown) ||
-      rawMode > static_cast<int>(kPersistentClock)) {
+      rawMode > static_cast<int>(kPersistentFriday)) {
     return fallback;
   }
   return static_cast<PersistentMode>(rawMode);
@@ -31,6 +32,10 @@ bool persistentModeFromName(const String& name, PersistentMode* mode) {
   }
   if (name == "clock") {
     *mode = kPersistentClock;
+    return true;
+  }
+  if (name == "friday") {
+    *mode = kPersistentFriday;
     return true;
   }
   return false;

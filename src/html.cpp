@@ -25,6 +25,7 @@ hr{border:0;border-top:1px solid #333;margin:18px 0}
 <button id="mode-countdown" class="mode" onclick="setMode('countdown')">Countdown</button>
 <button id="mode-clock" class="mode" onclick="setMode('clock')">Clock</button>
 <button id="mode-countup" class="mode" onclick="setMode('countup')">Countup</button>
+<button id="mode-friday" class="mode" onclick="setMode('friday')">Friday / Weekend</button>
 <hr>
 <button id="mode-demo" class="mode" onclick="runDemo()">Demo</button>
 <hr>
@@ -36,7 +37,7 @@ var configuredMode='__INITIAL_MODE__';
 var demoTimer=null;
 var statusTimer=null;
 function showMode(mode){
-  ['countdown','clock','countup','demo'].forEach(function(m){
+  ['countdown','clock','countup','friday','demo'].forEach(function(m){
     $('mode-'+m).classList.toggle('current',m===mode);
   });
 }
@@ -78,7 +79,7 @@ h1{font-size:2em;margin:0 0 18px}
 .btn{display:block;padding:13px;font-size:1em;background:#357;color:#fff;border-radius:8px;
   text-decoration:none;box-sizing:border-box;border:0;cursor:pointer;margin:10px auto;max-width:260px}
 .btn:active{background:#246}
-.home{display:inline-block;margin-top:18px;color:#6af;font-size:1rem}
+.home{display:block;text-align:left;margin-top:18px;color:#6af;font-size:1rem}
 </style></head>
 <body>
 <h1>Settings</h1>
@@ -102,6 +103,7 @@ const char CONFIG_HTML[] PROGMEM = R"rawliteral(
 body{font-family:sans-serif;padding:18px;background:#111;color:#eee;max-width:640px;margin:0 auto}
 h1{font-size:2rem;margin:0 0 6px;text-align:center}
 h2{font-size:1.25rem;color:#8af;margin:22px 0 8px}
+h3{font-size:1rem;color:#adf;margin:16px 0 4px}
 label{display:block;margin-top:14px;font-size:1rem;color:#bbb}
 input,select{width:100%;box-sizing:border-box;padding:12px;background:#202020;color:#eee;
   border:1px solid #555;border-radius:8px;font-size:1.1rem;margin-top:6px;font-family:monospace}
@@ -123,34 +125,53 @@ a{color:#6af;font-size:1rem}
   <option value="0">Count Down</option>
   <option value="1">Count Up</option>
   <option value="2">Clock</option>
+  <option value="3">Friday / Weekend</option>
 </select></label>
 
 <div id="sec-countdown">
-<hr><h2>Countdown</h2>
+<hr>
 <label>Format<select id="sel-cd"></select></label>
-<label>Target date &amp; time<input type="datetime-local" id="target" step="1"></label>
+<label>End time<input type="datetime-local" id="target" step="1"></label>
 </div>
 
 <div id="sec-countup">
-<hr><h2>Count Up</h2>
+<hr>
 <label>Format<select id="sel-cu"></select></label>
-<label><input type="checkbox" id="startNow" onchange="toggleStart(this)"> Use current time at boot</label>
-<input type="datetime-local" id="start" step="1">
+<label>Start time<input type="datetime-local" id="start" step="1"></label>
+<button onclick="setStartNow()" style="margin-top:8px;padding:10px 20px;font-size:1rem">Use Current Time</button>
 </div>
 
 <div id="sec-clock">
-<hr><h2>Clock</h2>
+<hr>
 <label>Format<select id="sel-ck"></select></label>
 </div>
 
-<hr><h2>Display</h2>
+<div id="sec-friday">
+<hr>
+<h3>Clock Phase &nbsp;(Sat sunset &rarr; Fri midnight)</h3>
+<label>Format<select id="sel-fri-ck"></select></label>
+<span id="fri-hour-anchor"></span>
+<h3>Countdown &nbsp;(Fri midnight &rarr; Fri sunset)</h3>
+<label>Format<select id="sel-fri-cd"></select></label>
+<h3>Countdown &nbsp;(Fri sunset &rarr; Sat sunset)</h3>
+<label>Format<select id="sel-fri-hv"></select></label>
+</div>
+
+<div id="sec-hour-fmt">
+<div style="display:flex;align-items:center;gap:20px;margin-top:14px">
+  <span style="color:#bbb;font-size:1rem">Hour format</span>
+  <label style="display:inline;margin-top:0"><input type="radio" id="hr24" name="hourFmt" value="0" style="width:auto;margin:0 6px 0 0"> 24h</label>
+  <label style="display:inline;margin-top:0"><input type="radio" id="hr12" name="hourFmt" value="1" style="width:auto;margin:0 6px 0 0"> 12h</label>
+</div>
+</div>
+<hr>
 <label>Brightness: <span id="briteVal">4</span>
 <input type="range" id="brite" min="0" max="7"
   oninput="previewBrightness(this.value)"></label>
 
 <div class="actions"><button onclick="save()">Save</button></div>
 <div id="st"></div>
-<p><a href="/">&#8592; Home</a></p>
+<p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 
 <script>
 function $(id){return document.getElementById(id);}
@@ -208,15 +229,22 @@ function updateSections(){
   $('sec-countdown').style.display=m===0?'':'none';
   $('sec-countup').style.display=m===1?'':'none';
   $('sec-clock').style.display=m===2?'':'none';
+  $('sec-friday').style.display=m===3?'':'none';
+  var hf=$('sec-hour-fmt');
+  if(m===2){$('sec-clock').appendChild(hf);}
+  else if(m===3){var a=$('fri-hour-anchor');a.parentNode.insertBefore(hf,a.nextSibling);}
+  hf.style.display=(m===2||m===3)?'':'none';
 }
 function modeNameFromValue(value){
-  return ['countdown','countup','clock'][parseInt(value)]||'countdown';
+  return ['countdown','countup','clock','friday'][parseInt(value)]||'countdown';
 }
 function modeValueFromName(name){
-  return {countdown:0,countup:1,clock:2}[name]||0;
+  return {countdown:0,countup:1,clock:2,friday:3}[name]||0;
 }
-function toggleStart(cb){
-  $('start').disabled=cb.checked;
+function setStartNow(){
+  fetch('/api/time').then(function(r){return r.json();}).then(function(d){
+    $('start').value=dtl(d.dateTime);
+  }).catch(function(){});
 }
 var briteTimer=null;
 function previewBrightness(value){
@@ -237,13 +265,18 @@ Promise.all([
   fill('sel-cd',f.countdown,countdown.format||0,'format','display.modes.countdown.format');
   fill('sel-cu',f.countup,countup.format||0,'format','display.modes.countup.format');
   fill('sel-ck',f.clock,clock.format||1,'format','display.modes.clock.format');
+  var friday=modes.friday||{};
+  fill('sel-fri-ck',f.clock,friday.clockFormat||0,'format','display.modes.friday.clockFormat');
+  fill('sel-fri-cd',f.countdown,friday.toFridaySunsetFormat||0,'format','display.modes.friday.toFridaySunsetFormat');
+  fill('sel-fri-hv',f.countdown,friday.toSaturdaySunsetFormat||0,'format','display.modes.friday.toSaturdaySunsetFormat');
   setFieldFromConfig('format','mode','display.activeMode',display.activeMode,modeValueFromName(display.activeMode));
   setFieldFromConfig('format','target','display.modes.countdown.end',countdown.end,dtl(countdown.end));
-  var isNow=(countup.start==='now'||!countup.start);
-  $('startNow').checked=isNow;
-  if(!isNow)setFieldFromConfig('format','start','display.modes.countup.start',countup.start,dtl(countup.start));
-  else $('start').value='';
-  $('start').disabled=isNow;
+  if(countup.start&&countup.start!=='now'){
+    setFieldFromConfig('format','start','display.modes.countup.start',countup.start,dtl(countup.start));
+  } else {
+    setStartNow();
+  }
+  $('hr12').checked=!!display.clock12Hour;$('hr24').checked=!display.clock12Hour;
   var b=display.brightness!==undefined?display.brightness:4;
   setFieldFromConfig('format','brite','display.brightness',display.brightness,b);
   $('briteVal').textContent=b;
@@ -251,15 +284,20 @@ Promise.all([
 }).catch(function(){$('st').textContent='Load failed';});
 
 function save(){
-  var isNow=$('startNow').checked;
   var body={
     display:{
       activeMode:modeNameFromValue($('mode').value),
+      clock12Hour:$('hr12').checked,
       brightness:parseInt($('brite').value),
       modes:{
         countdown:{format:parseInt($('sel-cd').value),end:fdtOrUndef($('target').value)},
-        countup:{format:parseInt($('sel-cu').value),start:isNow?'now':fdt($('start').value)},
-        clock:{format:parseInt($('sel-ck').value)}
+        countup:{format:parseInt($('sel-cu').value),start:fdt($('start').value)},
+        clock:{format:parseInt($('sel-ck').value)},
+        friday:{
+          clockFormat:parseInt($('sel-fri-ck').value),
+          toFridaySunsetFormat:parseInt($('sel-fri-cd').value),
+          toSaturdaySunsetFormat:parseInt($('sel-fri-hv').value)
+        }
       }
     }
   };
@@ -327,7 +365,7 @@ a{color:#6af;font-size:.9em}
 <label class="field"><span>AP Password</span><input type="password" id="apPw" placeholder="blank keeps current"></label>
 <div class="actions"><button onclick="saveAp()">Save AP &amp; Reboot</button></div>
 <div id="st"></div>
-<p><a href="/">&#8592; Home</a></p>
+<p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 <script>
 function $(id){return document.getElementById(id);}
 function reportFieldMismatch(page,field,configValue,acceptedValue,reason){
@@ -461,7 +499,7 @@ button.cancel{padding:6px 10px;font-size:.85rem;background:#444;color:#fff;borde
 <div id="upload-warning" style="display:none" class="upload-warn"><span id="upload-warn-msg"></span><button class="del" onclick="confirmOverwrite()">Overwrite</button><button class="cancel" onclick="cancelUpload()">Cancel</button></div>
 <div id="upload-st"></div>
 <div id="st"></div>
-<p><a href="/">&#8592; Home</a></p>
+<p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 <script>
 var currentFiles=[];
 function $(id){return document.getElementById(id);}
@@ -595,7 +633,6 @@ a{color:#6af;font-size:1rem}
 <div class="now">
   <table class="timetable">
     <colgroup><col class="rowLabel"><col><col class="dstLabelCol"><col class="dstValueCol"></colgroup>
-    <tr><th class="label"></th><th colspan="3">Browser</th></tr>
     <tr><td class="label">Time</td><td class="value" colspan="3" id="browserTime">--</td></tr>
     <tr><td class="label">Date</td><td class="value" colspan="3" id="browserDate">--</td></tr>
     <tr><td class="label">Timezone</td><td class="value" colspan="3" id="browserTimezone">--</td></tr>
@@ -608,7 +645,6 @@ a{color:#6af;font-size:1rem}
 <div class="now">
   <table class="timetable">
     <colgroup><col class="rowLabel"><col><col class="dstLabelCol"><col class="dstValueCol"></colgroup>
-    <tr><th class="label"></th><th colspan="3">Device</th></tr>
     <tr><td class="label">Time</td><td colspan="3"><input type="time" id="deviceTime" step="1"></td></tr>
     <tr><td class="label">Date</td><td colspan="3"><input type="date" id="deviceDate"></td></tr>
     <tr><td class="label">Timezone</td><td colspan="3"><input type="text" id="deviceTimezone" maxlength="39"></td></tr>
@@ -618,7 +654,7 @@ a{color:#6af;font-size:1rem}
 <div class="actions"><button onclick="setValuesExplicitly()">Set Time Explicitly.</button></div>
 </div>
 <div id="st"></div>
-<p><a href="/">&#8592; Home</a></p>
+<p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 <script>
 function $(id){return document.getElementById(id);}
 function reportFieldMismatch(page,field,configValue,acceptedValue,reason){
@@ -785,7 +821,7 @@ a{color:#6af;font-size:1rem}
 <div class="actions"><button onclick="computeSunset()">Compute sunset</button></div>
 <div id="result"></div>
 <div id="st"></div>
-<p><a href="/">&#8592; Home</a></p>
+<p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 <script>
 function $(id){return document.getElementById(id);}
 function setStatus(s){$('st').textContent=s||'';}
@@ -929,7 +965,7 @@ a{color:#6af;font-size:.9em}
 
 <div class="actions saveActions"><button onclick="save()">Save Messages</button></div>
 <div id="st"></div>
-<p><a href="/">&#8592; Home</a></p>
+<p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 <script>
 function $(id){return document.getElementById(id);}
 function reportFieldMismatch(page,field,configValue,acceptedValue,reason){
@@ -1085,7 +1121,7 @@ a{color:#6af;font-size:.9em}
   <button onclick="save()">Save Location</button>
 </div>
 <div id="st"></div>
-<p><a href="/settings">&#8592; Settings</a></p>
+<p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 <script>
 function $(id){return document.getElementById(id);}
 function reportFieldMismatch(page,field,configValue,acceptedValue,reason){

@@ -5,6 +5,7 @@
 #include "config.h"
 #include "display.h"
 #include "display_manager.h"
+#include "friday_mode.h"
 #include "hardware.h"
 #include "log.h"
 #include "page_manager.h"
@@ -104,6 +105,7 @@ void setup() {
   LOG_PRINTF("Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
 
   displayManager.begin(cs);
+  fridayModeApplySettings(cs);
   if (cs.splashMessage[0] != '\0') {
     displayManager.showSplash(cs.splashMessage);
   }
@@ -126,6 +128,7 @@ void loop() {
   buttonTick();
   processButtonEvents();
   if (rtcProcessSqwPulse()) {
+    fridayModeTick(rtcGetNow());
     LOG_PRINTF("SQW: state=%s heap=%u maxBlock=%u\n",
                displayManager.currentStateName(),
                ESP.getFreeHeap(),

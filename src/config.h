@@ -31,6 +31,10 @@ struct ClockConfig {
   uint8_t clockFmt;      // index into kClockFormats
   uint8_t brightness;    // TM1637 brightness 0-7
 
+  uint8_t fridayClockFmt;          // kFmtGroupClock index for clock phase (Sun midnight – Fri midnight)
+  uint8_t fridayToFridaySunsetFmt; // kFmtGroupCountdown index for Fri midnight – Fri sunset
+  uint8_t fridayToSatSunsetFmt;    // kFmtGroupCountdown index for Fri sunset – Sat sunset
+
   char countdownDatetime[20]; // "YYYY-MM-DD HH:MM:SS"
   char countupDatetime[20];   // "YYYY-MM-DD HH:MM:SS" or "now"
 
@@ -43,6 +47,7 @@ struct ClockConfig {
   char timezone[40];          // IANA timezone, e.g. "America/New_York".
   int16_t utcOffsetMinutes;   // Current browser offset fallback.
   bool dst;                    // True when daylight saving time is active.
+  bool clockUse12Hour;         // True for 12-hour display (1–12); false for 24-hour (0–23).
 };
 
 // Returns a ClockConfig initialised to sensible defaults.

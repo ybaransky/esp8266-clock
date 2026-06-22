@@ -16,7 +16,6 @@ class PageApi {
   void sendHtml(PGM_P html);
 
  private:
-  static const char* modeName(PersistentMode mode);
   static void networkInfoFromStatus(const WifiRuntimeStatus& status,
                                     String& ssid,
                                     String& ip);

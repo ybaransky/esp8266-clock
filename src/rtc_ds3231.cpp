@@ -2,7 +2,6 @@
 
 #include "hardware.h"
 #include "log.h"
-#include <RTClib.h>
 #include <Wire.h>
 
 namespace {
