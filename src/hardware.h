@@ -37,8 +37,8 @@ namespace Hardware {
 // ---------------------------------------------------------------------------
 
 struct I2CScanResult {
-	const uint8_t *addresses;
-	size_t count;
+	const uint8_t *addresses;  // Addresses found during the last scan.
+	size_t count;              // Number of valid entries in addresses.
 };
 
 class I2CBusScanner {
@@ -53,8 +53,8 @@ private:
 
 	static const char *deviceNameForAddress(uint8_t address);
 
-	uint8_t lastScanAddresses_[ADDRESS_CAPACITY] = {};
-	size_t lastScanCount_ = 0;
+	uint8_t lastScanAddresses_[ADDRESS_CAPACITY] = {};  // Cached scan addresses.
+	size_t lastScanCount_ = 0;                           // Cached address count.
 };
 
 extern I2CBusScanner i2cBusScanner;

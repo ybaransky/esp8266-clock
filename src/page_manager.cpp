@@ -11,16 +11,8 @@ void copyPageRow(DisplayPage& page, uint8_t row, const char* text) {
 }
 
 char displaySafeChar(char value) {
-  if (value >= 'a' && value <= 'z') {
-    return static_cast<char>(value - 'a' + 'A');
-  }
-  if ((value >= 'A' && value <= 'Z') || (value >= '0' && value <= '9')) {
-    return value;
-  }
-  if (value == ' ' || value == '-') {
-    return value;
-  }
-  return '-';
+  const uint8_t code = static_cast<uint8_t>(value);
+  return (code >= 32 && code <= 126) ? value : '-';
 }
 
 uint8_t appendSsidPages(DisplayPage* pages, uint8_t pageCount, const String& ssid) {
@@ -39,7 +31,7 @@ uint8_t appendSsidPages(DisplayPage* pages, uint8_t pageCount, const String& ssi
   for (uint8_t offset = 0;
        offset < textLength && pageCount < kMaxDisplayPages;
        offset += 8) {
-    copyPageRow(pages[pageCount], 0, "SSID");
+    copyPageRow(pages[pageCount], 0, "SSid");
     copyPageRow(pages[pageCount], 1, text + offset);
     copyPageRow(pages[pageCount], 2, offset + 4 < textLength ? text + offset + 4 : "");
     ++pageCount;

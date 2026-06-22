@@ -19,7 +19,7 @@ class WifiApi {
   void handleConnect();
 
  private:
-  ESP8266WebServer& server_;
-  HttpResponder& responder_;
-  RebootScheduler& rebootScheduler_;
+  ESP8266WebServer& server_;       // Source of WiFi API request bodies.
+  HttpResponder& responder_;       // Sends WiFi API responses.
+  RebootScheduler& rebootScheduler_;  // Schedules reboot after AP config changes.
 };

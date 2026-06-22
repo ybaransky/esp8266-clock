@@ -602,7 +602,7 @@ a{color:#6af;font-size:1rem}
     <tr><td class="label">UTC offset</td><td class="value" id="browserOffset">--</td><td class="label">DST</td><td class="value" id="browserDst">--</td></tr>
   </table>
 </div>
-<div class="actions"><button onclick="setValuesFromBrowser()">Set Values from Browser</button></div>
+<div class="actions"><button onclick="setValuesFromBrowser()">Set Time from Browser</button></div>
 </div>
 <div class="syncPanel">
 <div class="now">
@@ -615,7 +615,7 @@ a{color:#6af;font-size:1rem}
     <tr><td class="label">UTC offset</td><td><input type="number" id="deviceOffset" min="-840" max="840" step="1"></td><td class="label">DST</td><td><input type="checkbox" id="deviceDst"></td></tr>
   </table>
 </div>
-<div class="actions"><button onclick="setValuesExplicitly()">Set Values Explicitly.</button></div>
+<div class="actions"><button onclick="setValuesExplicitly()">Set Time Explicitly.</button></div>
 </div>
 <div id="st"></div>
 <p><a href="/">&#8592; Home</a></p>
@@ -686,6 +686,13 @@ function setStatus(s,clearMs){
   $('st').textContent=s||'';
   if(clearMs)statusTimer=setTimeout(function(){statusTimer=null;$('st').textContent='';},clearMs);
 }
+function setDeviceFields(dateText,timeText,timezoneName,offsetValue,dstValue){
+  $('deviceDate').value=dateText;
+  $('deviceTime').value=timeText;
+  $('deviceTimezone').value=timezoneName||browserTimezone();
+  $('deviceOffset').value=offsetValue;
+  $('deviceDst').checked=!!dstValue;
+}
 function syncDevice(dateText,timeText,timezoneName,offsetValue,dstValue){
   var off=parseInt(offsetValue,10);
   if(!isFinite(off)||off<-840||off>840){setStatus('Offset must be -840 to 840');return Promise.reject('offset');}
@@ -698,12 +705,9 @@ function syncDevice(dateText,timeText,timezoneName,offsetValue,dstValue){
       return fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({time:{timezone:{name:timezoneName||browserTimezone(),utcOffsetMinutes:off},dst:!!dstValue}})
       }).then(function(r){return r.json();}).then(function(t){
+        if(t.error){setStatus(t.error);return;}
         setStatus(t.message||d.message);
-        $('deviceDate').value=dateText;
-        $('deviceTime').value=timeText;
-        $('deviceTimezone').value=timezoneName||browserTimezone();
-        $('deviceOffset').value=off;
-        $('deviceDst').checked=!!dstValue;
+        setDeviceFields(dateText,timeText,timezoneName,off,dstValue);
       });
     })
     .catch(function(e){if(e!=='offset'&&e!=='datetime')setStatus('Time sync failed');});
@@ -793,12 +797,12 @@ function loadInitialValues(){
     fetch('/api/time').then(function(r){return r.json();})
   ]).then(function(values){
     var cfg=values[0]||{}, now=values[1]||{};
-    var location=cfg.location||{};
+    var sunset=cfg.sunset||{};
     var time=cfg.time||{};
     var timezone=time.timezone||{};
-    $('lat').value=location.latitude!==undefined?location.latitude:'';
-    $('lon').value=location.longitude!==undefined?location.longitude:'';
-    $('zip').value=location.zipcode||'';
+    $('lat').value=sunset.latitude!==undefined?sunset.latitude:'';
+    $('lon').value=sunset.longitude!==undefined?sunset.longitude:'';
+    $('zip').value=sunset.zipcode||'';
     $('date').value=now.date||'';
     $('timezone').value=timezone.name||'';
     $('offset').value=timezone.utcOffsetMinutes!==undefined?timezone.utcOffsetMinutes:browserOffsetMinutes();
@@ -852,11 +856,19 @@ function computeSunset(){
     setStatus(e.message);
     return;
   }
-  fetch('/api/sunset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-    .then(function(r){return r.json();}).then(function(d){
+  fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    sunset:{
+      zipcode:$('zip').value,
+      latitude:body.location.latitude,
+      longitude:body.location.longitude
+    }
+  })}).then(function(r){return r.json();}).then(function(saved){
+    if(saved.error)throw new Error(saved.error);
+    return fetch('/api/sunset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  }).then(function(r){return r.json();}).then(function(d){
       if(d.error){setStatus(d.error);return;}
       setResult(d.time);
-    }).catch(function(){setStatus('Sunset calculation failed');});
+    }).catch(function(e){setStatus(e.message||'Sunset calculation failed');});
 }
 loadInitialValues();
 </script>

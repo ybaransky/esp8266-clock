@@ -5,6 +5,7 @@
 
 #include "clock_state.h"
 #include "config.h"
+#include "config_serializer.h"
 #include "config_validation.h"
 #include "format.h"
 #include "log.h"
@@ -15,18 +16,6 @@
 namespace {
 
 constexpr uint32_t kRebootDelayMs = 1500;
-
-const char* persistentModeName(PersistentMode mode) {
-  switch (mode) {
-    case kPersistentCountdown:
-      return "countdown";
-    case kPersistentCountup:
-      return "countup";
-    case kPersistentClock:
-      return "clock";
-  }
-  return "countdown";
-}
 
 bool isLeapYear(int year) {
   return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
@@ -79,7 +68,121 @@ bool parseTimeOfDay(const char* text, int* hour, int* minute, int* second) {
          *second >= 0 && *second <= 59;
 }
 
+// Returns false and logs an error if zipcode is present but invalid.
+bool applyZipcode(const char* label, const char* zipcode,
+                  char* dest, size_t destSize) {
+  if (zipcode == nullptr || (zipcode[0] != '\0' && !isValidZipcode(zipcode))) {
+    LOG_PRINTF("/api/config save failed: invalid %s zipcode=\"%s\"\n",
+               label, zipcode == nullptr ? "(null)" : zipcode);
+    return false;
+  }
+  snprintf(dest, destSize, "%s", zipcode);
+  return true;
+}
+
 }  // namespace
+
+// -- handleSaveConfig sub-helpers ----------------------------------------------
+
+// Returns false if activeMode is provided but invalid.
+static bool applyDisplayFields(JsonVariant display, JsonVariant modes,
+                               JsonVariant messages, ClockConfig& cfg) {
+  if (!display["activeMode"].isNull()) {
+    PersistentMode nextMode;
+    const String mode = display["activeMode"] | "";
+    if (!persistentModeFromName(mode, &nextMode)) {
+      LOG_PRINTF("/api/config save failed: invalid activeMode=\"%s\"\n", mode.c_str());
+      return false;
+    }
+    cfg.activeMode = nextMode;
+  }
+  if (!modes["countdown"]["format"].isNull()) {
+    cfg.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown,
+                                           modes["countdown"]["format"].as<int>(),
+                                           cfg.countdownFmt);
+  }
+  if (!modes["countup"]["format"].isNull()) {
+    cfg.countupFmt = sanitizeFormatIndex(kFmtGroupCountUp,
+                                         modes["countup"]["format"].as<int>(),
+                                         cfg.countupFmt);
+  }
+  if (!modes["clock"]["format"].isNull()) {
+    cfg.clockFmt = sanitizeFormatIndex(kFmtGroupClock,
+                                       modes["clock"]["format"].as<int>(),
+                                       cfg.clockFmt);
+  }
+  if (!display["brightness"].isNull()) {
+    cfg.brightness = sanitizeBrightness(display["brightness"].as<int>());
+  }
+  if (!modes["countdown"]["end"].isNull()) {
+    snprintf(cfg.countdownDatetime, sizeof(cfg.countdownDatetime),
+             "%s", modes["countdown"]["end"].as<const char*>());
+  }
+  if (!modes["countup"]["start"].isNull()) {
+    snprintf(cfg.countupDatetime, sizeof(cfg.countupDatetime),
+             "%s", modes["countup"]["start"].as<const char*>());
+  }
+  if (!messages["splash"].isNull()) {
+    sanitizeDisplayMessage(messages["splash"].as<const char*>(),
+                           cfg.splashMessage, sizeof(cfg.splashMessage));
+  }
+  if (!messages["final"].isNull()) {
+    sanitizeDisplayMessage(messages["final"].as<const char*>(),
+                           cfg.finalMessage, sizeof(cfg.finalMessage));
+  }
+  return true;
+}
+
+// Returns false if a zipcode field is present but malformed.
+static bool applyLocationFields(JsonVariant location, ClockConfig& cfg) {
+  if (!location["latitude"].isNull()) {
+    cfg.location.latitude = location["latitude"].as<float>();
+  }
+  if (!location["longitude"].isNull()) {
+    cfg.location.longitude = location["longitude"].as<float>();
+  }
+  if (!location["zipcode"].isNull()) {
+    if (!applyZipcode("location", location["zipcode"].as<const char*>(),
+                      cfg.location.zipcode, sizeof(cfg.location.zipcode))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Returns false if a zipcode field is present but malformed.
+static bool applySunsetFields(JsonVariant sunset, ClockConfig& cfg) {
+  if (!sunset["latitude"].isNull()) {
+    cfg.sunsetTest.latitude = sunset["latitude"].as<float>();
+  }
+  if (!sunset["longitude"].isNull()) {
+    cfg.sunsetTest.longitude = sunset["longitude"].as<float>();
+  }
+  if (!sunset["zipcode"].isNull()) {
+    if (!applyZipcode("sunset", sunset["zipcode"].as<const char*>(),
+                      cfg.sunsetTest.zipcode, sizeof(cfg.sunsetTest.zipcode))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void applyTimezoneFields(JsonVariant time, ClockConfig& cfg) {
+  JsonVariant timezone = time["timezone"];
+  if (!timezone["name"].isNull()) {
+    sanitizePrintableText(timezone["name"].as<const char*>(),
+                          cfg.timezone, sizeof(cfg.timezone));
+  }
+  if (!timezone["utcOffsetMinutes"].isNull()) {
+    cfg.utcOffsetMinutes =
+        sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
+  }
+  if (!time["dst"].isNull()) {
+    cfg.dst = time["dst"].as<bool>();
+  }
+}
+
+// -- API handlers --------------------------------------------------------------
 
 void ConfigApi::handleDemoTest() {
   if (server_.hasArg("plain") && server_.arg("plain").length() > 0) {
@@ -234,90 +337,32 @@ void ConfigApi::handleSaveConfig() {
   }
 
   ClockConfig clockConfig = configManager.loadClockConfig();
-  JsonVariant display = doc["display"];
-  JsonVariant modes = display["modes"];
-  JsonVariant messages = display["messages"];
-  JsonVariant time = doc["time"];
-  JsonVariant timezone = time["timezone"];
-  JsonVariant location = doc["location"];
-  JsonVariant wifi = doc["wifi"];
-  JsonVariant station = wifi["station"];
+  JsonVariant display     = doc["display"];
+  JsonVariant modes       = display["modes"];
+  JsonVariant messages    = display["messages"];
+  JsonVariant time        = doc["time"];
+  JsonVariant location    = doc["location"];
+  JsonVariant sunset      = doc["sunset"];
+  JsonVariant wifi        = doc["wifi"];
+  JsonVariant station     = wifi["station"];
   JsonVariant accessPoint = wifi["accessPoint"];
 
-  if (!display["activeMode"].isNull()) {
-    PersistentMode nextMode;
-    const String mode = display["activeMode"] | "";
-    if (!persistentModeFromName(mode, &nextMode)) {
-      LOG_PRINTF("/api/config save failed: invalid activeMode=\"%s\"\n", mode.c_str());
-      responder_.sendJson(400, "{\"error\":\"Invalid active mode\"}");
-      return;
-    }
-    clockConfig.activeMode = nextMode;
+  if (!applyDisplayFields(display, modes, messages, clockConfig)) {
+    responder_.sendJson(400, "{\"error\":\"Invalid active mode\"}");
+    return;
   }
-  if (!modes["countdown"]["format"].isNull()) {
-    clockConfig.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown,
-                                                   modes["countdown"]["format"].as<int>(),
-                                                   clockConfig.countdownFmt);
+
+  if (!applyLocationFields(location, clockConfig)) {
+    responder_.sendJson(400, "{\"error\":\"ZIP code must be 5 digits\"}");
+    return;
   }
-  if (!modes["countup"]["format"].isNull()) {
-    clockConfig.countupFmt = sanitizeFormatIndex(kFmtGroupCountUp,
-                                                 modes["countup"]["format"].as<int>(),
-                                                 clockConfig.countupFmt);
+
+  if (!applySunsetFields(sunset, clockConfig)) {
+    responder_.sendJson(400, "{\"error\":\"ZIP code must be 5 digits\"}");
+    return;
   }
-  if (!modes["clock"]["format"].isNull()) {
-    clockConfig.clockFmt = sanitizeFormatIndex(kFmtGroupClock,
-                                               modes["clock"]["format"].as<int>(),
-                                               clockConfig.clockFmt);
-  }
-  if (!display["brightness"].isNull()) {
-    clockConfig.brightness = sanitizeBrightness(display["brightness"].as<int>());
-  }
-  if (!modes["countdown"]["end"].isNull()) {
-    snprintf(clockConfig.countdownDatetime, sizeof(clockConfig.countdownDatetime),
-             "%s", modes["countdown"]["end"].as<const char*>());
-  }
-  if (!modes["countup"]["start"].isNull()) {
-    snprintf(clockConfig.countupDatetime, sizeof(clockConfig.countupDatetime),
-             "%s", modes["countup"]["start"].as<const char*>());
-  }
-  if (!messages["splash"].isNull()) {
-    sanitizeDisplayMessage(messages["splash"].as<const char*>(),
-                           clockConfig.splashMessage,
-                           sizeof(clockConfig.splashMessage));
-  }
-  if (!messages["final"].isNull()) {
-    sanitizeDisplayMessage(messages["final"].as<const char*>(),
-                           clockConfig.finalMessage,
-                           sizeof(clockConfig.finalMessage));
-  }
-  if (!location["latitude"].isNull()) {
-    clockConfig.latitude = location["latitude"].as<float>();
-  }
-  if (!location["longitude"].isNull()) {
-    clockConfig.longitude = location["longitude"].as<float>();
-  }
-  if (!location["zipcode"].isNull()) {
-    const char* zipcode = location["zipcode"].as<const char*>();
-    if (zipcode == nullptr || (zipcode[0] != '\0' && !isValidZipcode(zipcode))) {
-      LOG_PRINTF("/api/config save failed: invalid zipcode=\"%s\"\n",
-                 zipcode == nullptr ? "(null)" : zipcode);
-      responder_.sendJson(400, "{\"error\":\"ZIP code must be 5 digits\"}");
-      return;
-    }
-    snprintf(clockConfig.zipcode, sizeof(clockConfig.zipcode), "%s", zipcode);
-  }
-  if (!timezone["name"].isNull()) {
-    sanitizePrintableText(timezone["name"].as<const char*>(),
-                          clockConfig.timezone,
-                          sizeof(clockConfig.timezone));
-  }
-  if (!timezone["utcOffsetMinutes"].isNull()) {
-    clockConfig.utcOffsetMinutes =
-        sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
-  }
-  if (!time["dst"].isNull()) {
-    clockConfig.dst = time["dst"].as<bool>();
-  }
+
+  applyTimezoneFields(time, clockConfig);
 
   configManager.saveClockConfig(clockConfig);
   clockApplySettings(configManager.sanitizeClockConfig(clockConfig));
@@ -326,18 +371,10 @@ void ConfigApi::handleSaveConfig() {
   if (!station["ssid"].isNull() || !station["password"].isNull() ||
       !accessPoint["ssid"].isNull() || !accessPoint["password"].isNull()) {
     WifiConfig wifiConfig = configManager.loadWifiConfig();
-    if (!station["ssid"].isNull()) {
-      wifiConfig.staSsid = station["ssid"].as<String>();
-    }
-    if (!station["password"].isNull()) {
-      wifiConfig.staPassword = station["password"].as<String>();
-    }
-    if (!accessPoint["ssid"].isNull()) {
-      wifiConfig.apSsid = accessPoint["ssid"].as<String>();
-    }
-    if (!accessPoint["password"].isNull()) {
-      wifiConfig.apPassword = accessPoint["password"].as<String>();
-    }
+    if (!station["ssid"].isNull())      wifiConfig.staSsid     = station["ssid"].as<String>();
+    if (!station["password"].isNull())  wifiConfig.staPassword = station["password"].as<String>();
+    if (!accessPoint["ssid"].isNull())  wifiConfig.apSsid      = accessPoint["ssid"].as<String>();
+    if (!accessPoint["password"].isNull()) wifiConfig.apPassword = accessPoint["password"].as<String>();
     configManager.saveWifiConfig(wifiConfig);
     wifiChanged = true;
   }
@@ -374,24 +411,19 @@ void ConfigApi::handleSunset() {
   if (!isfinite(latitude) || latitude < -90.0f || latitude > 90.0f ||
       !isfinite(longitude) || longitude < -180.0f || longitude > 180.0f) {
     LOG_PRINTF("/api/sunset failed: invalid coordinates lat=%.6f lon=%.6f\n",
-               latitude,
-               longitude);
+               latitude, longitude);
     responder_.sendJson(400, "{\"error\":\"Latitude or longitude is invalid\"}");
     return;
   }
 
-  int year = 0;
-  int month = 0;
-  int day = 0;
+  int year = 0, month = 0, day = 0;
   if (!parseIsoDate(dateTextArg, &year, &month, &day)) {
     LOG_PRINTF("/api/sunset failed: invalid date=\"%s\"\n", dateTextArg);
     responder_.sendJson(400, "{\"error\":\"Date is invalid\"}");
     return;
   }
 
-  int hour = 0;
-  int minute = 0;
-  int second = 0;
+  int hour = 0, minute = 0, second = 0;
   if (!parseTimeOfDay(timeTextArg, &hour, &minute, &second)) {
     LOG_PRINTF("/api/sunset failed: invalid time=\"%s\"\n", timeTextArg);
     responder_.sendJson(400, "{\"error\":\"Time is invalid\"}");
@@ -406,45 +438,25 @@ void ConfigApi::handleSunset() {
   }
   char timezone[40];
   sanitizePrintableText(doc["time"]["timezone"]["name"] | "",
-                        timezone,
-                        sizeof(timezone));
+                        timezone, sizeof(timezone));
   const bool dst = doc["time"]["dst"] | false;
 
-  const Location location{latitude,
-                          longitude,
-                          static_cast<int16_t>(utcOffsetMinutes)};
+  const Location location{latitude, longitude, static_cast<int16_t>(utcOffsetMinutes)};
   const DateTime calculatorDate(year, month, day, 0, 0, 0);
   LOG_PRINTF("Sunset calculator args: localDate=%04d-%02d-%02d latitude=%.6f longitude=%.6f utcOffsetMinutes=%d\n",
-             calculatorDate.year(),
-             calculatorDate.month(),
-             calculatorDate.day(),
-             location.latitude,
-             location.longitude,
-             location.utcOffsetMinutes);
+             calculatorDate.year(), calculatorDate.month(), calculatorDate.day(),
+             location.latitude, location.longitude, location.utcOffsetMinutes);
   const DateTime sunset = calculateSunset(calculatorDate, location);
   LOG_PRINTF("Sunset calculator response: localSunset=%04d-%02d-%02d %02d:%02d:%02d\n",
-             sunset.year(),
-             sunset.month(),
-             sunset.day(),
-             sunset.hour(),
-             sunset.minute(),
-             sunset.second());
+             sunset.year(), sunset.month(), sunset.day(),
+             sunset.hour(), sunset.minute(), sunset.second());
 
   LOG_PRINTF("/api/sunset success: lat=%.6f lon=%.6f date=%04d-%02d-%02d offset=%d dst=%s sunset=%02d:%02d:%02d\n",
-             latitude,
-             longitude,
-             year,
-             month,
-             day,
-             utcOffsetMinutes,
-             dst ? "true" : "false",
-             sunset.hour(),
-             sunset.minute(),
-             sunset.second());
+             latitude, longitude, year, month, day,
+             utcOffsetMinutes, dst ? "true" : "false",
+             sunset.hour(), sunset.minute(), sunset.second());
 
-  char dateText[16];
-  char timeText[12];
-  char dateTimeText[28];
+  char dateText[16], timeText[12], dateTimeText[28];
   snprintf(dateText, sizeof(dateText), "%04d-%02d-%02d",
            sunset.year(), sunset.month(), sunset.day());
   snprintf(timeText, sizeof(timeText), "%02d:%02d:%02d",
@@ -452,12 +464,12 @@ void ConfigApi::handleSunset() {
   snprintf(dateTimeText, sizeof(dateTimeText), "%s %s", dateText, timeText);
 
   JsonDocument response;
-  response["date"] = dateText;
-  response["time"] = timeText;
-  response["dateTime"] = dateTimeText;
-  response["timezone"] = timezone;
+  response["date"]             = dateText;
+  response["time"]             = timeText;
+  response["dateTime"]         = dateTimeText;
+  response["timezone"]         = timezone;
   response["utcOffsetMinutes"] = utcOffsetMinutes;
-  response["dst"] = dst;
+  response["dst"]              = dst;
   responder_.sendJsonDocument(200, response);
 }
 
@@ -479,9 +491,7 @@ void ConfigApi::handleZipcodeLookup() {
   }
 
   LOG_PRINTF("/api/zipcode/lookup success: zip=\"%s\" lat=%.6f lon=%.6f\n",
-             location.zipcode,
-             location.latitude,
-             location.longitude);
+             location.zipcode, location.latitude, location.longitude);
   char json[96];
   snprintf(json, sizeof(json),
            "{\"zipcode\":\"%s\",\"latitude\":%.6f,\"longitude\":%.6f}",
@@ -498,68 +508,25 @@ void ConfigApi::handleFieldMismatch() {
     return;
   }
 
-  char page[32];
-  char field[32];
-  char configValue[80];
-  char acceptedValue[80];
-  char reason[80];
-  sanitizePrintableText(doc["page"] | "", page, sizeof(page));
-  sanitizePrintableText(doc["field"] | "", field, sizeof(field));
-  sanitizePrintableText(doc["configValue"] | "", configValue, sizeof(configValue));
+  char page[32], field[32], configValue[80], acceptedValue[80], reason[80];
+  sanitizePrintableText(doc["page"]          | "", page,          sizeof(page));
+  sanitizePrintableText(doc["field"]         | "", field,         sizeof(field));
+  sanitizePrintableText(doc["configValue"]   | "", configValue,   sizeof(configValue));
   sanitizePrintableText(doc["acceptedValue"] | "", acceptedValue, sizeof(acceptedValue));
-  sanitizePrintableText(doc["reason"] | "", reason, sizeof(reason));
+  sanitizePrintableText(doc["reason"]        | "", reason,        sizeof(reason));
 
   LOG_PRINTF("FIELD MISMATCH page=\"%s\" field=\"%s\" config=\"%s\" accepted=\"%s\" reason=\"%s\"\n",
-             page,
-             field,
-             configValue,
-             acceptedValue,
-             reason);
+             page, field, configValue, acceptedValue, reason);
   responder_.sendJson(200, "{\"message\":\"logged\"}");
 }
 
 void ConfigApi::populateConfigJson(JsonDocument& doc) {
   const ClockConfig clockConfig = configManager.loadClockConfig();
-  const WifiConfig wifiConfig = configManager.loadWifiConfig();
+  const WifiConfig  wifiConfig  = configManager.loadWifiConfig();
   logConfigResponse(clockConfig, wifiConfig);
 
-  JsonObject display = doc["display"].to<JsonObject>();
-  display["activeMode"] = persistentModeName(clockConfig.activeMode);
-  display["brightness"] = clockConfig.brightness;
-
-  JsonObject messages = display["messages"].to<JsonObject>();
-  messages["splash"] = String(clockConfig.splashMessage);
-  messages["final"] = String(clockConfig.finalMessage);
-
-  JsonObject modes = display["modes"].to<JsonObject>();
-  JsonObject countdown = modes["countdown"].to<JsonObject>();
-  countdown["format"] = clockConfig.countdownFmt;
-  countdown["end"] = String(clockConfig.countdownDatetime);
-
-  JsonObject countup = modes["countup"].to<JsonObject>();
-  countup["format"] = clockConfig.countupFmt;
-  countup["start"] = String(clockConfig.countupDatetime);
-
-  JsonObject clock = modes["clock"].to<JsonObject>();
-  clock["format"] = clockConfig.clockFmt;
-
-  JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
-  timezone["name"] = String(clockConfig.timezone);
-  timezone["utcOffsetMinutes"] = clockConfig.utcOffsetMinutes;
-  doc["time"]["dst"] = clockConfig.dst;
-
-  JsonObject location = doc["location"].to<JsonObject>();
-  location["zipcode"] = String(clockConfig.zipcode);
-  location["latitude"] = clockConfig.latitude;
-  location["longitude"] = clockConfig.longitude;
-
-  JsonObject wifi = doc["wifi"].to<JsonObject>();
-  JsonObject station = wifi["station"].to<JsonObject>();
-  station["ssid"] = wifiConfig.staSsid;
-
-  JsonObject accessPoint = wifi["accessPoint"].to<JsonObject>();
-  accessPoint["ssid"] = wifiConfig.apSsid;
-  accessPoint["password"] = wifiConfig.apPassword;
+  serializeClockConfig(doc, clockConfig);
+  serializeWifiStatus(doc, wifiConfig);
 }
 
 void ConfigApi::logConfigResponse(const ClockConfig& clockConfig,
@@ -576,10 +543,13 @@ void ConfigApi::logConfigResponse(const ClockConfig& clockConfig,
   LOG_PRINTF("/api/config response: splashMessage=\"%s\" finalMessage=\"%s\"\n",
              clockConfig.splashMessage,
              clockConfig.finalMessage);
-  LOG_PRINTF("/api/config response: latitude=%.6f longitude=%.6f zipcode=\"%s\" timezone=\"%s\" utcOffsetMinutes=%d dst=%s\n",
-             clockConfig.latitude,
-             clockConfig.longitude,
-             clockConfig.zipcode,
+  LOG_PRINTF("/api/config response: latitude=%.6f longitude=%.6f zipcode=\"%s\" sunsetLatitude=%.6f sunsetLongitude=%.6f sunsetZipcode=\"%s\" timezone=\"%s\" utcOffsetMinutes=%d dst=%s\n",
+             clockConfig.location.latitude,
+             clockConfig.location.longitude,
+             clockConfig.location.zipcode,
+             clockConfig.sunsetTest.latitude,
+             clockConfig.sunsetTest.longitude,
+             clockConfig.sunsetTest.zipcode,
              clockConfig.timezone,
              clockConfig.utcOffsetMinutes,
              clockConfig.dst ? "true" : "false");
@@ -588,4 +558,3 @@ void ConfigApi::logConfigResponse(const ClockConfig& clockConfig,
              wifiConfig.apSsid.c_str(),
              wifiConfig.apPassword.length());
 }
-

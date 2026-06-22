@@ -10,40 +10,40 @@
 namespace {
 
 struct I2CDeviceAddressLabel {
-  uint8_t address;
-  const char *name;
+  uint8_t address;     // I2C address to label.
+  const char *name;    // Human-readable device guess.
 };
 
 struct HeapInfo {
-  uint32_t freeBytes;
-  uint32_t maxFreeBlockBytes;
-  uint8_t fragmentationPct;
+  uint32_t freeBytes;          // Current free heap.
+  uint32_t maxFreeBlockBytes;  // Largest allocatable heap block.
+  uint8_t fragmentationPct;    // ESP heap fragmentation percentage.
 };
 
 struct FlashInfo {
-  uint32_t chipSizeBytes;
-  uint32_t realSizeBytes;
-  uint32_t speedHz;
-  FlashMode_t mode;
+  uint32_t chipSizeBytes;  // Configured flash size.
+  uint32_t realSizeBytes;  // Detected physical flash size.
+  uint32_t speedHz;        // Flash bus speed.
+  FlashMode_t mode;        // Flash access mode.
 };
 
 struct ChipInfo {
-  uint32_t chipId;
-  uint8_t cpuFreqMHz;
-  String sdkVersion;
-  String coreVersion;
-  String resetReason;
+  uint32_t chipId;     // ESP8266 chip identifier.
+  uint8_t cpuFreqMHz;  // CPU frequency.
+  String sdkVersion;   // Espressif SDK version.
+  String coreVersion;  // Arduino core version.
+  String resetReason;  // Last reset reason.
 };
 
 struct SketchInfo {
-  uint32_t sizeBytes;
-  uint32_t freeSpaceBytes;
+  uint32_t sizeBytes;       // Current sketch size.
+  uint32_t freeSpaceBytes;  // Free OTA/sketch space.
 };
 
 struct StorageInfo {
-  bool mounted;
-  size_t totalBytes;
-  size_t usedBytes;
+  bool mounted;       // True when LittleFS mounted.
+  size_t totalBytes;  // LittleFS total capacity.
+  size_t usedBytes;   // LittleFS used capacity.
 };
 
 constexpr I2CDeviceAddressLabel KNOWN_I2C_DEVICES[] = {

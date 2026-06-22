@@ -26,8 +26,8 @@ class FileApi {
   void printConfigFileToSerial(File& file);
   void closeUploadFile();
 
-  ESP8266WebServer& server_;
-  HttpResponder& responder_;
-  File uploadFile_;
-  bool uploadError_ = false;
+  ESP8266WebServer& server_;  // Source of file-management requests.
+  HttpResponder& responder_;  // Sends file-management responses.
+  File uploadFile_;           // Active upload destination file.
+  bool uploadError_ = false;  // True after an upload write/open failure.
 };

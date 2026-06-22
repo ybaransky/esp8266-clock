@@ -1,20 +1,34 @@
 #pragma once
 #include <stdint.h>
+#include "format.h"
 
 // -- Time value bundle ---------------------------------------------------------
 struct TimeFields {
-  int year, month, dayOfMonth;  // calendar values (Clock mode)
+  int year, month, dayOfMonth;   // calendar values (Clock mode)
+  int dayOfWeek;                 // 0=Sunday through 6=Saturday (Clock mode)
   int days;                      // elapsed/remaining days (CountUp/Down)
   int hours, minutes, seconds, tenths;
 };
 
 // -- Update-rate / feature queries ---------------------------------------------
-// True when the format shows tenths -> caller should refresh at 100 ms.
-inline bool countdownHasTenths (uint8_t idx) { return idx == 0 || idx == 4; }
-inline bool countupHasTenths   (uint8_t idx) { return idx == 0 || idx == 4; }
-inline bool clockHasTenths     (uint8_t idx) { return idx == 5 || idx == 9; }
+// Driven by FormatMetadata tables in format.cpp — no hardcoded index lists here.
+inline bool countdownHasTenths(uint8_t idx) {
+  const FormatMetadata* m = getFormatMeta(kFmtGroupCountdown, idx);
+  return m != nullptr && m->hasTenths;
+}
+inline bool countupHasTenths(uint8_t idx) {
+  const FormatMetadata* m = getFormatMeta(kFmtGroupCountUp, idx);
+  return m != nullptr && m->hasTenths;
+}
+inline bool clockHasTenths(uint8_t idx) {
+  const FormatMetadata* m = getFormatMeta(kFmtGroupClock, idx);
+  return m != nullptr && m->hasTenths;
+}
 // True for clock formats whose time-separator colon blinks (caller controls colonVisible).
-inline bool clockBlinkColon(uint8_t idx) { return idx == 0 || idx == 3; }
+inline bool clockBlinkColon(uint8_t idx) {
+  const FormatMetadata* m = getFormatMeta(kFmtGroupClock, idx);
+  return m != nullptr && m->blinkColon;
+}
 
 // -- Renderers -----------------------------------------------------------------
 // Each fills r1/r2/r3 (null-terminated, must be >= 8 bytes each).

@@ -65,12 +65,12 @@ private:
     eventTail_ = nextTail;
   }
 
-  OneButton btn_ = OneButton(Hardware::Pins::BUTTON, true, true);
-  volatile ButtonEvent eventQueue_[EVENT_QUEUE_CAPACITY] = {};
-  volatile int eventHead_ = 0;
-  volatile int eventTail_ = 0;
-  bool startupRecheckDone_ = false;
-  unsigned long startupRecheckAtMs_ = 0;
+  OneButton btn_ = OneButton(Hardware::Pins::BUTTON, true, true);  // Debounced button driver.
+  volatile ButtonEvent eventQueue_[EVENT_QUEUE_CAPACITY] = {};     // Pending button events.
+  volatile int eventHead_ = 0;                                     // Queue read index.
+  volatile int eventTail_ = 0;                                     // Queue write index.
+  bool startupRecheckDone_ = false;                                // True after boot-pin recheck.
+  unsigned long startupRecheckAtMs_ = 0;                           // millis() deadline for recheck.
 };
 
 static ButtonController btn;

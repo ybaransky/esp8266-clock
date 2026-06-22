@@ -1,5 +1,14 @@
 #include "config_validation.h"
 
+const char* persistentModeName(PersistentMode mode) {
+  switch (mode) {
+    case kPersistentCountdown: return "countdown";
+    case kPersistentCountup:   return "countup";
+    case kPersistentClock:     return "clock";
+  }
+  return "countdown";
+}
+
 PersistentMode sanitizePersistentMode(int rawMode, PersistentMode fallback) {
   if (rawMode < static_cast<int>(kPersistentCountdown) ||
       rawMode > static_cast<int>(kPersistentClock)) {

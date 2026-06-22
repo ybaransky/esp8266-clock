@@ -13,6 +13,15 @@ int32_t roundedSecondsFromHours(double hours) {
   return static_cast<int32_t>(hours * 3600.0 + (hours >= 0.0 ? 0.5 : -0.5));
 }
 
+int32_t secondsFromUtcOffsetMinutes(int16_t utcOffsetMinutes) {
+  return static_cast<int32_t>(utcOffsetMinutes) * 60;
+}
+
+DateTime utcDateForLocalSunsetDate(const DateTime& localDate, int16_t utcOffsetMinutes) {
+  const DateTime localEvening(localDate.year(), localDate.month(), localDate.day(), 18, 0, 0);
+  return localEvening - TimeSpan(secondsFromUtcOffsetMinutes(utcOffsetMinutes));
+}
+
 }  // namespace
 
 DateTime calculateSunset(const DateTime& localDate, const Location& location) {
@@ -24,9 +33,10 @@ DateTime calculateSunset(const DateTime& localDate, const Location& location) {
   double transit = 0.0;
   double sunrise = 0.0;
   double sunset = 0.0;
-  calcSunriseSunset(localDate.year(),
-                    localDate.month(),
-                    localDate.day(),
+  const DateTime utcDate = utcDateForLocalSunsetDate(localDate, location.utcOffsetMinutes);
+  calcSunriseSunset(utcDate.year(),
+                    utcDate.month(),
+                    utcDate.day(),
                     location.latitude,
                     location.longitude,
                     transit,
@@ -37,8 +47,7 @@ DateTime calculateSunset(const DateTime& localDate, const Location& location) {
     return fallbackSunset(localDate);
   }
 
-  const double localSunsetHours =
-      sunset + static_cast<double>(location.utcOffsetMinutes) / 60.0;
-  const DateTime localMidnight(localDate.year(), localDate.month(), localDate.day(), 0, 0, 0);
-  return localMidnight + TimeSpan(roundedSecondsFromHours(localSunsetHours));
+  const DateTime utcMidnight(utcDate.year(), utcDate.month(), utcDate.day(), 0, 0, 0);
+  const DateTime utcSunset = utcMidnight + TimeSpan(roundedSecondsFromHours(sunset));
+  return utcSunset + TimeSpan(secondsFromUtcOffsetMinutes(location.utcOffsetMinutes));
 }

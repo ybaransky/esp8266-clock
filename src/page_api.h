@@ -21,6 +21,6 @@ class PageApi {
                                     String& ssid,
                                     String& ip);
 
-  ESP8266WebServer& server_;
-  HttpResponder& responder_;
+  ESP8266WebServer& server_;  // Server used for page responses.
+  HttpResponder& responder_;  // Sends PROGMEM HTML responses.
 };

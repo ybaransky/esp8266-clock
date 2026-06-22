@@ -5,6 +5,7 @@
 #include "config.h"
 #include "format.h"
 
+const char* persistentModeName(PersistentMode mode);
 PersistentMode sanitizePersistentMode(int rawMode, PersistentMode fallback);
 bool persistentModeFromName(const String& name, PersistentMode* mode);
 uint8_t sanitizeFormatIndex(FormatGroup group, int rawIndex, uint8_t fallback);

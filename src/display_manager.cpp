@@ -9,11 +9,11 @@ namespace {
 
 constexpr uint32_t kSecondMs = 1000;
 constexpr uint32_t kTenthMs = 100;
-constexpr uint32_t kBlinkMs = 500;
+constexpr uint32_t kMessageBlinkMs = 500;
+constexpr uint32_t kColonBlinkMs = 1000;
 constexpr uint32_t kSplashDurationMs = 5000;
 constexpr uint32_t kDemoCountdownMs = 5000;
 constexpr uint32_t kDemoMessageMs = 5000;
-constexpr uint8_t kDemoCountdownFormat = 0xFF;
 
 DateTime parseDateTime(const char* s) {
   int y = 2000, mo = 1, d = 1, h = 0, mi = 0, sec = 0;
@@ -38,6 +38,7 @@ TimeFields rtcToFields(const DateTime& dt) {
   fields.year = dt.year();
   fields.month = dt.month();
   fields.dayOfMonth = dt.day();
+  fields.dayOfWeek = dt.dayOfTheWeek();
   fields.hours = dt.hour();
   fields.minutes = dt.minute();
   fields.seconds = dt.second();
@@ -126,9 +127,7 @@ void DisplayManager::showSplash(const char* message) {
 void DisplayManager::showDemo() {
   const uint32_t nowMs = millis();
   DisplayState state;
-  state.behavior = DisplayBehavior::kCountdown;
-  state.payload.formatIndex = kDemoCountdownFormat;
-  state.payload.endTime = clockSource_->now() + TimeSpan(0, 0, 0, 5);
+  state.behavior = DisplayBehavior::kDemoCountdown;
 
   demoCountdownActive_ = true;
   installState(state, {true, nowMs + kDemoCountdownMs}, nowMs, true);
@@ -203,17 +202,17 @@ DisplayState DisplayManager::stateForConfiguredMode(PersistentMode mode) const {
   switch (mode) {
     case kPersistentCountup:
       state.behavior = DisplayBehavior::kCountup;
-      state.payload.startTime = countupOrigin_;
-      state.payload.formatIndex = settings_.countupFmt;
+      state.payload.countup.startTime = countupOrigin_;
+      state.payload.countup.formatIndex = settings_.countupFmt;
       break;
     case kPersistentClock:
       state.behavior = DisplayBehavior::kClock;
-      state.payload.formatIndex = settings_.clockFmt;
+      state.payload.clock.formatIndex = settings_.clockFmt;
       break;
     case kPersistentCountdown:
       state.behavior = DisplayBehavior::kCountdown;
-      state.payload.endTime = parseDateTime(settings_.countdownDatetime);
-      state.payload.formatIndex = settings_.countdownFmt;
+      state.payload.countdown.endTime = parseDateTime(settings_.countdownDatetime);
+      state.payload.countdown.formatIndex = settings_.countdownFmt;
       break;
   }
 
@@ -222,16 +221,12 @@ DisplayState DisplayManager::stateForConfiguredMode(PersistentMode mode) const {
 
 const char* DisplayManager::behaviorName(DisplayBehavior behavior) const {
   switch (behavior) {
-    case DisplayBehavior::kClock:
-      return "clock";
-    case DisplayBehavior::kCountdown:
-      return "countdown";
-    case DisplayBehavior::kCountup:
-      return "countup";
-    case DisplayBehavior::kMessage:
-      return "message";
-    case DisplayBehavior::kPagedMessage:
-      return "pages";
+    case DisplayBehavior::kClock:          return "clock";
+    case DisplayBehavior::kCountdown:      return "countdown";
+    case DisplayBehavior::kCountup:        return "countup";
+    case DisplayBehavior::kDemoCountdown:  return "demo-countdown";
+    case DisplayBehavior::kMessage:        return "message";
+    case DisplayBehavior::kPagedMessage:   return "pages";
   }
   return "?";
 }
@@ -300,19 +295,13 @@ void DisplayManager::restorePreviousState(uint32_t nowMs) {
 }
 
 void DisplayManager::startDemoMessageState(uint32_t nowMs) {
-  const DisplayState oldState = currentState_;
   DisplayState state;
   state.behavior = DisplayBehavior::kMessage;
   state.blink = true;
   copyMessage(state.payload.message, settings_.finalMessage);
 
   demoCountdownActive_ = false;
-  currentState_ = state;
-  currentTransition_ = {true, nowMs + kDemoMessageMs};
-  lastRenderMs_ = 0;
-  blinkOn_ = true;
-  blinkMs_ = nowMs;
-  logStateTransition(oldState, currentState_, "demo final message");
+  installState(state, {true, nowMs + kDemoMessageMs}, nowMs, false);
   renderCurrentState(nowMs, true);
 }
 
@@ -324,17 +313,16 @@ void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
 
 uint32_t DisplayManager::refreshInterval() const {
   switch (currentState_.behavior) {
+    case DisplayBehavior::kDemoCountdown:
+      return kTenthMs;
     case DisplayBehavior::kCountdown:
-      if (currentState_.payload.formatIndex == kDemoCountdownFormat) {
-        return kTenthMs;
-      }
-      return countdownHasTenths(currentState_.payload.formatIndex) ? kTenthMs : kSecondMs;
+      return countdownHasTenths(currentState_.payload.countdown.formatIndex) ? kTenthMs : kSecondMs;
     case DisplayBehavior::kCountup:
-      return countupHasTenths(currentState_.payload.formatIndex) ? kTenthMs : kSecondMs;
+      return countupHasTenths(currentState_.payload.countup.formatIndex) ? kTenthMs : kSecondMs;
     case DisplayBehavior::kClock:
-      return clockHasTenths(currentState_.payload.formatIndex) ? kTenthMs : kSecondMs;
+      return clockHasTenths(currentState_.payload.clock.formatIndex) ? kTenthMs : kSecondMs;
     case DisplayBehavior::kMessage:
-      return currentState_.blink ? kBlinkMs : kSecondMs;
+      return currentState_.blink ? kMessageBlinkMs : kSecondMs;
     case DisplayBehavior::kPagedMessage:
       return currentState_.payload.paged.pageDurationMs;
   }
@@ -361,49 +349,45 @@ bool DisplayManager::transitionExpired(uint32_t nowMs) const {
 
 void DisplayManager::renderCurrentState(uint32_t nowMs, bool force) {
   switch (currentState_.behavior) {
-    case DisplayBehavior::kClock:
-      renderClock(nowMs, force);
-      break;
-    case DisplayBehavior::kCountdown:
-      renderCountdown(nowMs, force);
-      break;
-    case DisplayBehavior::kCountup:
-      renderCountup(nowMs, force);
-      break;
-    case DisplayBehavior::kMessage:
-      renderMessage(nowMs, force);
-      break;
-    case DisplayBehavior::kPagedMessage:
-      renderPagedMessage(nowMs, force);
-      break;
+    case DisplayBehavior::kClock:          renderClock(nowMs, force);          break;
+    case DisplayBehavior::kCountdown:      renderCountdown(nowMs, force);      break;
+    case DisplayBehavior::kCountup:        renderCountup(nowMs, force);        break;
+    case DisplayBehavior::kDemoCountdown:  renderDemoCountdown(nowMs, force);  break;
+    case DisplayBehavior::kMessage:        renderMessage(nowMs, force);        break;
+    case DisplayBehavior::kPagedMessage:   renderPagedMessage(nowMs, force);   break;
   }
 }
 
 void DisplayManager::renderClock(uint32_t nowMs, bool force) {
-  if (static_cast<long>(nowMs - colonMs_) >= static_cast<long>(kBlinkMs)) {
+  const uint8_t formatIndex = currentState_.payload.clock.formatIndex;
+  if (clockBlinkColon(formatIndex) &&
+      static_cast<long>(nowMs - colonMs_) >= static_cast<long>(kColonBlinkMs)) {
     colonMs_ = nowMs;
     colonVisible_ = !colonVisible_;
+    force = true;
   }
   if (!renderElapsed(nowMs, force)) return;
 
   TimeFields fields = rtcToFields(clockSource_->now());
-  if (clockHasTenths(currentState_.payload.formatIndex)) {
+  if (clockHasTenths(formatIndex)) {
     fields.tenths = (nowMs % kSecondMs) / kTenthMs;
   }
 
   char r1[8], r2[8], r3[8];
-  ::renderClock(currentState_.payload.formatIndex, fields, r1, r2, r3, colonVisible_);
+  ::renderClock(formatIndex, fields, r1, r2, r3,
+                !clockBlinkColon(formatIndex) || colonVisible_);
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
 void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
+  const uint8_t formatIndex = currentState_.payload.countdown.formatIndex;
   const DateTime now = clockSource_->now();
-  const long secs = static_cast<long>(currentState_.payload.endTime.unixtime()) -
+  const long secs = static_cast<long>(currentState_.payload.countdown.endTime.unixtime()) -
                     static_cast<long>(now.unixtime());
 
-  if (!hasPreviousState_ && !demoCountdownActive_ && secs <= 0) {
+  if (!hasPreviousState_ && secs <= 0) {
     DisplayState finalState;
     finalState.behavior = DisplayBehavior::kMessage;
     finalState.blink = false;
@@ -413,48 +397,48 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
     return;
   }
 
-  if (currentState_.payload.formatIndex == kDemoCountdownFormat) {
-    const uint32_t remaining = currentTransition_.expiresAtMs - nowMs;
-    const uint8_t whole =
-        static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
-    const uint8_t tenths = static_cast<uint8_t>(
-        min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
-    char r3[8];
-    snprintf(r3, sizeof(r3), "%2u.%u", whole, tenths);
-    segmentDisplay.showPanels("    ", "    ", r3);
-    return;
-  }
-
   TimeFields fields = deltaToFields(secs);
-  if (countdownHasTenths(currentState_.payload.formatIndex)) {
+  if (countdownHasTenths(formatIndex)) {
     fields.tenths = (secs > 0) ? (10 - (nowMs % kSecondMs) / kTenthMs) % 10 : 0;
   }
 
   char r1[8], r2[8], r3[8];
-  ::renderCountdown(currentState_.payload.formatIndex, fields, r1, r2, r3);
+  ::renderCountdown(formatIndex, fields, r1, r2, r3);
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
 void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
+  const uint8_t formatIndex = currentState_.payload.countup.formatIndex;
   const DateTime now = clockSource_->now();
   const long secs = static_cast<long>(now.unixtime()) -
-                    static_cast<long>(currentState_.payload.startTime.unixtime());
+                    static_cast<long>(currentState_.payload.countup.startTime.unixtime());
 
   TimeFields fields = deltaToFields(secs);
-  if (countupHasTenths(currentState_.payload.formatIndex)) {
+  if (countupHasTenths(formatIndex)) {
     fields.tenths = (nowMs % kSecondMs) / kTenthMs;
   }
 
   char r1[8], r2[8], r3[8];
-  ::renderCountup(currentState_.payload.formatIndex, fields, r1, r2, r3);
+  ::renderCountup(formatIndex, fields, r1, r2, r3);
   segmentDisplay.showPanels(r1, r2, r3);
+}
+
+void DisplayManager::renderDemoCountdown(uint32_t nowMs, bool force) {
+  if (!renderElapsed(nowMs, force)) return;
+
+  const uint32_t remaining = currentTransition_.expiresAtMs - nowMs;
+  const uint8_t whole  = static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
+  const uint8_t tenths = static_cast<uint8_t>(min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
+  char r3[8];
+  snprintf(r3, sizeof(r3), "%2u.%u", whole, tenths);
+  segmentDisplay.showPanels("    ", "    ", r3);
 }
 
 void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
   if (currentState_.blink &&
-      static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kBlinkMs)) {
+      static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kMessageBlinkMs)) {
     blinkMs_ = nowMs;
     blinkOn_ = !blinkOn_;
     force = true;
@@ -495,7 +479,7 @@ void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
     blinkOn_ = true;
     blinkMs_ = nowMs;
     force = true;
-  } else if (static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kBlinkMs)) {
+  } else if (static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kMessageBlinkMs)) {
     blinkMs_ = nowMs;
     blinkOn_ = !blinkOn_;
     force = true;

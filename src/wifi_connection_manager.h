@@ -11,12 +11,12 @@ enum class WifiMode {
 };
 
 struct WifiRuntimeStatus {
-  WifiMode mode;
-  bool connected;
-  String ssid;
-  String ip;
-  String apSsid;
-  String apIp;
+  WifiMode mode;    // Active WiFi mode.
+  bool connected;   // True when station mode has an active connection.
+  String ssid;      // Connected station SSID.
+  String ip;        // Station IP address.
+  String apSsid;    // Access-point SSID.
+  String apIp;      // Access-point IP address.
 };
 
 class WifiConnectionManager {
@@ -33,11 +33,11 @@ class WifiConnectionManager {
   bool tryStationConnect(const String& ssid, const String& password);
   void startAccessPoint();
 
-  WifiConfig config_;
-  WifiMode mode_ = WifiMode::kAccessPoint;
+  WifiConfig config_;  // Last loaded WiFi configuration.
+  WifiMode mode_ = WifiMode::kAccessPoint;  // Current runtime WiFi mode.
 
-  volatile bool apClientConnectedPending_ = false;
-  uint8_t apClientMac_[6] = {};
+  volatile bool apClientConnectedPending_ = false;  // Deferred AP-client log flag.
+  uint8_t apClientMac_[6] = {};                     // MAC for deferred AP-client log.
 };
 
 extern WifiConnectionManager wifiConnectionManager;

@@ -3,9 +3,9 @@
 #include <RTClib.h>
 
 struct Location {
-  float latitude;
-  float longitude;
-  int16_t utcOffsetMinutes = 0;
+  float latitude;                  // Observer latitude.
+  float longitude;                 // Observer longitude.
+  int16_t utcOffsetMinutes = 0;    // Local offset from UTC in minutes.
 };
 
 // Returns local sunset time for the given local date and location.

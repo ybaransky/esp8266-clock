@@ -4,11 +4,11 @@
 #include <RTClib.h>
 
 struct RtcStatus {
-  bool present;
-  bool powerLost;
-  bool lowBattery;
-  bool sqwConfigured;
-  String error;
+  bool present;         // True when the DS3231 responds on I2C.
+  bool powerLost;      // True when RTC reports oscillator stop/power loss.
+  bool lowBattery;     // True when battery/oscillator status is suspect.
+  bool sqwConfigured;  // True when SQW has been configured for 1 Hz.
+  String error;        // Last RTC setup/probe error text.
 };
 
 bool rtcBegin();

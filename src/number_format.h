@@ -44,5 +44,5 @@ class CommaNumber {
     }
   }
 
-  char text_[15] = {};
+  char text_[15] = {};  // Comma-formatted decimal text.
 };

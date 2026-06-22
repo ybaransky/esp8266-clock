@@ -10,6 +10,7 @@ enum class DisplayBehavior : uint8_t {
   kClock,
   kCountdown,
   kCountup,
+  kDemoCountdown,  // Countdown driven by transition deadline rather than a DateTime end time.
   kMessage,
   kPagedMessage,
 };
@@ -20,28 +21,38 @@ static constexpr uint8_t kMaxDisplayPages = 8;
 static constexpr uint16_t kDefaultPageDurationMs = 2000;
 
 struct DisplayPage {
-  char rows[kDisplayRowsPerPage][kDisplayRowChars + 1] = {};  // Three 4-character panel rows.
+  char rows[kDisplayRowsPerPage][kDisplayRowChars + 1];  // Three 4-character panel rows.
 };
 
 struct PagedDisplayPayload {
-  DisplayPage pages[kMaxDisplayPages];       // Prebuilt pages rendered exactly as provided.
-  uint8_t pageCount = 0;                      // Number of valid pages in pages[].
-  uint8_t currentPage = 0;                    // Page currently visible.
-  uint16_t pageDurationMs = kDefaultPageDurationMs;  // Time each page remains visible.
-  uint32_t pageStartedAtMs = 0;               // millis() timestamp when currentPage began.
-  bool repeat = false;                        // True when pages loop until externally cleared.
+  DisplayPage pages[kMaxDisplayPages];
+  uint8_t  pageCount;
+  uint8_t  currentPage;
+  uint16_t pageDurationMs;
+  uint32_t pageStartedAtMs;
+  bool     repeat;
 };
 
-struct DisplayPayload {
-  DateTime endTime = DateTime(2000, 1, 1, 0, 0, 0);     // Countdown end time.
-  DateTime startTime = DateTime(2000, 1, 1, 0, 0, 0);   // Count-up origin time.
-  uint8_t formatIndex = 0;                              // Formatter index for clock/count states.
-  char message[64] = {};                                // Text rendered by message states.
-  PagedDisplayPayload paged;                             // Structured pages for paged message states.
+// Tagged union: only the member matching the enclosing DisplayState::behavior is valid.
+// Each behavior uses only its own sub-struct; reading another member is undefined.
+// The explicit default constructor is required because DateTime has a non-trivial
+// constructor; callers always set the active member before reading it.
+union DisplayPayload {
+  // DateTime has non-trivial ctor/copy so the compiler deletes these.
+  // All union members are bitwise-copyable, so memcpy is correct.
+  DisplayPayload() {}
+  DisplayPayload(const DisplayPayload& o)            { memcpy(static_cast<void*>(this), &o, sizeof(*this)); }
+  DisplayPayload& operator=(const DisplayPayload& o) { memcpy(static_cast<void*>(this), &o, sizeof(*this)); return *this; }
+
+  struct { DateTime endTime; uint8_t formatIndex; } countdown;
+  struct { DateTime startTime; uint8_t formatIndex; } countup;
+  struct { uint8_t formatIndex; } clock;
+  char message[64];
+  PagedDisplayPayload paged;
 };
 
 struct DisplayState {
-  DisplayBehavior behavior = DisplayBehavior::kClock;  // Renderer used for this state.
+  DisplayBehavior behavior = DisplayBehavior::kClock;  // Selects which payload member is active.
   bool blink = false;                                  // True when message output alternates blank/on.
   DisplayPayload payload;                              // Data consumed by the selected renderer.
 };
@@ -91,6 +102,7 @@ class DisplayManager {
   void renderClock(uint32_t nowMs, bool force);
   void renderCountdown(uint32_t nowMs, bool force);
   void renderCountup(uint32_t nowMs, bool force);
+  void renderDemoCountdown(uint32_t nowMs, bool force);
   void renderMessage(uint32_t nowMs, bool force);
   void renderPagedMessage(uint32_t nowMs, bool force);
 

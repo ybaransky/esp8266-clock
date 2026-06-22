@@ -35,7 +35,7 @@ class ConfigApi {
   void logConfigResponse(const ClockConfig& clockConfig,
                          const WifiConfig& wifiConfig) const;
 
-  ESP8266WebServer& server_;
-  HttpResponder& responder_;
-  RebootScheduler& rebootScheduler_;
+  ESP8266WebServer& server_;       // Source of request payloads and query args.
+  HttpResponder& responder_;       // Sends JSON/HTML API responses.
+  RebootScheduler& rebootScheduler_;  // Schedules deferred reboot after config changes.
 };

@@ -1,6 +1,7 @@
 #include "config.h"
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include "config_serializer.h"
 #include "config_validation.h"
 #include "log.h"
 #include "storage_manager.h"
@@ -11,10 +12,8 @@ static constexpr const char* YURICLOC = "YuriCloc";
 static constexpr const char* PASSWORD = "12345678";
 
 static bool writeConfigDocument(JsonDocument& doc, const char* label);
+static bool openAndParse(JsonDocument& doc);
 static void populateDefaultConfigDocument(JsonDocument& doc);
-static const char* persistentModeName(PersistentMode mode);
-static void populateClockConfigDocument(JsonDocument& doc, const ClockConfig& clock);
-static void populateWifiConfigDocument(JsonDocument& doc, const WifiConfig& wifi);
 
 // Opens and deserializes config.json into doc.  Returns false on any failure.
 static bool openAndParse(JsonDocument& doc) {
@@ -70,88 +69,32 @@ static bool writeConfigDocument(JsonDocument& doc, const char* label) {
     return true;
 }
 
+static void populateDefaultConfigDocument(JsonDocument& doc) {
+    const ClockConfig clock = defaultClockConfig();
+    const WifiConfig wifi{"", "", YURICLOC, PASSWORD};
+    doc.clear();
+    serializeClockConfig(doc, clock);
+    serializeWifiConfig(doc, wifi);
+}
+
 // -- ClockConfig defaults ------------------------------------------------------
 ClockConfig defaultClockConfig() {
     ClockConfig s;
     s.activeMode    = kPersistentCountdown;
     s.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
     s.countupFmt    = 0;
-    s.clockFmt      = 1; // " YYYY | MM:DD | hh:mm" (static colon)
+    s.clockFmt      = 6; // " YYYY | MM:DD | hh:mm" (blinking colon)
     s.brightness    = 3;
     snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "2026-07-04 00:00:00");
     snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "now");
     snprintf(s.splashMessage, sizeof(s.splashMessage), "YuriCloc");
     snprintf(s.finalMessage,  sizeof(s.finalMessage),  "Good Luc");
-    s.latitude = 0.0f;
-    s.longitude = 0.0f;
-    s.zipcode[0] = '\0';
+    s.location   = {};
+    s.sunsetTest = {};
     s.timezone[0] = '\0';
     s.utcOffsetMinutes = 0;
     s.dst = false;
     return s;
-}
-
-static void populateDefaultConfigDocument(JsonDocument& doc) {
-    const ClockConfig clock = defaultClockConfig();
-    const WifiConfig wifi{"", "", YURICLOC, PASSWORD};
-    doc.clear();
-    populateClockConfigDocument(doc, clock);
-    populateWifiConfigDocument(doc, wifi);
-}
-
-static const char* persistentModeName(PersistentMode mode) {
-    switch (mode) {
-        case kPersistentCountdown:
-            return "countdown";
-        case kPersistentCountup:
-            return "countup";
-        case kPersistentClock:
-            return "clock";
-    }
-    return "countdown";
-}
-
-static void populateClockConfigDocument(JsonDocument& doc, const ClockConfig& clock) {
-    JsonObject display = doc["display"].to<JsonObject>();
-    display["activeMode"] = persistentModeName(clock.activeMode);
-    display["brightness"] = clock.brightness;
-
-    JsonObject messages = display["messages"].to<JsonObject>();
-    messages["splash"] = String(clock.splashMessage);
-    messages["final"] = String(clock.finalMessage);
-
-    JsonObject modes = display["modes"].to<JsonObject>();
-    JsonObject countdown = modes["countdown"].to<JsonObject>();
-    countdown["format"] = clock.countdownFmt;
-    countdown["end"] = String(clock.countdownDatetime);
-
-    JsonObject countup = modes["countup"].to<JsonObject>();
-    countup["format"] = clock.countupFmt;
-    countup["start"] = String(clock.countupDatetime);
-
-    JsonObject clockMode = modes["clock"].to<JsonObject>();
-    clockMode["format"] = clock.clockFmt;
-
-    JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
-    timezone["name"] = String(clock.timezone);
-    timezone["utcOffsetMinutes"] = clock.utcOffsetMinutes;
-    doc["time"]["dst"] = clock.dst;
-
-    JsonObject location = doc["location"].to<JsonObject>();
-    location["zipcode"] = String(clock.zipcode);
-    location["latitude"] = clock.latitude;
-    location["longitude"] = clock.longitude;
-}
-
-static void populateWifiConfigDocument(JsonDocument& doc, const WifiConfig& wifi) {
-    JsonObject wifiDoc = doc["wifi"].to<JsonObject>();
-    JsonObject station = wifiDoc["station"].to<JsonObject>();
-    station["ssid"] = wifi.staSsid;
-    station["password"] = wifi.staPassword;
-
-    JsonObject accessPoint = wifiDoc["accessPoint"].to<JsonObject>();
-    accessPoint["ssid"] = wifi.apSsid;
-    accessPoint["password"] = wifi.apPassword;
 }
 
 // -- WiFi ----------------------------------------------------------------------
@@ -161,10 +104,10 @@ WifiConfig ConfigManager::loadWifiConfig() {
     JsonDocument doc;
     if (!openAndParse(doc)) return cfg;
 
-    cfg.staSsid         = doc["wifi"]["station"]["ssid"]             | "";
-    cfg.staPassword     = doc["wifi"]["station"]["password"]         | "";
-    cfg.apSsid          = doc["wifi"]["accessPoint"]["ssid"]         | YURICLOC;
-    cfg.apPassword      = doc["wifi"]["accessPoint"]["password"]     | PASSWORD;
+    cfg.staSsid     = doc["wifi"]["station"]["ssid"]         | "";
+    cfg.staPassword = doc["wifi"]["station"]["password"]     | "";
+    cfg.apSsid      = doc["wifi"]["accessPoint"]["ssid"]     | YURICLOC;
+    cfg.apPassword  = doc["wifi"]["accessPoint"]["password"] | PASSWORD;
     return cfg;
 }
 
@@ -172,10 +115,8 @@ void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     if (!storageManager.ensureMounted("save WiFi config")) return;
 
     JsonDocument doc;
-    const ClockConfig clock = loadClockConfig();
-    populateClockConfigDocument(doc, clock);
-    populateWifiConfigDocument(doc, cfg);
-
+    openAndParse(doc);          // loads existing doc; clock section stays intact
+    serializeWifiConfig(doc, cfg);
     if (writeConfigDocument(doc, "save WiFi config")) {
         LOG_PRINTLN("WiFi config saved");
     }
@@ -194,16 +135,16 @@ ClockConfig ConfigManager::loadClockConfig() {
         s.activeMode = mode;
     }
 
-    s.countdownFmt  = doc["display"]["modes"]["countdown"]["format"]  | s.countdownFmt;
-    s.countupFmt    = doc["display"]["modes"]["countup"]["format"]    | s.countupFmt;
-    s.clockFmt      = doc["display"]["modes"]["clock"]["format"]      | s.clockFmt;
-    s.brightness    = doc["display"]["brightness"]                    | s.brightness;
+    s.countdownFmt  = doc["display"]["modes"]["countdown"]["format"] | s.countdownFmt;
+    s.countupFmt    = doc["display"]["modes"]["countup"]["format"]   | s.countupFmt;
+    s.clockFmt      = doc["display"]["modes"]["clock"]["format"]     | s.clockFmt;
+    s.brightness    = doc["display"]["brightness"]                   | s.brightness;
 
     const char* end = doc["display"]["modes"]["countdown"]["end"] | "";
     if (end[0]) snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "%s", end);
 
     const char* start = doc["display"]["modes"]["countup"]["start"] | "";
-    if (start[0])  snprintf(s.countupDatetime,  sizeof(s.countupDatetime),   "%s", start);
+    if (start[0]) snprintf(s.countupDatetime, sizeof(s.countupDatetime), "%s", start);
 
                                                /*123412341234*/
     const char* splash = doc["display"]["messages"]["splash"] | "      hi    ";
@@ -213,10 +154,21 @@ ClockConfig ConfigManager::loadClockConfig() {
     const char* finalMsg = doc["display"]["messages"]["final"] | "Good Luc    ";
     sanitizeDisplayMessage(finalMsg, s.finalMessage, sizeof(s.finalMessage));
 
-    s.latitude = doc["location"]["latitude"] | s.latitude;
-    s.longitude = doc["location"]["longitude"] | s.longitude;
-    const char* zipcode = doc["location"]["zipcode"] | "";
-    if (zipcode[0]) snprintf(s.zipcode, sizeof(s.zipcode), "%s", zipcode);
+    JsonVariantConst location = doc["location"];
+    s.location.latitude  = location["latitude"]  | s.location.latitude;
+    s.location.longitude = location["longitude"] | s.location.longitude;
+    const char* zipcode = location["zipcode"] | "";
+    if (zipcode[0]) {
+        snprintf(s.location.zipcode, sizeof(s.location.zipcode), "%s", zipcode);
+    }
+
+    JsonVariantConst sunset = doc["sunset"];
+    s.sunsetTest.latitude  = sunset["latitude"]  | s.sunsetTest.latitude;
+    s.sunsetTest.longitude = sunset["longitude"] | s.sunsetTest.longitude;
+    const char* sunsetZipcode = sunset["zipcode"] | "";
+    if (sunsetZipcode[0]) {
+        snprintf(s.sunsetTest.zipcode, sizeof(s.sunsetTest.zipcode), "%s", sunsetZipcode);
+    }
 
     const char* timezone = doc["time"]["timezone"]["name"] | "";
     char cleanTimezone[sizeof(s.timezone)];
@@ -231,12 +183,9 @@ ClockConfig ConfigManager::loadClockConfig() {
 void ConfigManager::saveClockConfig(const ClockConfig& s) {
     if (!storageManager.ensureMounted("save clock config")) return;
 
-    const ClockConfig clean = sanitizeClockConfig(s);
-
     JsonDocument doc;
-    const WifiConfig wifi = loadWifiConfig();
-    populateClockConfigDocument(doc, clean);
-    populateWifiConfigDocument(doc, wifi);
+    openAndParse(doc);          // loads existing doc; wifi section stays intact
+    serializeClockConfig(doc, sanitizeClockConfig(s));
     if (writeConfigDocument(doc, "save clock config")) {
         LOG_PRINTLN("Clock config saved");
     }
@@ -245,14 +194,14 @@ void ConfigManager::saveClockConfig(const ClockConfig& s) {
 ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
     const ClockConfig defaults = defaultClockConfig();
     ClockConfig clean = cfg;
-    clean.activeMode = sanitizePersistentMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
+    clean.activeMode   = sanitizePersistentMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
     clean.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.countdownFmt, defaults.countdownFmt);
-    clean.countupFmt = sanitizeFormatIndex(kFmtGroupCountUp, cfg.countupFmt, defaults.countupFmt);
-    clean.clockFmt = sanitizeFormatIndex(kFmtGroupClock, cfg.clockFmt, defaults.clockFmt);
-    clean.brightness = sanitizeBrightness(cfg.brightness);
+    clean.countupFmt   = sanitizeFormatIndex(kFmtGroupCountUp,   cfg.countupFmt,   defaults.countupFmt);
+    clean.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.clockFmt,     defaults.clockFmt);
+    clean.brightness   = sanitizeBrightness(cfg.brightness);
     clean.utcOffsetMinutes = sanitizeUtcOffsetMinutes(cfg.utcOffsetMinutes);
     sanitizeDisplayMessage(cfg.splashMessage, clean.splashMessage, sizeof(clean.splashMessage));
-    sanitizeDisplayMessage(cfg.finalMessage, clean.finalMessage, sizeof(clean.finalMessage));
+    sanitizeDisplayMessage(cfg.finalMessage,  clean.finalMessage,  sizeof(clean.finalMessage));
     sanitizePrintableText(cfg.timezone, clean.timezone, sizeof(clean.timezone));
     return clean;
 }

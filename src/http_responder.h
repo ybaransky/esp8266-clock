@@ -19,5 +19,5 @@ class HttpResponder {
  private:
   static const char* methodName(HTTPMethod method);
 
-  ESP8266WebServer& server_;
+  ESP8266WebServer& server_;  // Server used to send HTTP responses.
 };

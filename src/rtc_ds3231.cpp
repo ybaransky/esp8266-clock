@@ -131,8 +131,8 @@ private:
     status_.sqwConfigured = true;
   }
 
-  RTC_DS3231 rtc_;
-  RtcStatus status_ = {false, false, false, false, "Not initialized"};
+  RTC_DS3231 rtc_;  // RTClib DS3231 driver instance.
+  RtcStatus status_ = {false, false, false, false, "Not initialized"};  // Cached RTC health.
 };
 
 static RtcDs3231 rtc;

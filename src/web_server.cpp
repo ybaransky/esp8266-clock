@@ -119,15 +119,15 @@ class WebPortal : public RebootScheduler {
   static WebPortal portal;
 
  private:
-  ESP8266WebServer server_;
-  HttpResponder responder_;
-  PageApi pageApi_;
-  ConfigApi configApi_;
-  FileApi fileApi_;
-  WifiApi wifiApi_;
-  DNSServer dnsServer_;
-  bool dnsRunning_ = false;
-  uint32_t pendingRebootMs_ = 0;
+  ESP8266WebServer server_;        // HTTP server on port 80.
+  HttpResponder responder_;        // Shared response helper.
+  PageApi pageApi_;                // HTML page endpoints.
+  ConfigApi configApi_;            // Display/time/location API endpoints.
+  FileApi fileApi_;                // LittleFS file-management endpoints.
+  WifiApi wifiApi_;                // WiFi status/scan/connect endpoints.
+  DNSServer dnsServer_;            // Captive portal DNS responder.
+  bool dnsRunning_ = false;        // True when captive DNS started successfully.
+  uint32_t pendingRebootMs_ = 0;   // millis() deadline for deferred reboot.
 
 };
 

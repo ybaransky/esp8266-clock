@@ -16,7 +16,7 @@
         "start": "now"
       },
       "clock": {
-        "format": 1
+        "format": 6
       }
     }
   },
@@ -28,6 +28,11 @@
     "dst": true
   },
   "location": {
+    "zipcode": "",
+    "latitude": 0,
+    "longitude": 0
+  },
+  "sunset": {
     "zipcode": "",
     "latitude": 0,
     "longitude": 0
