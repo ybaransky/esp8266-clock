@@ -10,31 +10,35 @@ enum FormatGroup : uint8_t {
   kFmtGroupCount         = 3
 };
 
-// Per-format rendering properties. Lives next to the format string tables it describes.
+// Per-format rendering properties.
 struct FormatMetadata {
   bool hasTenths;    // True when the format displays sub-second tenths (drives 100ms refresh).
   bool blinkColon;   // True when the hh:mm separator should blink once per second (clock only).
 };
 
+// A format string paired with its rendering properties. Keeping these together
+// eliminates the index-mismatch bug class that arose from parallel arrays.
+struct FormatEntry {
+  const char* format;
+  FormatMetadata meta;
+};
+
 // Number of entries in each group.
 extern const uint8_t kFormatGroupSizes[kFmtGroupCount];
 
-// Master lookup: kFormatGroups[group][index] -> format string.
-extern const char* const* const kFormatGroups[kFmtGroupCount];
-
-// Metadata lookup: kFormatGroupMeta[group][index] -> FormatMetadata.
-extern const FormatMetadata* const kFormatGroupMeta[kFmtGroupCount];
+// Master lookup: kFormatEntries[group][index] -> FormatEntry.
+extern const FormatEntry* const kFormatEntries[kFmtGroupCount];
 
 inline uint8_t formatCount(FormatGroup group) {
   return kFormatGroupSizes[group];
 }
 
 inline const char* getFormat(FormatGroup group, uint8_t index) {
-  return (index < kFormatGroupSizes[group]) ? kFormatGroups[group][index] : nullptr;
+  return (index < kFormatGroupSizes[group]) ? kFormatEntries[group][index].format : nullptr;
 }
 
 inline const FormatMetadata* getFormatMeta(FormatGroup group, uint8_t index) {
-  return (index < kFormatGroupSizes[group]) ? &kFormatGroupMeta[group][index] : nullptr;
+  return (index < kFormatGroupSizes[group]) ? &kFormatEntries[group][index].meta : nullptr;
 }
 
 // Persistent display mode stored in config.json and selected from the web UI.

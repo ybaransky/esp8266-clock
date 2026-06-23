@@ -113,19 +113,21 @@ The display system has four layers:
 
 4. **`display_manager.h/cpp`** - `DisplayManager` singleton; the single entry point for all display state.
    - `begin(config)`, `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`.
+   - `setDefaultState(state)` — updates the base state without disturbing any active temporary overlay (splash, info, demo). Used by `FridayModeController` to switch phases.
    - Temporary display states (`showSplash`, `showInfo`, `showDemo`, `showPages`) overlay the persistent mode and expire or are cleared via `clearInfo()`.
    - `DisplayBehavior` enum: `kClock`, `kCountdown`, `kCountup`, `kDemoCountdown`, `kMessage`, `kPagedMessage`. `kDemoCountdown` renders a live countdown from `currentTransition_.expiresAtMs` — it has no `formatIndex` and is not stored in config.
    - `DisplayPayload` is a **union**: `countdown` (endTime, formatIndex), `countup` (startTime, formatIndex), `clock` (formatIndex), `message[64]`, `paged`. Only the member matching `DisplayState::behavior` is valid. `PagedDisplayPayload` and `DisplayPage` have no default member initializers; callers set all fields explicitly.
    - `currentStateName()` returns the active behavior as a string (useful for SQW log lines).
    - Clock colon blink toggles once per second (2-second full on/off cycle). Message/page blinking uses its own 500ms cadence.
    - State transition log reason `"state install"` means a non-temporary state was installed, usually `defaultState_` from the persisted mode. `"temporary state"` means the previous state was saved for later restore.
+   - When `ClockConfig.clockUse12Hour` is true, `renderClock()` converts `fields.hours` to 1–12 scale before calling `::renderClock()`. The conversion is local to that method and does not affect countdown/countup rendering.
 
 5. **`clock_state.h`** - thin public API used by `web_server.cpp` to decouple it from `DisplayManager`.
    - `clockApplySettings(cfg)`, `clockSetBrightness(b)`, `clockTriggerDemo()`, `clockShowMessagePreview(msg)`, `clockShowInfo(msg, durationMs)`, `clockClearInfo()`.
 
 ### Friday Mode
 - **`friday_mode.h/cpp`**: `FridayModeController` (internal singleton). Public API: `fridayModeApplySettings(config)` and `fridayModeTick(now)`.
-- `fridayModeTick()` is called once per minute from `main.cpp` (on the `kSqwLogIntervalSeconds` pulse); self-gates — does nothing unless `activeMode == kPersistentFriday`.
+- `fridayModeTick()` is called every second from `main.cpp` (on each SQW pulse); self-gates — does nothing unless `activeMode == kPersistentFriday`, and short-circuits when the phase hasn't changed.
 - Phase logic (all times local, derived from device `location` + `utcOffsetMinutes`):
   - **Clock phase** (`kClock`): Saturday sunset through Thursday midnight; also the default.
   - **To Friday sunset** (`kToFridaySunset`): Thursday midnight → Friday sunset.
@@ -148,6 +150,7 @@ The display system has four layers:
 
 ### Storage / config
 - `ClockConfig` (in `config.h`) holds: `activeMode`, format indices (`countdownFmt`, `countupFmt`, `clockFmt`), friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`), `countdownDatetime[20]`, `countupDatetime[20]`, `splashMessage[64]`, `finalMessage[64]`, `brightness`, `location` (`LocationInfo`), `sunsetTest` (`LocationInfo`), `timezone[40]`, `utcOffsetMinutes`, `dst`, `clockUse12Hour`.
+- `clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour). Applies to clock mode and the Friday mode clock phase; does not affect countdown/countup hours.
 - `LocationInfo` struct (in `config.h`): `latitude`, `longitude`, `zipcode[6]`. Used for both `location` (physical device location) and `sunsetTest` (Sunset Calculator test inputs). Do not cross-read one for the other.
 - `/config.json` has separate `location` and `sunset` objects. `location` is the physical device location. `sunset` stores Sunset Calculator test inputs. Do not use one as a backward-compatible fallback for the other.
 - `WifiConfig` holds: `staSsid`, `staPassword`, `apSsid`, `apPassword`.
@@ -159,6 +162,7 @@ The display system has four layers:
   - `serializeWifiConfig(doc, wifi)` - writes full wifi including passwords (for disk storage).
   - `serializeWifiStatus(doc, wifi)` - writes wifi without station password (for HTTP responses).
 - **`config_validation.h/cpp`** - sanitize and convert config values. Canonical home of `persistentModeName(mode)` and `persistentModeFromName(name, out)`. Do not redeclare these elsewhere.
+- **`config_api.cpp`** — `parseJsonBody(doc, route)` is a private `ConfigApi` helper that deserializes the request body; on failure it logs, sends 400, and returns `false`. All POST handlers call it instead of repeating the boilerplate. `applyModeAndFormats()` and `applyMessageFields()` are the two static sub-helpers used by `handleSaveConfig()`.
 
 ### Networking
 - **`wifi_connection_manager.h/cpp`**: `WifiConnectionManager` singleton.

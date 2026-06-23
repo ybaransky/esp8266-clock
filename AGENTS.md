@@ -42,16 +42,21 @@ main.cpp
 
 | Value | Name | Behavior |
 |-------|------|----------|
-| `kPersistentCountdown` | countdown | Counts down to a configured target datetime |
+| `kPersistentCountdown` | countdown | Counts down to a configured end datetime |
 | `kPersistentCountup`   | countup   | Counts up from a configured start datetime |
-| `kPersistentClock`     | clock     | Displays current time |
-| `kPersistentFriday`    | friday    | Thu midnight → countdown to Fri sunset → countdown to Sat sunset → clock (repeats) |
+| `kPersistentClock`     | clock     | Displays current time (24h or 12h per `clockUse12Hour`) |
+| `kPersistentFriday`    | friday    | Clock phase → Thu midnight → countdown to Fri sunset → countdown to Sat sunset → repeats |
+
+## 12-hour clock mode
+
+`ClockConfig.clockUse12Hour` (`display.clock12Hour` in JSON, default `false`) converts the hour to 1–12 scale in `DisplayManager::renderClock()` before passing fields to the pure renderer. Countdown and countup modes are unaffected — their `hours` field is elapsed time, not a time of day.
 
 ## Critical invariants
 
 - **`DisplayPayload` is a union** — only the member matching `DisplayState::behavior` is valid. Never read a different union member.
-- **Format metadata rows must stay in sync** — whenever a format string is added or reordered in `format.cpp`, a matching `FormatMetadata` row must be added in the same position. Index mismatches cause silent rendering bugs.
+- **Format metadata rows must stay in sync** — whenever a format string is added or reordered in `format.cpp`, a matching `FormatMetadata` row must be added in the same position in `kClockMeta` / `kCountdownMeta` / `kCountupMeta`. Index mismatches cause silent rendering bugs. The `renderClock()` switch in `clock_format.cpp` must also be updated to match.
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.
 - **`location` vs `sunsetTest`** — `ClockConfig.location` is the physical device location used by friday_mode; `ClockConfig.sunsetTest` is the Sunset Calculator page's test input. Do not substitute one for the other.
 - **`webHandleClients()` must be called every `loop()` iteration** — skipping it stalls the web server and DNS.
 - **GPIO15 must stay LOW at boot** — do not add any pull-up on D8.
+- **`setDefaultState()` vs `applySettings()`** — use `setDefaultState()` to update the base display state without disturbing temporary overlays (e.g. from `FridayModeController`). Use `applySettings()` only for full config reloads (it resets colon state and re-evaluates the full persistent mode).
