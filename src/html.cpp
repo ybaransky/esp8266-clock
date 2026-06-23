@@ -25,7 +25,7 @@ hr{border:0;border-top:1px solid #333;margin:18px 0}
 <button id="mode-countdown" class="mode" onclick="setMode('countdown')">Countdown</button>
 <button id="mode-clock" class="mode" onclick="setMode('clock')">Clock</button>
 <button id="mode-countup" class="mode" onclick="setMode('countup')">Countup</button>
-<button id="mode-friday" class="mode" onclick="setMode('friday')">Friday / Weekend</button>
+<button id="mode-friday" class="mode" onclick="setMode('friday')">Friday</button>
 <hr>
 <button id="mode-demo" class="mode" onclick="runDemo()">Demo</button>
 <hr>
@@ -125,7 +125,7 @@ a{color:#6af;font-size:1rem}
   <option value="0">Count Down</option>
   <option value="1">Count Up</option>
   <option value="2">Clock</option>
-  <option value="3">Friday / Weekend</option>
+  <option value="3">Friday</option>
 </select></label>
 
 <div id="sec-countdown">
@@ -148,10 +148,10 @@ a{color:#6af;font-size:1rem}
 
 <div id="sec-friday">
 <hr>
-<h3>Clock Phase &nbsp;(Sat sunset &rarr; Fri midnight)</h3>
+<h3>Clock Phase &nbsp;(Sat sunset &rarr; Thu midnight)</h3>
 <label>Format<select id="sel-fri-ck"></select></label>
 <span id="fri-hour-anchor"></span>
-<h3>Countdown &nbsp;(Fri midnight &rarr; Fri sunset)</h3>
+<h3>Countdown &nbsp;(Thu midnight &rarr; Fri sunset)</h3>
 <label>Format<select id="sel-fri-cd"></select></label>
 <h3>Countdown &nbsp;(Fri sunset &rarr; Sat sunset)</h3>
 <label>Format<select id="sel-fri-hv"></select></label>
@@ -952,7 +952,7 @@ a{color:#6af;font-size:.9em}
 
 <hr>
 <h2>Countdown Text</h2>
-<label>Shown when countdown or demo finishes</label>
+<label>Shown when Count Down mode finishes</label>
 <div class="row">
   <input id="f1" maxlength="4" placeholder="R1" oninput="nextPanel(this,'f2')">
   <input id="f2" maxlength="4" placeholder="R2" oninput="nextPanel(this,'f3')">

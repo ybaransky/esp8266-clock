@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 You are a senior software engineer with 15+ years of experience. When providing code solutions, follow these principles:
 
 ## DESIGN PRINCIPLES
@@ -27,20 +29,45 @@ You are a senior software engineer with 15+ years of experience. When providing 
 - After code changes, note further improvements worth considering.
 - If the task is large, outline the structure first and confirm before implementing.
 
+## BUILD COMMANDS
+
+```bash
+# Build firmware
+pio run
+
+# Build and upload to device
+pio run --target upload
+
+# Upload filesystem (LittleFS data/ directory) to device
+pio run --target uploadfs
+
+# Monitor serial output (74880 baud with ESP8266 exception decoder)
+pio device monitor
+
+# Clean build artifacts
+pio run --target clean
+```
+
+There are no automated tests. Validation is done by flashing the firmware and observing behavior on device. Serial output at 74880 baud includes stack traces decoded by `monitor_filters = esp8266_exception_decoder`.
+
 ## ESP8266 CLOCK PROJECT CONVENTIONS
 
 ### Hardware pin map
-|        Signal | Pin |   GPIO | Notes                                                                |
-|    TM1637 CLK |  D5 | GPIO14 | (shared); all 3 displays                                             |
-| TM1637 DIO[0] |  D6 | GPIO12 | Safe                                                                 |
-| TM1637 DIO[1] |  D4 |  GPIO2 | Shares with INTERNAL_LED; both idle HIGH                             |
-| TM1637 DIO[2] |  D0 | GPIO16 | No interrupts; fine for DIO                                          |
-|    DS3231 SDA |  D2 |  GPIO4 | Hardware I2C                                                         |
-|    DS3231 SCL |  D1 |  GPIO5 | Hardware I2C                                                         |
-|    DS3231 SQW |  D7 | GPIO13 | RISING interrupt, INPUT_PULLUP, 1Hz                                  |
-|        Button |  D3 |  GPIO0 | INPUT_PULLUP, pressed = LOW; do not hold at boot                     |
-|  Internal LED |  D4 |  GPIO2 | Active-low; shared with TM1637 DIO[1] - LED flickers during transmit |
-|            D8 |   - | GPIO15 | **Unused - must stay LOW at boot (strapping pin); do not connect**   |
+
+| Signal        | Pin | GPIO   | Notes                                                              |
+|---------------|-----|--------|--------------------------------------------------------------------|
+| *Left side*   |     |        |                                                                    |
+| TM1637 DIO[2] | D0  | GPIO16 | No interrupts; fine for DIO                                        |
+| TM1637 CLK    | D5  | GPIO14 | Shared across all 3 displays                                       |
+| TM1637 DIO[0] | D6  | GPIO12 | Safe                                                               |
+| DS3231 SQW    | D7  | GPIO13 | RISING interrupt, INPUT_PULLUP, 1Hz                                |
+| D8 (unused)   | —   | GPIO15 | **Must stay LOW at boot (strapping pin); do not connect**          |
+| *Right side*  |     |        |                                                                    |
+| DS3231 SCL    | D1  | GPIO5  | Hardware I2C                                                       |
+| DS3231 SDA    | D2  | GPIO4  | Hardware I2C                                                       |
+| Button        | D3  | GPIO0  | INPUT_PULLUP, pressed = LOW; do not hold at boot                   |
+| TM1637 DIO[1] | D4  | GPIO2  | Shares with INTERNAL_LED; both idle HIGH                           |
+| Internal LED  | D4  | GPIO2  | Active-low; shared with TM1637 DIO[1] — LED flickers during write |
 
 ### Pin boot constraints
 - **GPIO15 (D8)**: must be LOW - leave unconnected; any pull-up prevents boot/flash.
@@ -63,7 +90,7 @@ The display system has four layers:
 
 1. **`format.h/cpp`** - format-group tables, mode enums, and per-format metadata.
    - `FormatGroup` enum: `kFmtGroupCountdown`, `kFmtGroupCountUp`, `kFmtGroupClock`.
-   - `PersistentMode` enum: `kPersistentCountdown`, `kPersistentCountup`, `kPersistentClock` - the mode stored in config and restored after temporary states.
+   - `PersistentMode` enum: `kPersistentCountdown`, `kPersistentCountup`, `kPersistentClock`, `kPersistentFriday` - the mode stored in config and restored after temporary states.
    - `getFormat(group, index)` and `formatCount(group)` are the public accessors.
    - `FormatMetadata` struct holds `hasTenths` and `blinkColon` per entry. `getFormatMeta(group, index)` returns a pointer; `kFormatGroupMeta[group]` is the backing array in `format.cpp`. Always add a matching metadata row when adding or reordering a format string.
    - Predicates `countdownHasTenths`, `countupHasTenths`, `clockHasTenths`, `clockBlinkColon` (in `clock_format.h`) are table-driven via `FormatMetadata` — do NOT add hardcoded index comparisons.
@@ -96,6 +123,18 @@ The display system has four layers:
 5. **`clock_state.h`** - thin public API used by `web_server.cpp` to decouple it from `DisplayManager`.
    - `clockApplySettings(cfg)`, `clockSetBrightness(b)`, `clockTriggerDemo()`, `clockShowMessagePreview(msg)`, `clockShowInfo(msg, durationMs)`, `clockClearInfo()`.
 
+### Friday Mode
+- **`friday_mode.h/cpp`**: `FridayModeController` (internal singleton). Public API: `fridayModeApplySettings(config)` and `fridayModeTick(now)`.
+- `fridayModeTick()` is called once per minute from `main.cpp` (on the `kSqwLogIntervalSeconds` pulse); self-gates — does nothing unless `activeMode == kPersistentFriday`.
+- Phase logic (all times local, derived from device `location` + `utcOffsetMinutes`):
+  - **Clock phase** (`kClock`): Saturday sunset through Thursday midnight; also the default.
+  - **To Friday sunset** (`kToFridaySunset`): Thursday midnight → Friday sunset.
+  - **To Saturday sunset** (`kToSaturdaySunset`): Friday sunset → Saturday sunset.
+- Each phase transition calls `displayManager.setDefaultState()` with the appropriate `DisplayState`. Format indices come from `ClockConfig.fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`.
+- Sunset targets are cached in `FridayModeController` and recomputed at most once per week (when `fridayDateFor(now)` returns a different date than last time). `calculateSunset()` is **not** called on every tick.
+- `fridayDateFor(now)`: returns the reference Friday midnight. On Thursday (`dow==4`) it returns *tomorrow* (upcoming Friday) so that `thursdayMidnight = fridayDate - 1 day` correctly marks the start of the countdown. On all other days it returns the most recent past Friday.
+- `applySettings()` resets the cached Friday date to `DateTime()` to force recomputation on the next tick (needed when location or UTC offset changes).
+
 ### Input
 - **`button.h/cpp`**: `buttonBegin()`, `buttonTick()` (debounce), `buttonHasEvent()`, `buttonNextEvent()`.
   - `ButtonEvent` enum: `SHOW_SSID`, `SHOW_IP_ADDRESS`, `SHOW_RTC_STATUS`.
@@ -108,7 +147,7 @@ The display system has four layers:
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
 ### Storage / config
-- `ClockConfig` (in `config.h`) holds: `activeMode`, format indices, `countdownDatetime[20]`, `countupDatetime[20]`, `splashMessage[64]`, `finalMessage[64]`, `brightness`, `location` (`LocationInfo`), `sunsetTest` (`LocationInfo`), `timezone[40]`, `utcOffsetMinutes`, `dst`.
+- `ClockConfig` (in `config.h`) holds: `activeMode`, format indices (`countdownFmt`, `countupFmt`, `clockFmt`), friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`), `countdownDatetime[20]`, `countupDatetime[20]`, `splashMessage[64]`, `finalMessage[64]`, `brightness`, `location` (`LocationInfo`), `sunsetTest` (`LocationInfo`), `timezone[40]`, `utcOffsetMinutes`, `dst`, `clockUse12Hour`.
 - `LocationInfo` struct (in `config.h`): `latitude`, `longitude`, `zipcode[6]`. Used for both `location` (physical device location) and `sunsetTest` (Sunset Calculator test inputs). Do not cross-read one for the other.
 - `/config.json` has separate `location` and `sunset` objects. `location` is the physical device location. `sunset` stores Sunset Calculator test inputs. Do not use one as a backward-compatible fallback for the other.
 - `WifiConfig` holds: `staSsid`, `staPassword`, `apSsid`, `apPassword`.

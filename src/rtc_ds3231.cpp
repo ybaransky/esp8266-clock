@@ -283,3 +283,10 @@ bool rtcProcessSqwPulse() {
   }
   return false;
 }
+
+bool rtcIsHealthy() {
+  if (!rtc.getStatus().present) return false;
+  if (!sqwProcessingStarted)    return true;
+  const uint32_t lastEventMs = sqwSawPulse ? sqwLastPulseAtMs : sqwProcessingStartedAtMs;
+  return static_cast<long>(millis() - lastEventMs) < 3000L;
+}

@@ -4,6 +4,7 @@
 #include <math.h>
 
 #include "clock_state.h"
+#include "friday_mode.h"
 #include "config.h"
 #include "config_serializer.h"
 #include "config_validation.h"
@@ -306,6 +307,7 @@ void ConfigApi::handleTimeSync() {
   LOG_PRINTF("Browser time sync requested: %04d-%02d-%02d %02d:%02d:%02d\n",
              year, month, day, hour, minute, second);
   rtcSetNow(DateTime(year, month, day, hour, minute, second));
+  fridayModeResetSunsetCache();
   responder_.sendJson(200, "{\"message\":\"RTC synced\"}");
 }
 

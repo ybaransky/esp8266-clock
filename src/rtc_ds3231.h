@@ -21,3 +21,6 @@ void rtcSetNow(const DateTime& timeValue);
 void rtcBeginSqwProcessing();
 // Returns true once every kSqwLogIntervalSeconds pulses (caller should log).
 bool rtcProcessSqwPulse();
+
+// Returns true when the RTC is present and the SQW 1Hz pulse is arriving on schedule.
+bool rtcIsHealthy();
