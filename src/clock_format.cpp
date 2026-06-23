@@ -37,7 +37,8 @@ void fmtDaysRight(char* out, int days) {
 }
 
 const char* dowAbbrev(int dayOfWeek) {
-  static const char* const kNames[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  //static const char* const kNames[] = {"Sun", "mon", "tu", "wEd", "thu", "Fri", "Sat"};
+  static const char* const kNames[] = {"Sun", "non", "tu", "uEd", "thu", "Fri", "Sat"};
   if (dayOfWeek < 0 || dayOfWeek >= static_cast<int>(sizeof(kNames) / sizeof(kNames[0]))) {
     return "   ";
   }
@@ -139,82 +140,87 @@ void renderClock(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3,
       fmtMonthDay(r2, f.month, f.dayOfMonth);
       fmtHourMinBlink(r3, f.hours, f.minutes, colonVisible);
       break;
-    case 1: // DOFW | MM | DD
+    case 1: // DOFW |       | hh;mm  (blink colon)
+      fmtText(r1, dow);
+      fmtText(r2, "    ");
+      fmtHourMinBlink(r3, f.hours, f.minutes, colonVisible);
+      break;
+    case 2: // DOFW | MM | DD
       fmtText(r1, dow);
       fmtNumber(r2, f.month);
       fmtNumber(r3, f.dayOfMonth);
       break;
-    case 2: // DOFW | hh:mm | ss:u
+    case 3: // DOFW | hh:mm | ss:u
       fmtText(r1, dow);
       fmtHourMin(r2, f.hours, f.minutes);
       snprintf(r3, 8, "%2d:%d", f.seconds, f.tenths);
       break;
-    case 3: // DOFW | hh:mm | ss
+    case 4: // DOFW | hh:mm | ss
       fmtText(r1, dow);
       fmtHourMin(r2, f.hours, f.minutes);
       fmtNumber(r3, f.seconds);
       break;
-    case 4: // DOFW | hh h | mm:ss
+    case 5: // DOFW | hh h | mm:ss
       fmtText(r1, dow);
       snprintf(r2, 8, "%2d h", f.hours);
       fmtMinSec(r3, f.minutes, f.seconds);
       break;
-    case 5: // DOFW | hh h | mm n
+    case 6: // DOFW | hh h | mm n
       fmtText(r1, dow);
       snprintf(r2, 8, "%2d h", f.hours);
       snprintf(r3, 8, "%2d n", f.minutes);
       break;
-    case 6: // YYYY | MM:DD | hh:mm  (blink colon)
+    case 7: // YYYY | MM:DD | hh;mm  (blink colon)
       snprintf(r1, 8, "%4d", f.year);
       fmtMonthDay(r2, f.month, f.dayOfMonth);
       fmtHourMinBlink(r3, f.hours, f.minutes, colonVisible);
       break;
-    case 7: // YYYY | MM | DD
+    case 8: // YYYY | MM | DD
       snprintf(r1, 8, "%4d", f.year);
       fmtNumber(r2, f.month);
       fmtNumber(r3, f.dayOfMonth);
       break;
-    case 8: // MM | DD | hh:mm  (blink colon)
+    case 9: // MM | DD | hh;mm  (blink colon)
       fmtNumber(r1, f.month);
       fmtNumber(r2, f.dayOfMonth);
       fmtHourMinBlink(r3, f.hours, f.minutes, colonVisible);
       break;
-    case 9: // MM:DD | hh:mm | ss u
+    case 10: // MM:DD | hh:mm | ss u
       fmtMonthDay(r1, f.month, f.dayOfMonth);
       fmtHourMin(r2, f.hours, f.minutes);
       snprintf(r3, 8, "%02d %d", f.seconds, f.tenths);
       break;
-    case 10: // MM:DD | hh:mm | ss
+    case 11: // MM:DD | hh:mm | ss
       fmtMonthDay(r1, f.month, f.dayOfMonth);
       fmtHourMin(r2, f.hours, f.minutes);
       fmtNumber(r3, f.seconds);
       break;
-    case 11: // MM:DD | hh | mm:ss
+    case 12: // MM:DD | hh | mm:ss
       fmtMonthDay(r1, f.month, f.dayOfMonth);
       fmtNumber(r2, f.hours);
       fmtMinSec(r3, f.minutes, f.seconds);
       break;
-    case 12: // MM:DD | hh | mm
+    case 13: // MM:DD | hh | mm
       fmtMonthDay(r1, f.month, f.dayOfMonth);
       fmtNumber(r2, f.hours);
       fmtNumber(r3, f.minutes);
       break;
-    case 13: // DD | hh:mm | ss u
+    case 14: // DD | hh:mm | ss u
       fmtNumber(r1, f.dayOfMonth);
       fmtHourMin(r2, f.hours, f.minutes);
       snprintf(r3, 8, "%02d %d", f.seconds, f.tenths);
       break;
-    case 14: // DD | hh:mm | ss
+    case 15: // DD | hh:mm | ss
       fmtNumber(r1, f.dayOfMonth);
       fmtHourMin(r2, f.hours, f.minutes);
       fmtNumber(r3, f.seconds);
       break;
-    case 15: // DD | hh | mm:ss
+    case 16: // DD | hh | mm:ss
       fmtNumber(r1, f.dayOfMonth);
       fmtNumber(r2, f.hours);
       fmtMinSec(r3, f.minutes, f.seconds);
       break;
-    case 16: // DD | hh | mm
+    case 17: // DD | hh | mm
       fmtNumber(r1, f.dayOfMonth);
       fmtNumber(r2, f.hours);
       fmtNumber(r3, f.minutes);

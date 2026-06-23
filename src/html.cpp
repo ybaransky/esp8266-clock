@@ -80,16 +80,18 @@ h1{font-size:2em;margin:0 0 18px}
   text-decoration:none;box-sizing:border-box;border:0;cursor:pointer;margin:10px auto;max-width:260px}
 .btn:active{background:#246}
 .home{display:block;text-align:left;margin-top:18px;color:#6af;font-size:1rem}
+hr{border:0;border-top:1px solid #333;margin:14px auto;max-width:260px}
 </style></head>
 <body>
 <h1>Settings</h1>
 <a class="btn" href="/format">Formats</a>
 <a class="btn" href="/messages">Messages</a>
-<a class="btn" href="/wifi">Networks</a>
-<a class="btn" href="/location">Set Location</a>
-<a class="btn" href="/time">Set Time</a>
+<a class="btn" href="/location">Location</a>
+<a class="btn" href="/time">Time</a>
+<a class="btn" href="/wifi">Wifi</a>
+<hr>
+<a class="btn" href="/config">Files</a>
 <a class="btn" href="/sunset">Sunset Calculator</a>
-<a class="btn" href="/config">Directory</a>
 <a class="home" href="/">&#8592; Home</a>
 </body></html>
 )rawliteral";
@@ -99,7 +101,7 @@ h1{font-size:2em;margin:0 0 18px}
 const char CONFIG_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Format</title><style>
+<title>Format Settings</title><style>
 body{font-family:sans-serif;padding:18px;background:#111;color:#eee;max-width:640px;margin:0 auto}
 h1{font-size:2rem;margin:0 0 6px;text-align:center}
 h2{font-size:1.25rem;color:#8af;margin:22px 0 8px}
@@ -118,7 +120,7 @@ button:active{background:#2a8}
 a{color:#6af;font-size:1rem}
 </style></head>
 <body>
-<h1>Format</h1>
+<h1>Format Settings</h1>
 
 <label>Mode
 <select id="mode" onchange="updateSections()">
@@ -597,7 +599,7 @@ loadDirectory();
 const char TIME_SYNC_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Set Time</title><style>
+<title>Time Settings</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:2rem;margin:0 0 6px;text-align:center}
 p{font-size:1.05rem;line-height:1.5;color:#ccc;text-align:center}
@@ -628,7 +630,7 @@ button.secondary:active{background:#246}
 a{color:#6af;font-size:1rem}
 </style></head>
 <body>
-<h1>Set Time</h1>
+<h1>Time Settings</h1>
 <div class="syncPanel">
 <div class="now">
   <table class="timetable">
@@ -916,7 +918,7 @@ loadInitialValues();
 const char MESSAGE_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Messages</title><style>
+<title>Message Settings</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:1.7em;margin-bottom:4px;text-align:center}
 h2{font-size:1.1em;color:#8af;margin:22px 0 8px}
@@ -938,7 +940,7 @@ button.secondary:active{background:#246}
 a{color:#6af;font-size:.9em}
 </style></head>
 <body>
-<h1>Messages</h1>
+<h1>Message Settings</h1>
 <p>Each message is split across the three display panels. Test shows the message on the device for 5 seconds without saving.</p>
 
 <h2>Splash Screen Text</h2>
@@ -1086,7 +1088,7 @@ if(!name){
 const char LOCATION_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Set Location</title><style>
+<title>Location Settings</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:2em;margin-bottom:14px;text-align:center}
 .field{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:center;margin-top:14px;font-size:1.1em;color:#aaa}
@@ -1107,7 +1109,7 @@ button.secondary:active{background:#246}
 a{color:#6af;font-size:.9em}
 </style></head>
 <body>
-<h1>Set Location</h1>
+<h1>Location Settings</h1>
 <label class="field"><span>Latitude</span><input type="text" id="lat" inputmode="decimal" pattern="-?[0-9]+(\.[0-9]+)?" placeholder="40.7128"></label>
 <label class="field"><span>Longitude</span><input type="text" id="lon" inputmode="decimal" pattern="-?[0-9]+(\.[0-9]+)?" placeholder="-74.0060"></label>
 <label class="field"><span>ZIP code</span><input type="text" id="zip" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="10001"></label>

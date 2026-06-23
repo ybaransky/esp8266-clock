@@ -99,9 +99,10 @@ void processButtonEvents() {
 void setup() {
   Serial.begin(74880);
   delay(500);
-  LOG_PRINTLN("Starting up...");
+  LOG_PRINTF("Starting up...\n");
   printDeviceInfo();
 
+  LOG_PRINTF("Built ========= %s %s ==========\n", __DATE__, __TIME__);
   Wire.begin(Hardware::Pins::I2C_SDA, Hardware::Pins::I2C_SCL);
   Wire.setClock(100000);
   LOG_PRINTF("Initialized SDA=GPIO%u SCL=GPIO%u\n",

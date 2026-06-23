@@ -56,6 +56,7 @@ static const FormatMetadata kCountupMeta[] = {
 // A semi-colon marks the hh:mm separator as blinking.
 static const char* const kClockFormats[] = {
   " DOFW | MM:DD | hh;mm",   // DayOfWeek | month:day | hours:minutes  (colon blinks)
+  " DOFW |       | hh;mm",   // DayOfWeek |  | hours:minutes  (colon blinks)
   " DOFW |    MM |    DD",   // DayOfWeek | month     | day
   " DOFW | hh:mm |  ss:u",   // DayOfWeek | hours:minutes | seconds:tenths
   " DOFW | hh:mm |    ss",   // DayOfWeek | hours:minutes | seconds
@@ -76,22 +77,23 @@ static const char* const kClockFormats[] = {
 
 static const FormatMetadata kClockMeta[] = {
   {false, true},   // 0:  DOFW | MM:DD | hh;mm    (blink colon)
-  {false, false},  // 1:  DOFW | MM    | DD
-  {true,  false},  // 2:  DOFW | hh:mm | ss:u
-  {false, false},  // 3:  DOFW | hh:mm | ss
-  {false, false},  // 4:  DOFW | hh h  | mm:ss
-  {false, false},  // 5:  DOFW | hh h  | mm n
-  {false, true},   // 6:  YYYY | MM:DD | hh;mm    (blink colon)
-  {false, false},  // 7:  YYYY | MM    | DD
-  {false, true},   // 8:  MM   | DD    | hh;mm    (blink colon)
-  {true,  false},  // 9:  MM:DD | hh:mm | ss u
-  {false, false},  // 10: MM:DD | hh:mm | ss
-  {false, false},  // 11: MM:DD | hh    | mm:ss
-  {false, false},  // 12: MM:DD | hh    | mm
-  {true,  false},  // 13: DD   | hh:mm | ss u
-  {false, false},  // 14: DD   | hh:mm | ss
-  {false, false},  // 15: DD   | hh    | mm:ss
-  {false, false},  // 16: DD   | hh    | mm
+  {false, true},   // 1:  DOFW |       | hh;mm    (blink colon)
+  {false, false},  // 2:  DOFW | MM    | DD
+  {true,  false},  // 3:  DOFW | hh:mm | ss:u
+  {false, false},  // 4:  DOFW | hh:mm | ss
+  {false, false},  // 5:  DOFW | hh h  | mm:ss
+  {false, false},  // 6:  DOFW | hh h  | mm n
+  {false, true},   // 7:  YYYY | MM:DD | hh;mm    (blink colon)
+  {false, false},  // 8:  YYYY | MM    | DD
+  {false, true},   // 9:  MM   | DD    | hh;mm    (blink colon)
+  {true,  false},  // 10: MM:DD | hh:mm | ss u
+  {false, false},  // 11: MM:DD | hh:mm | ss
+  {false, false},  // 12: MM:DD | hh    | mm:ss
+  {false, false},  // 13: MM:DD | hh    | mm
+  {true,  false},  // 14: DD   | hh:mm | ss u
+  {false, false},  // 15: DD   | hh:mm | ss
+  {false, false},  // 16: DD   | hh    | mm:ss
+  {false, false},  // 17: DD   | hh    | mm
 };
 
 // -- Master lookup tables ------------------------------------------------------

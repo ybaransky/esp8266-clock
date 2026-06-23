@@ -83,8 +83,8 @@ ClockConfig defaultClockConfig() {
     s.activeMode    = kPersistentCountdown;
     s.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
     s.countupFmt    = 0;
-    s.clockFmt      = 6; // " YYYY | MM:DD | hh:mm" (blinking colon)
-    s.fridayClockFmt          = 6;
+    s.clockFmt      = 7; // " YYYY | MM:DD | hh;mm" (blinking colon)
+    s.fridayClockFmt          = 7;
     s.fridayToFridaySunsetFmt = 0;
     s.fridayToSatSunsetFmt    = 0;
     s.brightness    = 3;
