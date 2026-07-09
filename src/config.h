@@ -50,9 +50,6 @@ struct ClockConfig {
   bool clockUse12Hour;         // True for 12-hour display (1–12); false for 24-hour (0–23).
 };
 
-// Returns a ClockConfig initialised to sensible defaults.
-ClockConfig defaultClockConfig();
-
 // -- ConfigManager -------------------------------------------------------------
 class ConfigManager {
 public:

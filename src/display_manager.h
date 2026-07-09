@@ -5,6 +5,7 @@
 
 #include "clock_source.h"
 #include "config.h"
+#include "defaults.h"
 
 enum class DisplayBehavior : uint8_t {
   kClock,

@@ -3,13 +3,12 @@
 #include <ArduinoJson.h>
 #include "config_serializer.h"
 #include "config_validation.h"
+#include "defaults.h"
 #include "log.h"
 #include "storage_manager.h"
 
 static constexpr const char* CONFIG_PATH = "/config.json";
 static constexpr const char* CONFIG_TMP_PATH = "/config.tmp";
-static constexpr const char* YURICLOC = "YuriCloc";
-static constexpr const char* PASSWORD = "12345678";
 
 static bool writeConfigDocument(JsonDocument& doc, const char* label);
 static bool openAndParse(JsonDocument& doc);
@@ -71,47 +70,23 @@ static bool writeConfigDocument(JsonDocument& doc, const char* label) {
 
 static void populateDefaultConfigDocument(JsonDocument& doc) {
     const ClockConfig clock = defaultClockConfig();
-    const WifiConfig wifi{"", "", YURICLOC, PASSWORD};
+    const WifiConfig wifi = defaultWifiConfig();
     doc.clear();
     serializeClockConfig(doc, clock);
     serializeWifiConfig(doc, wifi);
 }
 
-// -- ClockConfig defaults ------------------------------------------------------
-ClockConfig defaultClockConfig() {
-    ClockConfig s;
-    s.activeMode    = kPersistentCountdown;
-    s.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
-    s.countupFmt    = 0;
-    s.clockFmt      = 7; // " YYYY | MM:DD | hh;mm" (blinking colon)
-    s.fridayClockFmt          = 7;
-    s.fridayToFridaySunsetFmt = 0;
-    s.fridayToSatSunsetFmt    = 0;
-    s.brightness    = 3;
-    snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "2026-07-04 00:00:00");
-    snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "now");
-    snprintf(s.splashMessage, sizeof(s.splashMessage), "YuriCloc");
-    snprintf(s.finalMessage,  sizeof(s.finalMessage),  "Good Luc");
-    s.location   = {};
-    s.sunsetTest = {};
-    s.timezone[0] = '\0';
-    s.utcOffsetMinutes = 0;
-    s.dst = false;
-    s.clockUse12Hour = false;
-    return s;
-}
-
 // -- WiFi ----------------------------------------------------------------------
 WifiConfig ConfigManager::loadWifiConfig() {
-    WifiConfig cfg{"", "", YURICLOC, PASSWORD};
+    WifiConfig cfg = defaultWifiConfig();
 
     JsonDocument doc;
     if (!openAndParse(doc)) return cfg;
 
-    cfg.staSsid     = doc["wifi"]["station"]["ssid"]         | "";
-    cfg.staPassword = doc["wifi"]["station"]["password"]     | "";
-    cfg.apSsid      = doc["wifi"]["accessPoint"]["ssid"]     | YURICLOC;
-    cfg.apPassword  = doc["wifi"]["accessPoint"]["password"] | PASSWORD;
+    cfg.staSsid     = doc["wifi"]["station"]["ssid"]         | cfg.staSsid;
+    cfg.staPassword = doc["wifi"]["station"]["password"]     | cfg.staPassword;
+    cfg.apSsid      = doc["wifi"]["accessPoint"]["ssid"]     | cfg.apSsid;
+    cfg.apPassword  = doc["wifi"]["accessPoint"]["password"] | cfg.apPassword;
     return cfg;
 }
 
@@ -153,12 +128,10 @@ ClockConfig ConfigManager::loadClockConfig() {
     const char* start = doc["display"]["modes"]["countup"]["start"] | "";
     if (start[0]) snprintf(cfg.countupDatetime, sizeof(cfg.countupDatetime), "%s", start);
 
-                                               /*123412341234*/
-    const char* splash = doc["display"]["messages"]["splash"] | "      hi    ";
+    const char* splash = doc["display"]["messages"]["splash"] | cfg.splashMessage;
     sanitizeDisplayMessage(splash, cfg.splashMessage, sizeof(cfg.splashMessage));
 
-                                                /*123412341234*/
-    const char* finalMsg = doc["display"]["messages"]["final"] | "Good Luc    ";
+    const char* finalMsg = doc["display"]["messages"]["final"] | cfg.finalMessage;
     sanitizeDisplayMessage(finalMsg, cfg.finalMessage, sizeof(cfg.finalMessage));
 
     JsonVariantConst location = doc["location"];
