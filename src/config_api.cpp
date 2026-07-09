@@ -88,9 +88,9 @@ bool applyZipcode(const char* label, const char* zipcode,
 // Returns false if activeMode is provided but invalid.
 static bool applyModeAndFormats(JsonVariant display, JsonVariant modes, ClockConfig& cfg) {
   if (!display["activeMode"].isNull()) {
-    PersistentMode nextMode;
+    Mode nextMode;
     const String mode = display["activeMode"] | "";
-    if (!persistentModeFromName(mode, &nextMode)) {
+    if (!modeFromName(mode, &nextMode)) {
       LOG_PRINTF("/api/config save failed: invalid activeMode=\"%s\"\n", mode.c_str());
       return false;
     }
@@ -247,9 +247,9 @@ void ConfigApi::handleSetMode() {
   JsonDocument doc;
   if (!parseJsonBody(doc, "/api/mode")) return;
 
-  PersistentMode nextMode;
+  Mode nextMode;
   const String mode = doc["mode"] | "";
-  if (!persistentModeFromName(mode, &nextMode)) {
+  if (!modeFromName(mode, &nextMode)) {
     LOG_PRINTF("/api/mode failed: invalid mode=\"%s\"\n", mode.c_str());
     responder_.sendJson(400, "{\"error\":\"Invalid mode\"}");
     return;

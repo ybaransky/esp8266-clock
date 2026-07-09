@@ -77,8 +77,11 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 ### Serial / I2C / RTC
 - Serial at 74880 baud for readable ESP8266 boot output.
 - Initialize I2C early in `setup()` with explicit SDA/SCL pins before probing the RTC.
-- RTC SQW runs at 1Hz RISING interrupt. Call `rtcBeginSqwProcessing()` after `rtcBegin()`, then `rtcProcessSqwPulse()` each loop - returns `true` on a log-interval pulse.
-- `rtcGetNow()` returns a `DateTime` from RTClib; `rtcGetStatus()` returns `RtcStatus` (present, powerLost, lowBattery, sqwConfigured, error).
+- RTC SQW runs at 1Hz RISING interrupt. Call `rtcBeginSqwProcessing()` after `rtcBegin()`, then every loop call `rtcConsumeSqwPulse()` first - it returns `true` exactly once per real RTC second and advances the `rtcGetNowCached()` cache. Only when it returns `true`, optionally call `rtcIsLogIntervalDue()` to check whether the cached wall-clock second also lands on a `kSqwLogIntervalSeconds` boundary (`:00` and `:30`, i.e. every 30s) - meaning it's time for the throttled health/state log line. That call also resyncs the cache with a live read to correct for any missed pulses.
+- **Do not gate time-sensitive logic on `rtcIsLogIntervalDue()`** — it's throttled to the `:00`/`:30` boundary and exists only to pace logging. Anything that needs to react promptly to the RTC crossing a boundary (e.g. Friday-mode phase transitions in `fridayModeTick()`) must gate on `rtcConsumeSqwPulse()` instead. Piggybacking on the log gate was a real bug once (Friday mode's phase change lagged the actual Thu→Fri midnight crossing by up to a minute) — see `main.cpp`'s loop for the corrected wiring.
+- `rtcGetNow()` returns a `DateTime` from RTClib via a live I2C read; `rtcGetStatus()` returns `RtcStatus` (present, powerLost, lowBattery, sqwConfigured, error).
+- **`rtcGetNowCached()`** — second-resolution `DateTime` maintained in software by `rtcConsumeSqwPulse()`: each SQW pulse advances a cached `DateTime` by one second (`cachedNow_.unixtime() + 1`) instead of re-reading the DS3231, since the pulse edge already tells you a second has elapsed. On the `:00`/`:30` boundary, `rtcIsLogIntervalDue()` resyncs the cache with one live `rtc.now()` read to correct for any pulses missed. If the SQW pulse goes stale (no pulse within `kSqwPulseStaleMs` = 3s, per the same freshness check `rtcIsHealthy()` uses) or the cache hasn't been seeded yet, `rtcGetNowCached()` transparently falls back to a live read — so it degrades gracefully rather than freezing if the interrupt/polling fallback ever stalls. `rtcSetNow()` immediately resyncs the cache to the new value so a manual time change doesn't wait for the next boundary to take effect.
+- `RtcClockSource::now()` (`clock_source.cpp`) — the `ClockSource` used by `DisplayManager` for all render calls — uses `rtcGetNowCached()`, not `rtcGetNow()`. This matters because tenths-of-a-second formats re-render every 100ms (`renderElapsed()` gates at `kTenthMs`), which would otherwise mean up to 10 I2C transactions/sec for data that only actually changes once a second. Prefer `rtcGetNowCached()` for any new hot render/tick path; reserve `rtcGetNow()` for infrequent, correctness-critical one-off reads (e.g. `GET /api/time`).
 - For fatal exception debugging, keep exception decoding enabled and include decoded stack traces in reports.
 
 ### Logging
@@ -88,9 +91,9 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 ### Display / mode architecture
 The display system has four layers:
 
-1. **`format.h/cpp`** - format-group tables, mode enums, and per-format metadata.
-   - `FormatGroup` enum: `kFmtGroupCountdown`, `kFmtGroupCountUp`, `kFmtGroupClock`.
-   - `PersistentMode` enum: `kPersistentCountdown`, `kPersistentCountup`, `kPersistentClock`, `kPersistentFriday` - the mode stored in config and restored after temporary states.
+1. **`format.h/cpp`** - format-group tables, the `Mode` enum, and per-format metadata.
+   - `FormatGroup` enum: `kFmtGroupCountdown`, `kFmtGroupCountUp`, `kFmtGroupClock` - low-level selector for which table of format strings to index into (`getFormat`/`getFormatMeta`/`formatCount`/`sanitizeFormatIndex`). Unrelated to the `Mode`/`View`/`Overlay` model below - it's purely a format-table lookup key.
+   - `Mode` enum: `kModeCountdown`, `kModeCountup`, `kModeClock`, `kModeFriday` - the persisted mode stored in `ClockConfig.activeMode` and restored after any temporary overlay. See "Display / mode architecture" below for how this relates to `View` and `Overlay`.
    - `getFormat(group, index)` and `formatCount(group)` are the public accessors.
    - `FormatMetadata` struct holds `hasTenths` and `blinkColon` per entry. `getFormatMeta(group, index)` returns a pointer; `kFormatGroupMeta[group]` is the backing array in `format.cpp`. Always add a matching metadata row when adding or reordering a format string.
    - Predicates `countdownHasTenths`, `countupHasTenths`, `clockHasTenths`, `clockBlinkColon` (in `clock_format.h`) are table-driven via `FormatMetadata` — do NOT add hardcoded index comparisons.
@@ -111,15 +114,19 @@ The display system has four layers:
    - Caches last-written segments per panel; skips hardware write on identical content.
    - ASCII-to-segment glyph mapping lives in `display.cpp` as `ASCII_SEGMENTS`; adjust that table when a letter does not display well on 7-segment hardware.
 
-4. **`display_manager.h/cpp`** - `DisplayManager` singleton; the single entry point for all display state.
+4. **`display_manager.h/cpp`** - `DisplayManager` singleton; the single entry point for all display state. Three distinct concepts on purpose, each answering a different question:
+   - **`Mode`** (`format.h`) - the persisted, user-selected setting. Answers "what did the user configure the clock to do." Stored in `ClockConfig.activeMode`.
+   - **`View`** (`display_manager.h`) - what content is currently the normal thing to render: `kClock`, `kCountdown`, `kCountup`, each with its own payload (`ViewState`/`ViewPayload`, a tagged union like the old `DisplayPayload`: `countdown` (endTime, formatIndex), `countup` (startTime, formatIndex), `clock` (formatIndex)). For Countdown/Countup/Clock modes, `View` is fixed by the `Mode` (`viewForMode()` sets it once). **Friday mode is the one case where `View` changes on its own** - `FridayModeController` recomputes it as its phase changes and pushes the update via `setView()`.
+   - **`Overlay`** (`display_manager.h`) - a temporary layer shown on top of the current `View`: `kDemo` (live countdown from `overlay_.transition.expiresAtMs`, no `formatIndex`, not stored in config), `kMessage`, `kPagedMessage` (`OverlayState`/`OverlayPayload`: `message[64]` or `paged`). Pushed by `showSplash`/`showDemo`/`showInfo`/`showPages`, popped by `clearOverlay()` or its own expiration. `PagedDisplayPayload` and `DisplayPage` have no default member initializers; callers set all fields explicitly.
+   - Rendering rule, always: show the overlay if `hasOverlay_` is true, otherwise show `baseView_` (there is no third option). There is no separate "state to restore" snapshot — when an overlay clears, whatever `baseView_` *currently* is (possibly updated by Friday mode while the overlay was up) is what appears next. This is a deliberate change from the old `defaultState_`/`currentState_`/`previousState_` model, which stored a frozen snapshot to restore to and could go stale relative to `defaultState_` (a real bug we hit: a boot splash captured Friday mode's placeholder clock view *before* its first tick corrected it, and restored that stale snapshot instead of the corrected countdown once the splash cleared).
    - `begin(config)`, `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`.
-   - `setDefaultState(state)` — updates the base state without disturbing any active temporary overlay (splash, info, demo). Used by `FridayModeController` to switch phases.
-   - Temporary display states (`showSplash`, `showInfo`, `showDemo`, `showPages`) overlay the persistent mode and expire or are cleared via `clearInfo()`.
-   - `DisplayBehavior` enum: `kClock`, `kCountdown`, `kCountup`, `kDemoCountdown`, `kMessage`, `kPagedMessage`. `kDemoCountdown` renders a live countdown from `currentTransition_.expiresAtMs` — it has no `formatIndex` and is not stored in config.
-   - `DisplayPayload` is a **union**: `countdown` (endTime, formatIndex), `countup` (startTime, formatIndex), `clock` (formatIndex), `message[64]`, `paged`. Only the member matching `DisplayState::behavior` is valid. `PagedDisplayPayload` and `DisplayPage` have no default member initializers; callers set all fields explicitly.
-   - `currentStateName()` returns the active behavior as a string (useful for SQW log lines).
+   - `setView(view)` — updates `baseView_`. If no overlay is active, also re-renders immediately. If one is active, nothing else needs to happen — the new view simply becomes visible once the overlay clears. Used by `FridayModeController` to switch phases.
+   - `renderedName()` returns whatever's actually on the segments right now, as a string (the overlay's name if one is active, else the view's) — useful for logging.
+   - `activeMode()` returns the persisted `Mode`; `activeView()` returns the `View` backing `baseView_` (not the overlay, so a transient splash/info/demo never counts as a view change). `main.cpp`'s periodic SQW log line and its mode/view transition log both use these two accessors, not `renderedName()`.
+   - `viewName(View)` and `overlayName(Overlay)` are free functions declared in `display_manager.h` — the canonical name mappings for logging; do not duplicate them elsewhere.
+   - A countdown reaching zero installs an `Overlay::kMessage` showing `finalMessage` with `transition.hasExpiration = false` — i.e. a permanent overlay, since the countdown has nothing further to show until the next mode/config change.
    - Clock colon blink toggles once per second (2-second full on/off cycle). Message/page blinking uses its own 500ms cadence.
-   - State transition log reason `"state install"` means a non-temporary state was installed, usually `defaultState_` from the persisted mode. `"temporary state"` means the previous state was saved for later restore.
+   - `logTransition()` reasons: `"view install"` (boot/`applySettings()` installs `baseView_`), `"view update"` (a live `setView()` while no overlay is active, e.g. Friday's phase change), `"overlay"` (an overlay is pushed), `"overlay cleared"` (an overlay expires or is cleared and `baseView_` reappears).
    - When `ClockConfig.clockUse12Hour` is true, `renderClock()` converts `fields.hours` to 1–12 scale before calling `::renderClock()`. The conversion is local to that method and does not affect countdown/countup rendering.
 
 5. **`clock_state.h`** - thin public API used by `web_server.cpp` to decouple it from `DisplayManager`.
@@ -127,14 +134,14 @@ The display system has four layers:
 
 ### Friday Mode
 - **`friday_mode.h/cpp`**: `FridayModeController` (internal singleton). Public API: `fridayModeApplySettings(config)` and `fridayModeTick(now)`.
-- `fridayModeTick()` is called every second from `main.cpp` (on each SQW pulse); self-gates — does nothing unless `activeMode == kPersistentFriday`, and short-circuits when the phase hasn't changed.
+- `fridayModeTick()` is called from `main.cpp` on every real SQW second (via `rtcConsumeSqwPulse()`, passing `rtcGetNowCached()`) — not on the throttled log-interval pulse; self-gates — does nothing unless `activeMode == kModeFriday`, and short-circuits when the phase hasn't changed.
 - Phase logic (all times local, derived from device `location` + `utcOffsetMinutes`):
-  - **Clock phase** (`kClock`): Saturday sunset through Thursday midnight; also the default.
-  - **To Friday sunset** (`kToFridaySunset`): Thursday midnight → Friday sunset.
+  - **Clock phase** (`kClock`): Saturday sunset through Friday midnight (i.e. all of Sun-Thu); also the default.
+  - **To Friday sunset** (`kToFridaySunset`): Friday midnight → Friday sunset.
   - **To Saturday sunset** (`kToSaturdaySunset`): Friday sunset → Saturday sunset.
-- Each phase transition calls `displayManager.setDefaultState()` with the appropriate `DisplayState`. Format indices come from `ClockConfig.fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`.
+- Each phase transition calls `displayManager.setView()` with the appropriate `ViewState` (`View::kClock` or `View::kCountdown`). Format indices come from `ClockConfig.fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`. This is the *only* mode where `View` moves on its own — see "Display / mode architecture" above.
 - Sunset targets are cached in `FridayModeController` and recomputed at most once per week (when `fridayDateFor(now)` returns a different date than last time). `calculateSunset()` is **not** called on every tick.
-- `fridayDateFor(now)`: returns the reference Friday midnight. On Thursday (`dow==4`) it returns *tomorrow* (upcoming Friday) so that `thursdayMidnight = fridayDate - 1 day` correctly marks the start of the countdown. On all other days it returns the most recent past Friday.
+- `fridayDateFor(now)`: returns midnight of the most recent Friday (or today if Friday). This value stays constant from Saturday through the following Thursday and only advances once `now` reaches the next Friday — that's what drives the once-per-week cache refresh and the Clock→countdown phase change in `computePhase()`. `computePhase()` never needs to check `cachedFridayDate_` directly: on Sat-Thu both cached sunsets are still last week's (already in the past), so it falls through to the default `kClock`.
 - `applySettings()` resets the cached Friday date to `DateTime()` to force recomputation on the next tick (needed when location or UTC offset changes).
 
 ### Input
@@ -161,7 +168,7 @@ The display system has four layers:
   - `serializeClockConfig(doc, config)` - writes display/time/location/sunset sections.
   - `serializeWifiConfig(doc, wifi)` - writes full wifi including passwords (for disk storage).
   - `serializeWifiStatus(doc, wifi)` - writes wifi without station password (for HTTP responses).
-- **`config_validation.h/cpp`** - sanitize and convert config values. Canonical home of `persistentModeName(mode)` and `persistentModeFromName(name, out)`. Do not redeclare these elsewhere.
+- **`config_validation.h/cpp`** - sanitize and convert config values. Canonical home of `modeName(mode)` and `modeFromName(name, out)`. Do not redeclare these elsewhere.
 - **`config_api.cpp`** — `parseJsonBody(doc, route)` is a private `ConfigApi` helper that deserializes the request body; on failure it logs, sends 400, and returns `false`. All POST handlers call it instead of repeating the boilerplate. `applyModeAndFormats()` and `applyMessageFields()` are the two static sub-helpers used by `handleSaveConfig()`.
 
 ### Networking

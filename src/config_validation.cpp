@@ -1,41 +1,41 @@
 #include "config_validation.h"
 
-const char* persistentModeName(PersistentMode mode) {
+const char* modeName(Mode mode) {
   switch (mode) {
-    case kPersistentCountdown: return "countdown";
-    case kPersistentCountup:   return "countup";
-    case kPersistentClock:     return "clock";
-    case kPersistentFriday:    return "friday";
+    case kModeCountdown: return "countdown";
+    case kModeCountup:   return "countup";
+    case kModeClock:     return "clock";
+    case kModeFriday:    return "friday";
   }
   return "countdown";
 }
 
-PersistentMode sanitizePersistentMode(int rawMode, PersistentMode fallback) {
-  if (rawMode < static_cast<int>(kPersistentCountdown) ||
-      rawMode > static_cast<int>(kPersistentFriday)) {
+Mode sanitizeMode(int rawMode, Mode fallback) {
+  if (rawMode < static_cast<int>(kModeCountdown) ||
+      rawMode > static_cast<int>(kModeFriday)) {
     return fallback;
   }
-  return static_cast<PersistentMode>(rawMode);
+  return static_cast<Mode>(rawMode);
 }
 
-bool persistentModeFromName(const String& name, PersistentMode* mode) {
+bool modeFromName(const String& name, Mode* mode) {
   if (mode == nullptr) {
     return false;
   }
   if (name == "countdown") {
-    *mode = kPersistentCountdown;
+    *mode = kModeCountdown;
     return true;
   }
   if (name == "countup") {
-    *mode = kPersistentCountup;
+    *mode = kModeCountup;
     return true;
   }
   if (name == "clock") {
-    *mode = kPersistentClock;
+    *mode = kModeClock;
     return true;
   }
   if (name == "friday") {
-    *mode = kPersistentFriday;
+    *mode = kModeFriday;
     return true;
   }
   return false;

@@ -10,6 +10,8 @@ void fridayModeApplySettings(const ClockConfig& config);
 // Call after rtcSetNow() so a time change is reflected immediately.
 void fridayModeResetSunsetCache();
 
-// Called every minute (on SQW log-interval pulse) from main loop.
-// Self-gates: does nothing unless activeMode == kPersistentFriday.
+// Called every real RTC second (on each SQW pulse, via rtcConsumeSqwPulse())
+// from the main loop. Self-gates: does nothing unless
+// activeMode == kModeFriday, and short-circuits when the phase hasn't
+// changed since the last call.
 void fridayModeTick(const DateTime& now);

@@ -24,7 +24,7 @@ struct LocationInfo {
 // -- ClockConfig ---------------------------------------------------------------
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
-  PersistentMode activeMode;  // Persistent mode restored after temporary states.
+  Mode activeMode;  // Persistent mode restored after any temporary overlay.
 
   uint8_t countdownFmt;  // index into kCountdownFormats
   uint8_t countupFmt;    // index into kCountupFormats

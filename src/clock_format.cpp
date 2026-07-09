@@ -70,6 +70,9 @@ void fmtMinSec(char* out, int minutes, int seconds) {
 //   hh      -> fmtZeroPadded before ':', fmtBlankPadded otherwise
 //   mm, ss  -> %02d after ':', else %2d
 //   u       -> single digit
+//   hhh (formats 8-9) -> no days row; f.days * 24 + f.hours instead, so a
+//                        multi-day remaining time doesn't wrap the hour
+//                        count back down once days would otherwise absorb it
 
 void renderCountdown(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3) {
   char hh[4], hhColon[4];
@@ -117,6 +120,16 @@ void renderCountdown(uint8_t idx, const TimeFields& f, char* r1, char* r2, char*
       fmtDaysRight(r1, f.days);
       fmtText(r2, hh);
       fmtNumber(r3, f.minutes);
+      break;
+    case 8: // hhh | mm | ss.u  (no days; hours accumulate past 24)
+      fmtNumber(r1, f.days * 24 + f.hours);
+      fmtNumber(r2, f.minutes);
+      snprintf(r3, 8, "%2d.%d", f.seconds, f.tenths);
+      break;
+    case 9: // hhh | mm | ss  (no days; hours accumulate past 24)
+      fmtNumber(r1, f.days * 24 + f.hours);
+      fmtNumber(r2, f.minutes);
+      fmtNumber(r3, f.seconds);
       break;
   }
 }

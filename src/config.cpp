@@ -108,9 +108,9 @@ ClockConfig ConfigManager::loadClockConfig() {
     JsonDocument doc;
     if (!openAndParse(doc)) return cfg;
 
-    PersistentMode mode;
-    const String activeMode = doc["display"]["activeMode"] | persistentModeName(cfg.activeMode);
-    if (persistentModeFromName(activeMode, &mode)) {
+    Mode mode;
+    const String activeMode = doc["display"]["activeMode"] | modeName(cfg.activeMode);
+    if (modeFromName(activeMode, &mode)) {
         cfg.activeMode = mode;
     }
 
@@ -175,7 +175,7 @@ void ConfigManager::saveClockConfig(const ClockConfig& s) {
 ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
     const ClockConfig defaults = defaultClockConfig();
     ClockConfig clean = cfg;
-    clean.activeMode   = sanitizePersistentMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
+    clean.activeMode   = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
     clean.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.countdownFmt, defaults.countdownFmt);
     clean.countupFmt   = sanitizeFormatIndex(kFmtGroupCountUp,   cfg.countupFmt,   defaults.countupFmt);
     clean.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.clockFmt,     defaults.clockFmt);

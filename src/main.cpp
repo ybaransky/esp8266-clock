@@ -4,6 +4,7 @@
 #include "button.h"
 #include "clock_state.h"
 #include "config.h"
+#include "config_validation.h"
 #include "display.h"
 #include "display_manager.h"
 #include "friday_mode.h"
@@ -44,8 +45,35 @@ void checkRtcHealth(uint32_t nowMs) {
   if (!healthy) {
     if (wasHealthy) LOG_PRINTLN("RTC health lost");
     displayManager.showInfo(kMsgNoRtc);
+  } else if (!wasHealthy) {
+    // showInfo(kMsgNoRtc) has no expiration, so without this the "no rtc"
+    // overlay would stay on screen forever after a transient health blip,
+    // masking whatever the real base view (e.g. Friday's countdown)
+    // resolves to underneath it.
+    LOG_PRINTLN("RTC health restored");
+    displayManager.clearOverlay();
   }
   wasHealthy = healthy;
+}
+
+// Logs whenever the mode or its view changes. For the three non-Friday
+// modes the view never moves on its own - it's fixed by the mode. Friday
+// mode is the one case where the view changes on its own, as
+// FridayModeController cycles it between kClock and kCountdown; the mode
+// itself stays "friday" throughout.
+void logModeOrViewTransition() {
+  static Mode lastMode = displayManager.activeMode();
+  static View lastView = displayManager.activeView();
+
+  const Mode mode = displayManager.activeMode();
+  const View view = displayManager.activeView();
+  if (mode == lastMode && view == lastView) return;
+
+  LOG_PRINTF("mode/view: %s/%s -> %s/%s\n",
+             modeName(lastMode), viewName(lastView),
+             modeName(mode), viewName(view));
+  lastMode = mode;
+  lastView = view;
 }
 
 void handleButtonEvent(ButtonEvent event) {
@@ -148,14 +176,17 @@ void loop() {
   uint32_t now = millis();
   buttonTick();
   processButtonEvents();
-  if (rtcProcessSqwPulse()) {
-    fridayModeTick(rtcGetNow());
-    LOG_PRINTF("SQW: state=%s heap=%u maxBlock=%u\n",
-               displayManager.currentStateName(),
-               ESP.getFreeHeap(),
-               ESP.getMaxFreeBlockSize());
+  if (rtcConsumeSqwPulse()) {
+    fridayModeTick(rtcGetNowCached());
+    if (rtcIsLogIntervalDue()) {
+      LOG_PRINTF("SQW: mode=%s view=%s heap=%u\n",
+                 modeName(displayManager.activeMode()),
+                 viewName(displayManager.activeView()),
+                 ESP.getFreeHeap());
+    }
   }
 
+  logModeOrViewTransition();
   checkRtcHealth(now);
   displayManager.tick(now);
   wifiConnectionManager.tick();

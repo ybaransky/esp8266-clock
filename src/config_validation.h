@@ -5,9 +5,9 @@
 #include "config.h"
 #include "format.h"
 
-const char* persistentModeName(PersistentMode mode);
-PersistentMode sanitizePersistentMode(int rawMode, PersistentMode fallback);
-bool persistentModeFromName(const String& name, PersistentMode* mode);
+const char* modeName(Mode mode);
+Mode sanitizeMode(int rawMode, Mode fallback);
+bool modeFromName(const String& name, Mode* mode);
 uint8_t sanitizeFormatIndex(FormatGroup group, int rawIndex, uint8_t fallback);
 uint8_t sanitizeBrightness(int rawBrightness);
 int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes);

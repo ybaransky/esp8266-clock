@@ -41,11 +41,13 @@ inline const FormatMetadata* getFormatMeta(FormatGroup group, uint8_t index) {
   return (index < kFormatGroupSizes[group]) ? &kFormatEntries[group][index].meta : nullptr;
 }
 
-// Persistent display mode stored in config.json and selected from the web UI.
-// Temporary display behavior is represented by DisplayState transitions.
-enum PersistentMode : uint8_t {
-  kPersistentCountdown = 0,
-  kPersistentCountup   = 1,
-  kPersistentClock     = 2,
-  kPersistentFriday    = 3,
+// Persistent mode stored in config.json and selected from the web UI - what
+// the clock is fundamentally set to do. Distinct from View (what content is
+// currently being rendered) and Overlay (a temporary layer on top of it) -
+// see display_manager.h.
+enum Mode : uint8_t {
+  kModeCountdown = 0,
+  kModeCountup   = 1,
+  kModeClock     = 2,
+  kModeFriday    = 3,
 };

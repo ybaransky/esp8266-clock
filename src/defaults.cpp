@@ -14,7 +14,7 @@ constexpr const char* kDefaultFinalMessage      = "    Good Luc";
 
 ClockConfig defaultClockConfig() {
     ClockConfig s;
-    s.activeMode    = kPersistentCountdown;
+    s.activeMode    = kModeCountdown;
     s.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
     s.countupFmt    = 0;
     s.clockFmt      = 7; // " YYYY | MM:DD | hh;mm" (blinking colon)

@@ -19,7 +19,7 @@ class FridayModeController {
   }
 
   void tick(const DateTime& now) {
-    if (settings_.activeMode != kPersistentFriday) return;
+    if (settings_.activeMode != kModeFriday) return;
 
     refreshSunsetCacheIfNeeded(now);
     const Phase phase = computePhase(now);
@@ -41,17 +41,15 @@ class FridayModeController {
     }
   }
 
-  // Returns midnight of the reference Friday for the current week.
-  // On Thursday, returns tomorrow (upcoming Friday) so the countdown starts at Thursday midnight.
-  // On all other days, returns the most recent past Friday (or today if Friday).
+  // Returns midnight of the most recent Friday (or today if Friday).
+  // This stays constant from Saturday through the following Thursday, so the
+  // Clock/DOW phase covers all of that span; it only advances once we reach
+  // the next Friday, which is when the countdown phases take over.
   static DateTime fridayDateFor(const DateTime& now) {
     // dayOfTheWeek(): 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
     const uint8_t dow = now.dayOfTheWeek();
     const uint32_t todayMidnight =
         DateTime(now.year(), now.month(), now.day(), 0, 0, 0).unixtime();
-    if (dow == 4) {
-      return DateTime(todayMidnight + 86400UL);  // Thursday: reference is tomorrow (Friday)
-    }
     const uint8_t daysSinceFriday = (dow >= 5) ? (dow - 5) : (dow + 2);
     return DateTime(todayMidnight - daysSinceFriday * 86400UL);
   }
@@ -71,35 +69,37 @@ class FridayModeController {
                fridayDate.year(), fridayDate.month(), fridayDate.day());
   }
 
+  // cachedFridayDate_ is never in the future relative to `now` (see
+  // fridayDateFor), so it never needs to be checked directly here: Sat-Thu
+  // fall through to the default kClock below because both cached sunsets are
+  // stale (last week's, already in the past) until the Friday cache refresh.
   Phase computePhase(const DateTime& now) const {
-    const uint32_t nowUnix          = now.unixtime();
-    const uint32_t thursdayMidnight = cachedFridayDate_.unixtime() - 86400UL;
+    const uint32_t nowUnix = now.unixtime();
 
-    if (nowUnix < thursdayMidnight)                 return Phase::kClock;
     if (nowUnix < cachedFridaySunset_.unixtime())   return Phase::kToFridaySunset;
     if (nowUnix < cachedSaturdaySunset_.unixtime()) return Phase::kToSaturdaySunset;
     return Phase::kClock;
   }
 
   void applyPhase(Phase phase) {
-    DisplayState state;
+    ViewState state;
     switch (phase) {
       case Phase::kToFridaySunset:
-        state.behavior = DisplayBehavior::kCountdown;
+        state.view = View::kCountdown;
         state.payload.countdown.endTime     = cachedFridaySunset_;
         state.payload.countdown.formatIndex = settings_.fridayToFridaySunsetFmt;
         break;
       case Phase::kToSaturdaySunset:
-        state.behavior = DisplayBehavior::kCountdown;
+        state.view = View::kCountdown;
         state.payload.countdown.endTime     = cachedSaturdaySunset_;
         state.payload.countdown.formatIndex = settings_.fridayToSatSunsetFmt;
         break;
       default:
-        state.behavior = DisplayBehavior::kClock;
+        state.view = View::kClock;
         state.payload.clock.formatIndex = settings_.fridayClockFmt;
         break;
     }
-    displayManager.setDefaultState(state);
+    displayManager.setView(state);
   }
 
   Phase    currentPhase_       = Phase::kNone;

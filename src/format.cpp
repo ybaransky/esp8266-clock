@@ -5,6 +5,8 @@
 // Tokens: dd=days  hh/mm/ss=zero-padded time  u=tenths
 // Literals: d=days-label  H=hours-label  N=minutes-label
 // Separator: " | " between rows; spaces within a row are display padding.
+// hhh (formats 8-9): no days row at all - hours accumulate past 24
+// (f.days * 24 + f.hours) instead of wrapping into a separate days count.
 static const FormatEntry kCountdownEntries[] = {
   {"dd d | hh:mm |  ss.u", {true,  false}},  // 0: days d | hours:minutes | seconds.tenths
   {"dd d | hh:mm |    ss", {false, false}},  // 1: days d | hours:minutes | seconds
@@ -14,6 +16,8 @@ static const FormatEntry kCountdownEntries[] = {
   {"  dd | hh:mm |    ss", {false, false}},  // 5: days   | hours:minutes | seconds
   {"  dd |    hh | mm:ss", {false, false}},  // 6: days   | hours         | minutes:seconds
   {"  dd |    hh |    mm", {false, false}},  // 7: days   | hours         | minutes
+  {" hhh |   mm |  ss.u", {true,  false}},  // 8: hours (no days) | minutes | seconds.tenths
+  {" hhh |   mm |    ss", {false, false}},  // 9: hours (no days) | minutes | seconds
 };
 
 // -- Count-Up formats ----------------------------------------------------------
@@ -26,6 +30,8 @@ static const FormatEntry kCountupEntries[] = {
   {"  dd | hh:mm |    ss", {false, false}},  // 5: days   | hours:minutes | seconds
   {"  dd |    hh | mm:ss", {false, false}},  // 6: days   | hours         | minutes:seconds
   {"  dd |    hh |    mm", {false, false}},  // 7: days   | hours         | minutes
+  {" hhh |   mm |  ss.u", {true,  false}},  // 8: hours (no days) | minutes | seconds.tenths
+  {" hhh |   mm |    ss", {false, false}},  // 9: hours (no days) | minutes | seconds
 };
 
 // -- Clock formats -------------------------------------------------------------

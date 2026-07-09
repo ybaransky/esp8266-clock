@@ -97,9 +97,9 @@ void DisplayManager::applySettings(const ClockConfig& config) {
   lastRenderMs_ = 0;
 
   updateCountupOrigin(config);
-  defaultState_ = stateForConfiguredMode(config.activeMode);
+  baseView_ = viewForMode(config.activeMode);
   segmentDisplay.setBrightness(config.brightness);
-  installDefaultState(millis());
+  installView(millis());
 }
 
 void DisplayManager::setBrightness(uint8_t brightness) {
@@ -108,44 +108,48 @@ void DisplayManager::setBrightness(uint8_t brightness) {
 }
 
 void DisplayManager::tick(uint32_t nowMs) {
-  if (transitionExpired(nowMs)) {
-    finishTemporaryState(nowMs);
+  if (hasOverlay_ && overlayExpired(nowMs)) {
+    finishOverlay(nowMs);
   }
 
-  renderCurrentState(nowMs);
+  render(nowMs);
 }
 
 void DisplayManager::showSplash(const char* message) {
   const uint32_t nowMs = millis();
-  DisplayState state;
-  state.behavior = DisplayBehavior::kMessage;
+  OverlayState state;
+  state.overlay = Overlay::kMessage;
   copyMessage(state.payload.message, message);
+  state.transition = {true, nowMs + kSplashDurationMs};
 
-  installState(state, {true, nowMs + kSplashDurationMs}, nowMs, true);
-  renderCurrentState(nowMs, true);
+  installOverlay(state, nowMs);
+  render(nowMs, true);
 }
 
 void DisplayManager::showDemo() {
   const uint32_t nowMs = millis();
-  DisplayState state;
-  state.behavior = DisplayBehavior::kDemoCountdown;
+  OverlayState state;
+  state.overlay = Overlay::kDemo;
+  state.transition = {true, nowMs + kDemoCountdownMs};
 
-  demoCountdownActive_ = true;
-  installState(state, {true, nowMs + kDemoCountdownMs}, nowMs, true);
-  renderCurrentState(nowMs, true);
+  demoActive_ = true;
+  installOverlay(state, nowMs);
+  render(nowMs, true);
 }
 
 void DisplayManager::showInfo(const char* message, int32_t durationMs) {
   const uint32_t nowMs = millis();
-  DisplayState state;
-  state.behavior = DisplayBehavior::kMessage;
+  OverlayState state;
+  state.overlay = Overlay::kMessage;
   state.blink = true;
   copyMessage(state.payload.message, message);
 
   const bool expires = durationMs != FOREVER;
   const uint32_t expiresAt = expires ? nowMs + static_cast<uint32_t>(durationMs) : 0;
-  installState(state, {expires, expiresAt}, nowMs, true);
-  renderCurrentState(nowMs, true);
+  state.transition = {expires, expiresAt};
+
+  installOverlay(state, nowMs);
+  render(nowMs, true);
 }
 
 void DisplayManager::showPages(const DisplayPage* pages,
@@ -156,9 +160,9 @@ void DisplayManager::showPages(const DisplayPage* pages,
     return;
   }
 
-  DisplayState state;
   const uint32_t nowMs = millis();
-  state.behavior = DisplayBehavior::kPagedMessage;
+  OverlayState state;
+  state.overlay = Overlay::kPagedMessage;
   state.payload.paged.pageCount =
       pageCount < kMaxDisplayPages ? pageCount : kMaxDisplayPages;
   state.payload.paged.currentPage = 0;
@@ -181,44 +185,45 @@ void DisplayManager::showPages(const DisplayPage* pages,
   const uint32_t durationMs =
       static_cast<uint32_t>(state.payload.paged.pageDurationMs) *
       state.payload.paged.pageCount;
-  installState(state, {!repeat, nowMs + durationMs}, nowMs, true);
-  renderCurrentState(nowMs, true);
+  state.transition = {!repeat, nowMs + durationMs};
+
+  installOverlay(state, nowMs);
+  render(nowMs, true);
 }
 
-void DisplayManager::clearInfo() {
-  if (hasPreviousState_ &&
-      (currentState_.behavior == DisplayBehavior::kMessage ||
-       currentState_.behavior == DisplayBehavior::kPagedMessage)) {
-    finishTemporaryState(millis());
+void DisplayManager::clearOverlay() {
+  if (hasOverlay_ &&
+      (overlay_.overlay == Overlay::kMessage || overlay_.overlay == Overlay::kPagedMessage)) {
+    finishOverlay(millis());
   }
 }
 
-const char* DisplayManager::currentStateName() const {
-  return behaviorName(currentState_.behavior);
+const char* DisplayManager::renderedName() const {
+  return hasOverlay_ ? overlayName(overlay_.overlay) : viewName(baseView_.view);
 }
 
-DisplayState DisplayManager::stateForConfiguredMode(PersistentMode mode) const {
-  DisplayState state;
+ViewState DisplayManager::viewForMode(Mode mode) const {
+  ViewState state;
 
   switch (mode) {
-    case kPersistentCountup:
-      state.behavior = DisplayBehavior::kCountup;
+    case kModeCountup:
+      state.view = View::kCountup;
       state.payload.countup.startTime = countupOrigin_;
       state.payload.countup.formatIndex = settings_.countupFmt;
       break;
-    case kPersistentClock:
-      state.behavior = DisplayBehavior::kClock;
+    case kModeClock:
+      state.view = View::kClock;
       state.payload.clock.formatIndex = settings_.clockFmt;
       break;
-    case kPersistentCountdown:
-      state.behavior = DisplayBehavior::kCountdown;
+    case kModeCountdown:
+      state.view = View::kCountdown;
       state.payload.countdown.endTime = parseDateTime(settings_.countdownDatetime);
       state.payload.countdown.formatIndex = settings_.countdownFmt;
       break;
-    case kPersistentFriday:
-      // FridayModeController will call setDefaultState() on the next tick.
-      // Use the friday clock format as a safe initial state.
-      state.behavior = DisplayBehavior::kClock;
+    case kModeFriday:
+      // FridayModeController will call setView() on the next tick.
+      // Use the friday clock format as a safe initial view.
+      state.view = View::kClock;
       state.payload.clock.formatIndex = settings_.fridayClockFmt;
       break;
   }
@@ -226,100 +231,95 @@ DisplayState DisplayManager::stateForConfiguredMode(PersistentMode mode) const {
   return state;
 }
 
-void DisplayManager::setDefaultState(const DisplayState& state) {
-  defaultState_ = state;
-  if (!hasPreviousState_) {
-    demoCountdownActive_ = false;
-    const uint32_t nowMs = millis();
-    installState(defaultState_, {false, 0}, nowMs, false);
-    renderCurrentState(nowMs, true);
+void DisplayManager::setView(const ViewState& state) {
+  const char* oldName = renderedName();
+  baseView_ = state;
+  if (hasOverlay_) {
+    // Becomes visible once the active overlay clears - there's no separate
+    // snapshot to keep in sync, since renderedName()/render() always read
+    // baseView_ live at that point.
+    return;
   }
+
+  demoActive_ = false;
+  const uint32_t nowMs = millis();
+  lastRenderMs_ = 0;
+  logTransition(oldName, viewName(baseView_.view), "view update");
+  render(nowMs, true);
 }
 
-const char* DisplayManager::behaviorName(DisplayBehavior behavior) const {
-  switch (behavior) {
-    case DisplayBehavior::kClock:          return "clock";
-    case DisplayBehavior::kCountdown:      return "countdown";
-    case DisplayBehavior::kCountup:        return "countup";
-    case DisplayBehavior::kDemoCountdown:  return "demo-countdown";
-    case DisplayBehavior::kMessage:        return "message";
-    case DisplayBehavior::kPagedMessage:   return "pages";
+const char* viewName(View view) {
+  switch (view) {
+    case View::kClock:     return "clock";
+    case View::kCountdown: return "countdown";
+    case View::kCountup:   return "countup";
   }
   return "?";
 }
 
-void DisplayManager::logStateTransition(const DisplayState& from,
-                                        const DisplayState& to,
-                                        const char* reason) const {
-  LOG_PRINTF("state transition: %s -> %s (%s)\n",
-             behaviorName(from.behavior),
-             behaviorName(to.behavior),
-             reason);
+const char* overlayName(Overlay overlay) {
+  switch (overlay) {
+    case Overlay::kDemo:         return "demo";
+    case Overlay::kMessage:      return "message";
+    case Overlay::kPagedMessage: return "pages";
+  }
+  return "?";
 }
 
-void DisplayManager::installState(const DisplayState& state,
-                                  const DisplayTransition& transition,
-                                  uint32_t nowMs,
-                                  bool rememberPrevious) {
-  const DisplayState oldState = currentState_;
+void DisplayManager::logTransition(const char* from, const char* to, const char* reason) const {
+  LOG_PRINTF("display: %s -> %s (%s)\n", from, to, reason);
+}
 
-  if (rememberPrevious && !hasPreviousState_) {
-    previousState_ = currentState_;
-    hasPreviousState_ = true;
-  }
-
-  currentState_ = state;
-  currentTransition_ = transition;
+void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
+  const char* oldName = renderedName();
+  overlay_ = state;
+  hasOverlay_ = true;
   lastRenderMs_ = 0;
   blinkOn_ = true;
   blinkMs_ = nowMs;
-
-  logStateTransition(oldState, currentState_,
-                     rememberPrevious ? "temporary state" : "state install");
+  logTransition(oldName, overlayName(overlay_.overlay), "overlay");
 }
 
-void DisplayManager::installDefaultState(uint32_t nowMs, bool forceRender) {
-  demoCountdownActive_ = false;
-  hasPreviousState_ = false;
-  installState(defaultState_, {false, 0}, nowMs, false);
+void DisplayManager::installView(uint32_t nowMs, bool forceRender) {
+  const char* oldName = renderedName();
+  demoActive_ = false;
+  hasOverlay_ = false;
+  lastRenderMs_ = 0;
+  blinkOn_ = true;
+  blinkMs_ = nowMs;
+  logTransition(oldName, viewName(baseView_.view), "view install");
   if (forceRender) {
-    renderCurrentState(nowMs, true);
+    render(nowMs, true);
   }
 }
 
-void DisplayManager::finishTemporaryState(uint32_t nowMs) {
-  if (demoCountdownActive_) {
-    startDemoMessageState(nowMs);
+void DisplayManager::finishOverlay(uint32_t nowMs) {
+  if (demoActive_) {
+    startDemoMessageOverlay(nowMs);
     return;
   }
 
-  restorePreviousState(nowMs);
+  clearOverlayAndRenderView(nowMs);
 }
 
-void DisplayManager::restorePreviousState(uint32_t nowMs) {
-  if (hasPreviousState_) {
-    const DisplayState oldState = currentState_;
-    currentState_ = previousState_;
-    currentTransition_ = {false, 0};
-    hasPreviousState_ = false;
-    lastRenderMs_ = 0;
-    logStateTransition(oldState, currentState_, "restore previous");
-    renderCurrentState(nowMs, true);
-    return;
-  }
-
-  installDefaultState(nowMs);
+void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
+  const char* oldName = renderedName();
+  hasOverlay_ = false;
+  lastRenderMs_ = 0;
+  logTransition(oldName, viewName(baseView_.view), "overlay cleared");
+  render(nowMs, true);
 }
 
-void DisplayManager::startDemoMessageState(uint32_t nowMs) {
-  DisplayState state;
-  state.behavior = DisplayBehavior::kMessage;
+void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
+  OverlayState state;
+  state.overlay = Overlay::kMessage;
   state.blink = true;
   copyMessage(state.payload.message, settings_.finalMessage);
+  state.transition = {true, nowMs + kDemoMessageMs};
 
-  demoCountdownActive_ = false;
-  installState(state, {true, nowMs + kDemoMessageMs}, nowMs, false);
-  renderCurrentState(nowMs, true);
+  demoActive_ = false;
+  installOverlay(state, nowMs);
+  render(nowMs, true);
 }
 
 void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
@@ -329,19 +329,25 @@ void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
 }
 
 uint32_t DisplayManager::refreshInterval() const {
-  switch (currentState_.behavior) {
-    case DisplayBehavior::kDemoCountdown:
-      return kTenthMs;
-    case DisplayBehavior::kCountdown:
-      return countdownHasTenths(currentState_.payload.countdown.formatIndex) ? kTenthMs : kSecondMs;
-    case DisplayBehavior::kCountup:
-      return countupHasTenths(currentState_.payload.countup.formatIndex) ? kTenthMs : kSecondMs;
-    case DisplayBehavior::kClock:
-      return clockHasTenths(currentState_.payload.clock.formatIndex) ? kTenthMs : kSecondMs;
-    case DisplayBehavior::kMessage:
-      return currentState_.blink ? kMessageBlinkMs : kSecondMs;
-    case DisplayBehavior::kPagedMessage:
-      return currentState_.payload.paged.pageDurationMs;
+  if (hasOverlay_) {
+    switch (overlay_.overlay) {
+      case Overlay::kDemo:
+        return kTenthMs;
+      case Overlay::kMessage:
+        return overlay_.blink ? kMessageBlinkMs : kSecondMs;
+      case Overlay::kPagedMessage:
+        return overlay_.payload.paged.pageDurationMs;
+    }
+    return kSecondMs;
+  }
+
+  switch (baseView_.view) {
+    case View::kCountdown:
+      return countdownHasTenths(baseView_.payload.countdown.formatIndex) ? kTenthMs : kSecondMs;
+    case View::kCountup:
+      return countupHasTenths(baseView_.payload.countup.formatIndex) ? kTenthMs : kSecondMs;
+    case View::kClock:
+      return clockHasTenths(baseView_.payload.clock.formatIndex) ? kTenthMs : kSecondMs;
   }
   return kSecondMs;
 }
@@ -359,24 +365,30 @@ bool DisplayManager::renderElapsed(uint32_t nowMs, bool force) {
   return true;
 }
 
-bool DisplayManager::transitionExpired(uint32_t nowMs) const {
-  return currentTransition_.hasExpiration &&
-         static_cast<long>(nowMs - currentTransition_.expiresAtMs) >= 0;
+bool DisplayManager::overlayExpired(uint32_t nowMs) const {
+  return overlay_.transition.hasExpiration &&
+         static_cast<long>(nowMs - overlay_.transition.expiresAtMs) >= 0;
 }
 
-void DisplayManager::renderCurrentState(uint32_t nowMs, bool force) {
-  switch (currentState_.behavior) {
-    case DisplayBehavior::kClock:          renderClock(nowMs, force);          break;
-    case DisplayBehavior::kCountdown:      renderCountdown(nowMs, force);      break;
-    case DisplayBehavior::kCountup:        renderCountup(nowMs, force);        break;
-    case DisplayBehavior::kDemoCountdown:  renderDemoCountdown(nowMs, force);  break;
-    case DisplayBehavior::kMessage:        renderMessage(nowMs, force);        break;
-    case DisplayBehavior::kPagedMessage:   renderPagedMessage(nowMs, force);   break;
+void DisplayManager::render(uint32_t nowMs, bool force) {
+  if (hasOverlay_) {
+    switch (overlay_.overlay) {
+      case Overlay::kDemo:         renderDemo(nowMs, force);         break;
+      case Overlay::kMessage:      renderMessage(nowMs, force);      break;
+      case Overlay::kPagedMessage: renderPagedMessage(nowMs, force); break;
+    }
+    return;
+  }
+
+  switch (baseView_.view) {
+    case View::kClock:     renderClock(nowMs, force);     break;
+    case View::kCountdown: renderCountdown(nowMs, force); break;
+    case View::kCountup:   renderCountup(nowMs, force);   break;
   }
 }
 
 void DisplayManager::renderClock(uint32_t nowMs, bool force) {
-  const uint8_t formatIndex = currentState_.payload.clock.formatIndex;
+  const uint8_t formatIndex = baseView_.payload.clock.formatIndex;
   if (clockBlinkColon(formatIndex) &&
       static_cast<long>(nowMs - colonMs_) >= static_cast<long>(kColonBlinkMs)) {
     colonMs_ = nowMs;
@@ -403,18 +415,19 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
 void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const uint8_t formatIndex = currentState_.payload.countdown.formatIndex;
+  const uint8_t formatIndex = baseView_.payload.countdown.formatIndex;
   const DateTime now = clockSource_->now();
-  const long secs = static_cast<long>(currentState_.payload.countdown.endTime.unixtime()) -
+  const long secs = static_cast<long>(baseView_.payload.countdown.endTime.unixtime()) -
                     static_cast<long>(now.unixtime());
 
-  if (!hasPreviousState_ && secs <= 0) {
-    DisplayState finalState;
-    finalState.behavior = DisplayBehavior::kMessage;
-    finalState.blink = false;
-    copyMessage(finalState.payload.message, settings_.finalMessage);
-    installState(finalState, {false, 0}, nowMs, false);
-    renderCurrentState(nowMs, true);
+  if (secs <= 0) {
+    OverlayState state;
+    state.overlay = Overlay::kMessage;
+    copyMessage(state.payload.message, settings_.finalMessage);
+    // No expiration set: the countdown has finished, so this stays up until
+    // the next mode/config change installs a new view.
+    installOverlay(state, nowMs);
+    render(nowMs, true);
     return;
   }
 
@@ -431,10 +444,10 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
 void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const uint8_t formatIndex = currentState_.payload.countup.formatIndex;
+  const uint8_t formatIndex = baseView_.payload.countup.formatIndex;
   const DateTime now = clockSource_->now();
   const long secs = static_cast<long>(now.unixtime()) -
-                    static_cast<long>(currentState_.payload.countup.startTime.unixtime());
+                    static_cast<long>(baseView_.payload.countup.startTime.unixtime());
 
   TimeFields fields = deltaToFields(secs);
   if (countupHasTenths(formatIndex)) {
@@ -446,10 +459,10 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
-void DisplayManager::renderDemoCountdown(uint32_t nowMs, bool force) {
+void DisplayManager::renderDemo(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const uint32_t remaining = currentTransition_.expiresAtMs - nowMs;
+  const uint32_t remaining = overlay_.transition.expiresAtMs - nowMs;
   const uint8_t whole  = static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
   const uint8_t tenths = static_cast<uint8_t>(min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
   char r3[8];
@@ -458,7 +471,7 @@ void DisplayManager::renderDemoCountdown(uint32_t nowMs, bool force) {
 }
 
 void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
-  if (currentState_.blink &&
+  if (overlay_.blink &&
       static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kMessageBlinkMs)) {
     blinkMs_ = nowMs;
     blinkOn_ = !blinkOn_;
@@ -468,16 +481,16 @@ void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
   char r1[8], r2[8], r3[8];
-  if (currentState_.blink && !blinkOn_) {
+  if (overlay_.blink && !blinkOn_) {
     blankBuffers(r1, r2, r3);
   } else {
-    messageToBuffers(currentState_.payload.message, r1, r2, r3);
+    messageToBuffers(overlay_.payload.message, r1, r2, r3);
   }
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
 void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
-  PagedDisplayPayload& paged = currentState_.payload.paged;
+  PagedDisplayPayload& paged = overlay_.payload.paged;
   if (paged.pageCount == 0) {
     return;
   }
@@ -540,5 +553,5 @@ void clockShowInfo(const char* msg, int32_t durationMs) {
 }
 
 void clockClearInfo() {
-  displayManager.clearInfo();
+  displayManager.clearOverlay();
 }

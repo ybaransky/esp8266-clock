@@ -4,8 +4,11 @@
 
 class RtcClockSource final : public ClockSource {
  public:
+  // Cached read: display rendering calls this up to 10x/sec for tenths
+  // formats, and the RTC's registers only change once a second anyway. See
+  // rtcGetNowCached() for how the cache stays fresh without hitting I2C.
   DateTime now() override {
-    return rtcGetNow();
+    return rtcGetNowCached();
   }
 };
 

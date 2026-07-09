@@ -160,16 +160,30 @@ bool rtcBegin()                  { return rtc.begin(); }
 RtcStatus rtcGetStatus()         { return rtc.getStatus(); }
 String rtcGetCurrentTimeString() { return rtc.currentTimeString(); }
 DateTime rtcGetNow()             { return rtc.now(); }
-void rtcSetNow(const DateTime& timeValue) { rtc.setNow(timeValue); }
 
 // -- SQW 1 Hz interrupt processing ---------------------------------------------
+//
+// The SQW pin ticks once per RTC second, driven by the same crystal as the
+// DS3231's internal clock registers. rtcConsumeSqwPulse() uses that edge to
+// advance cachedNow_ by one second in software instead of re-reading the
+// clock over I2C every time — see rtcGetNowCached() below. This is what lets
+// ClockSource callers (display rendering) get second-resolution time at
+// effectively zero I2C cost instead of one I2C transaction per read.
+//
+// rtcConsumeSqwPulse() and rtcIsLogIntervalDue() are deliberately separate
+// functions: the former fires every real second and is what time-sensitive
+// logic (e.g. Friday-mode phase transitions) must gate on, while the latter
+// is only true on the :00 and :30 wall-clock second of each minute and
+// exists purely to pace the periodic health/state log line. Gating
+// time-sensitive logic on rtcIsLogIntervalDue() by mistake delays it by up
+// to kSqwLogIntervalSeconds.
 
-static constexpr uint8_t kSqwLogIntervalSeconds = 60;
+static constexpr uint8_t kSqwLogIntervalSeconds = 30;  // Log on :00 and :30 boundaries.
 static constexpr uint32_t kSqwStartupWarnMs = 3500;
 static constexpr uint32_t kSqwHealthLogIntervalMs = 10000;
+static constexpr uint32_t kSqwPulseStaleMs = 3000;
 static volatile uint32_t sqwPendingPulseCount    = 0;
 static volatile uint32_t sqwIsrPulseCount        = 0;
-static uint8_t           sqwLogPulseCount        = 0;
 static bool              sqwProcessingStarted    = false;
 static bool              sqwSawPulse             = false;
 static bool              sqwPollingObservedPulse = false;
@@ -177,6 +191,19 @@ static int               sqwLastPolledLevel      = HIGH;
 static uint32_t          sqwProcessingStartedAtMs = 0;
 static uint32_t          sqwLastPulseAtMs         = 0;
 static uint32_t          sqwLastHealthLogMs       = 0;
+static DateTime          cachedNow_;               // Second-resolution time, advanced by SQW pulses.
+static bool              cachedNowSynced_ = false;  // False until the first real read has seeded the cache.
+
+void rtcSetNow(const DateTime& timeValue) {
+  rtc.setNow(timeValue);
+  if (rtc.getStatus().present) {
+    // Keep the second-resolution cache in step immediately, rather than
+    // leaving it to tick forward from the old time until the next periodic
+    // resync (see rtcConsumeSqwPulse()).
+    cachedNow_ = timeValue;
+    cachedNowSynced_ = true;
+  }
+}
 
 static void IRAM_ATTR onRtcSqwPulse() {
   sqwPendingPulseCount++;
@@ -201,9 +228,6 @@ static bool consumeSqwPolledPulse() {
   const int level = digitalRead(Hardware::Pins::RTC_SQW);
   const bool rising = sqwLastPolledLevel == LOW && level == HIGH;
   sqwLastPolledLevel = level;
-  if (rising) {
-    sqwPollingObservedPulse = true;
-  }
   return rising;
 }
 
@@ -236,13 +260,37 @@ static void logSqwHealthIfNeeded(uint32_t nowMs) {
 }
 
 static bool consumeSqwPulse() {
-  if (consumeSqwInterruptPulse() || consumeSqwPolledPulse()) {
-    sqwSawPulse = true;
-    sqwLastPulseAtMs = millis();
-    return true;
+  // Deliberately not short-circuited: consumeSqwPolledPulse() must run every
+  // call to keep its level-tracking (sqwLastPolledLevel) current. If it were
+  // skipped whenever the interrupt path already found a pending pulse,
+  // sqwLastPolledLevel would go one call stale, and the very next call would
+  // see the pin still HIGH from that same physical edge and falsely report a
+  // second "rising" transition for it - silently doubling the effective
+  // pulse rate (this caused cachedNow_ to run roughly 2x too fast).
+  const bool interruptPulse = consumeSqwInterruptPulse();
+  const bool polledPulse = consumeSqwPolledPulse();
+
+  if (polledPulse && !interruptPulse) {
+    sqwPollingObservedPulse = true;  // Poll caught an edge the interrupt path missed.
   }
-  logSqwHealthIfNeeded(millis());
-  return false;
+
+  if (!interruptPulse && !polledPulse) {
+    logSqwHealthIfNeeded(millis());
+    return false;
+  }
+
+  sqwSawPulse = true;
+  sqwLastPulseAtMs = millis();
+  return true;
+}
+
+// True when a SQW pulse has been seen recently enough to trust cachedNow_.
+// Shared by rtcIsHealthy() (user-facing "no rtc" banner) and
+// rtcGetNowCached() (falls back to a live I2C read when this is false).
+static bool sqwPulseIsFresh() {
+  if (!sqwProcessingStarted) return false;
+  const uint32_t lastEventMs = sqwSawPulse ? sqwLastPulseAtMs : sqwProcessingStartedAtMs;
+  return static_cast<long>(millis() - lastEventMs) < static_cast<long>(kSqwPulseStaleMs);
 }
 
 void rtcBeginSqwProcessing() {
@@ -255,11 +303,13 @@ void rtcBeginSqwProcessing() {
   sqwSawPulse = false;
   sqwPollingObservedPulse = false;
   sqwProcessingStarted = true;
-  sqwLogPulseCount = 0;
   noInterrupts();
   sqwPendingPulseCount = 0;
   sqwIsrPulseCount = 0;
   interrupts();
+
+  cachedNow_ = rtc.now();
+  cachedNowSynced_ = true;
 
   const int interruptNumber = digitalPinToInterrupt(Hardware::Pins::RTC_SQW);
   if (interruptNumber == NOT_AN_INTERRUPT) {
@@ -275,18 +325,33 @@ void rtcBeginSqwProcessing() {
              sqwLastPolledLevel == HIGH ? "HIGH" : "LOW");
 }
 
-bool rtcProcessSqwPulse() {
+bool rtcConsumeSqwPulse() {
   if (!consumeSqwPulse()) return false;
-  if (++sqwLogPulseCount >= kSqwLogIntervalSeconds) {
-    sqwLogPulseCount = 0;
-    return true;
-  }
-  return false;
+
+  // The pulse itself IS the "one second has elapsed" signal, so advance the
+  // cache in software rather than spending an I2C transaction to learn what
+  // we already know.
+  cachedNow_ = DateTime(cachedNow_.unixtime() + 1);
+  return true;
+}
+
+bool rtcIsLogIntervalDue() {
+  if (cachedNow_.second() % kSqwLogIntervalSeconds != 0) return false;
+  cachedNow_ = rtc.now();  // Also resyncs the cache, correcting drift from any pulses missed.
+  return true;
 }
 
 bool rtcIsHealthy() {
   if (!rtc.getStatus().present) return false;
   if (!sqwProcessingStarted)    return true;
-  const uint32_t lastEventMs = sqwSawPulse ? sqwLastPulseAtMs : sqwProcessingStartedAtMs;
-  return static_cast<long>(millis() - lastEventMs) < 3000L;
+  return sqwPulseIsFresh();
+}
+
+// Second-resolution time backed by cachedNow_, avoiding an I2C transaction on
+// the hot display-render path (see the SQW section comment above). Falls
+// back to a live rtc.now() read whenever the cache can't be trusted: before
+// rtcBeginSqwProcessing() has run, or if the SQW pulse has gone stale.
+DateTime rtcGetNowCached() {
+  if (!cachedNowSynced_ || !sqwPulseIsFresh()) return rtc.now();
+  return cachedNow_;
 }

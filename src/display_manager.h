@@ -7,14 +7,55 @@
 #include "config.h"
 #include "defaults.h"
 
-enum class DisplayBehavior : uint8_t {
+// What content is currently the "normal" thing to render - i.e. what the
+// active Mode resolves to right now. For Countdown/Countup/Clock modes this
+// never changes on its own. Friday mode is the one case where it varies
+// over time: FridayModeController recomputes it as its phase changes and
+// pushes the update via DisplayManager::setView().
+enum class View : uint8_t {
   kClock,
   kCountdown,
   kCountup,
-  kDemoCountdown,  // Countdown driven by transition deadline rather than a DateTime end time.
+};
+
+// Tagged union: only the member matching the enclosing ViewState::view is
+// valid. The explicit default constructor is required because DateTime has
+// a non-trivial constructor; callers always set the active member before
+// reading it.
+union ViewPayload {
+  // DateTime has non-trivial ctor/copy so the compiler deletes these.
+  // All union members are bitwise-copyable, so memcpy is correct.
+  ViewPayload() {}
+  ViewPayload(const ViewPayload& o)            { memcpy(static_cast<void*>(this), &o, sizeof(*this)); }
+  ViewPayload& operator=(const ViewPayload& o) { memcpy(static_cast<void*>(this), &o, sizeof(*this)); return *this; }
+
+  struct { DateTime endTime; uint8_t formatIndex; } countdown;
+  struct { DateTime startTime; uint8_t formatIndex; } countup;
+  struct { uint8_t formatIndex; } clock;
+};
+
+struct ViewState {
+  View view = View::kClock;  // Selects which payload member is active.
+  ViewPayload payload;       // Data consumed by the selected renderer.
+};
+
+// Short lowercase name for logging (e.g. "clock", "countdown").
+const char* viewName(View view);
+
+// A temporary layer shown on top of the current View. While one is active,
+// the physical display shows it instead of the View underneath - but the
+// View keeps updating live (e.g. Friday mode's phase can still change), so
+// whatever View is current the instant the overlay clears is what appears
+// next. There is no separate snapshot of "the view before the overlay" to
+// keep in sync or let go stale.
+enum class Overlay : uint8_t {
+  kDemo,  // Countdown driven by a transition deadline rather than a DateTime end time.
   kMessage,
   kPagedMessage,
 };
+
+// Short lowercase name for logging (e.g. "message", "pages").
+const char* overlayName(Overlay overlay);
 
 static constexpr uint8_t kDisplayRowsPerPage = 3;
 static constexpr uint8_t kDisplayRowChars = 4;
@@ -34,33 +75,28 @@ struct PagedDisplayPayload {
   bool     repeat;
 };
 
-// Tagged union: only the member matching the enclosing DisplayState::behavior is valid.
-// Each behavior uses only its own sub-struct; reading another member is undefined.
-// The explicit default constructor is required because DateTime has a non-trivial
-// constructor; callers always set the active member before reading it.
-union DisplayPayload {
-  // DateTime has non-trivial ctor/copy so the compiler deletes these.
-  // All union members are bitwise-copyable, so memcpy is correct.
-  DisplayPayload() {}
-  DisplayPayload(const DisplayPayload& o)            { memcpy(static_cast<void*>(this), &o, sizeof(*this)); }
-  DisplayPayload& operator=(const DisplayPayload& o) { memcpy(static_cast<void*>(this), &o, sizeof(*this)); return *this; }
+// Tagged union: only the member matching the enclosing OverlayState::overlay
+// is valid. kDemo needs no payload - it renders directly from the
+// transition's expiry deadline.
+union OverlayPayload {
+  OverlayPayload() {}
+  OverlayPayload(const OverlayPayload& o)            { memcpy(static_cast<void*>(this), &o, sizeof(*this)); }
+  OverlayPayload& operator=(const OverlayPayload& o) { memcpy(static_cast<void*>(this), &o, sizeof(*this)); return *this; }
 
-  struct { DateTime endTime; uint8_t formatIndex; } countdown;
-  struct { DateTime startTime; uint8_t formatIndex; } countup;
-  struct { uint8_t formatIndex; } clock;
   char message[64];
   PagedDisplayPayload paged;
 };
 
-struct DisplayState {
-  DisplayBehavior behavior = DisplayBehavior::kClock;  // Selects which payload member is active.
-  bool blink = false;                                  // True when message output alternates blank/on.
-  DisplayPayload payload;                              // Data consumed by the selected renderer.
+struct OverlayTransition {
+  bool hasExpiration = false;  // True when the overlay should clear on its own.
+  uint32_t expiresAtMs = 0;    // millis() deadline for automatic clearing.
 };
 
-struct DisplayTransition {
-  bool hasExpiration = false;  // True when the current state should expire.
-  uint32_t expiresAtMs = 0;    // millis() deadline for temporary state expiration.
+struct OverlayState {
+  Overlay overlay = Overlay::kMessage;
+  bool blink = false;          // True when output alternates blank/on.
+  OverlayPayload payload;
+  OverlayTransition transition;
 };
 
 class DisplayManager {
@@ -77,54 +113,63 @@ class DisplayManager {
   void showPages(const DisplayPage* pages, uint8_t pageCount,
                  uint16_t pageDurationMs = kDefaultPageDurationMs,
                  bool repeat = false);
-  void clearInfo();
+  void clearOverlay();
 
-  // Replaces the default state (the state restored after temporary overlays).
-  // If no temporary overlay is active, also updates the current display immediately.
-  void setDefaultState(const DisplayState& state);
+  // Replaces the base view (what's shown whenever no overlay is active).
+  // If no overlay is active, also updates the current display immediately.
+  // If one is active, this view simply becomes visible once the overlay
+  // clears - there's no separate snapshot that needs to be kept in sync.
+  void setView(const ViewState& view);
 
-  const char* currentStateName() const;
+  // Name of whatever is actually on the segments right now: the overlay's
+  // name if one is active, otherwise the base view's name. For logging.
+  const char* renderedName() const;
+
+  // The persistent mode from config (kModeCountdown/Countup/Clock/Friday).
+  Mode activeMode() const { return settings_.activeMode; }
+
+  // The View backing the base view (i.e. baseView_, not whatever overlay -
+  // if any - is currently covering it, so a splash/info/demo overlay never
+  // counts as a view change). Fixed by activeMode() for the three
+  // non-Friday modes; Friday mode is the one case where it varies over
+  // time, as FridayModeController recomputes it and calls setView().
+  View activeView() const { return baseView_.view; }
 
  private:
-  DisplayState stateForConfiguredMode(PersistentMode mode) const;
-  const char* behaviorName(DisplayBehavior behavior) const;
-  void logStateTransition(const DisplayState& from, const DisplayState& to,
-                          const char* reason) const;
+  ViewState viewForMode(Mode mode) const;
+  void logTransition(const char* from, const char* to, const char* reason) const;
 
-  void installState(const DisplayState& state, const DisplayTransition& transition,
-                    uint32_t nowMs, bool rememberPrevious);
-  void installDefaultState(uint32_t nowMs, bool forceRender = true);
-  void finishTemporaryState(uint32_t nowMs);
-  void restorePreviousState(uint32_t nowMs);
-  void startDemoMessageState(uint32_t nowMs);
+  void installOverlay(const OverlayState& state, uint32_t nowMs);
+  void installView(uint32_t nowMs, bool forceRender = true);
+  void finishOverlay(uint32_t nowMs);
+  void clearOverlayAndRenderView(uint32_t nowMs);
+  void startDemoMessageOverlay(uint32_t nowMs);
 
   void updateCountupOrigin(const ClockConfig& config);
   uint32_t refreshInterval() const;
   bool renderElapsed(uint32_t nowMs, bool force = false);
-  bool transitionExpired(uint32_t nowMs) const;
+  bool overlayExpired(uint32_t nowMs) const;
 
-  void renderCurrentState(uint32_t nowMs, bool force = false);
+  void render(uint32_t nowMs, bool force = false);
   void renderClock(uint32_t nowMs, bool force);
   void renderCountdown(uint32_t nowMs, bool force);
   void renderCountup(uint32_t nowMs, bool force);
-  void renderDemoCountdown(uint32_t nowMs, bool force);
+  void renderDemo(uint32_t nowMs, bool force);
   void renderMessage(uint32_t nowMs, bool force);
   void renderPagedMessage(uint32_t nowMs, bool force);
 
   ClockSource* clockSource_ = nullptr;          // Provides current wall time for renderers.
   ClockConfig settings_ = defaultClockConfig();  // Persisted display settings currently applied.
-  DisplayState defaultState_;                    // State restored after temporary states.
-  DisplayState currentState_;                    // State rendered on each tick.
-  DisplayTransition currentTransition_;          // Expiration metadata for the current state.
-  DisplayState previousState_;                   // State restored after temporary splash/info/demo states.
-  bool hasPreviousState_ = false;                // True while a temporary state can return to previousState_.
-  bool demoCountdownActive_ = false;             // True during demo's first countdown phase.
+  ViewState baseView_;                           // What to show when no overlay is active.
+  bool hasOverlay_ = false;                      // True while overlay_ is what's actually on screen.
+  OverlayState overlay_;                         // Only meaningful while hasOverlay_ is true.
+  bool demoActive_ = false;                      // True during demo's first (countdown) phase.
 
-  DateTime countupOrigin_;       // Captured start time for count-up states using "now".
-  bool blinkOn_ = true;          // Current visible/blank phase for blinking message states.
+  DateTime countupOrigin_;       // Captured start time for count-up views using "now".
+  bool blinkOn_ = true;          // Current visible/blank phase for blinking overlays.
   uint32_t blinkMs_ = 0;         // millis() timestamp of the last blink phase change.
   uint32_t lastRenderMs_ = 0;    // millis() timestamp of the last rendered frame.
-  bool colonVisible_ = true;     // Current colon phase for clock formats with blinking colon.
+  bool colonVisible_ = true;     // Current colon phase for clock views with blinking colon.
   uint32_t colonMs_ = 0;         // millis() timestamp of the last colon phase change.
 };
 

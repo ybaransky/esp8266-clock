@@ -11,7 +11,7 @@ void PageApi::handleRoot(const WifiRuntimeStatus& status) {
 
   String page(FPSTR(INDEX_HTML));
   page.replace("__DEVICE_NAME__", ssid.isEmpty() ? "Clock" : ssid);
-  page.replace("__INITIAL_MODE__", persistentModeName(config.activeMode));
+  page.replace("__INITIAL_MODE__", modeName(config.activeMode));
   responder_.logRequest(200, page.length());
   server_.send(200, "text/html", page);
 }

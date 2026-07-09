@@ -7,7 +7,7 @@
 
 void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject display = doc["display"].to<JsonObject>();
-  display["activeMode"]  = persistentModeName(clock.activeMode);
+  display["activeMode"]  = modeName(clock.activeMode);
   display["brightness"]  = clock.brightness;
   display["clock12Hour"] = clock.clockUse12Hour;
 
