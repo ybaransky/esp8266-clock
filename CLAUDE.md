@@ -77,6 +77,7 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 ### Serial / I2C / RTC
 - Serial at 74880 baud for readable ESP8266 boot output.
 - Initialize I2C early in `setup()` with explicit SDA/SCL pins before probing the RTC.
+- `main.cpp` uses `TimeService` (`time_service.h/cpp`) as the loop-facing abstraction for second-tick consumption, cached time reads, log-interval checks, and RTC health checks.
 - RTC SQW runs at 1Hz RISING interrupt. Call `rtcBeginSqwProcessing()` after `rtcBegin()`, then every loop call `rtcConsumeSqwPulse()` first - it returns `true` exactly once per real RTC second and advances the `rtcGetNowCached()` cache. Only when it returns `true`, optionally call `rtcIsLogIntervalDue()` to check whether the cached wall-clock second also lands on a `kSqwLogIntervalSeconds` boundary (`:00` and `:30`, i.e. every 30s) - meaning it's time for the throttled health/state log line. That call also resyncs the cache with a live read to correct for any missed pulses.
 - **Do not gate time-sensitive logic on `rtcIsLogIntervalDue()`** — it's throttled to the `:00`/`:30` boundary and exists only to pace logging. Anything that needs to react promptly to the RTC crossing a boundary (e.g. Friday-mode phase transitions in `fridayModeTick()`) must gate on `rtcConsumeSqwPulse()` instead. Piggybacking on the log gate was a real bug once (Friday mode's phase change lagged the actual Thu→Fri midnight crossing by up to a minute) — see `main.cpp`'s loop for the corrected wiring.
 - `rtcGetNow()` returns a `DateTime` from RTClib via a live I2C read; `rtcGetStatus()` returns `RtcStatus` (present, powerLost, lowBattery, sqwConfigured, error).
@@ -97,16 +98,19 @@ The display system has four layers:
    - `getFormat(group, index)` and `formatCount(group)` are the public accessors.
    - `FormatMetadata` struct holds `hasTenths` and `blinkColon` per entry. `getFormatMeta(group, index)` returns a pointer; `kFormatGroupMeta[group]` is the backing array in `format.cpp`. Always add a matching metadata row when adding or reordering a format string.
    - Predicates `countdownHasTenths`, `countupHasTenths`, `clockHasTenths`, `clockBlinkColon` (in `clock_format.h`) are table-driven via `FormatMetadata` — do NOT add hardcoded index comparisons.
-   - Current clock tokens: `YYYY`, `MM`, `DD`, `DOFW`, `hh`, `mm`, `ss`, `u`. `DOFW` renders `Sun`/`Mon`/`Tue`/`Wed`/`Thu`/`Fri`/`Sat`.
+  - Current clock tokens: `YYYY`, `MM`, `DD`, `DOW`, `hh`, `mm`, `ss`, `u`.
    - In clock formats, `H` and `N` are labels rendered as lowercase `h` and `n`.
    - A semicolon in a clock format, e.g. `hh;mm`, marks a blinking colon. Static duplicate clock formats have intentionally been removed.
 
 2. **`clock_format.h/cpp`** - pure renderers (no I/O). Each fills three 4-char string buffers (r1/r2/r3), one per physical display.
    - `renderCountdown(idx, fields, r1, r2, r3)`, `renderCountup(idx, fields, r1, r2, r3)`, `renderClock(idx, fields, r1, r2, r3, colonVisible)`.
+  - Rendering is plan-driven via `kCountingPlans` and `kClockPlans` row-op tables (not per-index switch/case blocks).
    - Internal fragment helpers in `clock_format.cpp`: `fmtNumber`, `fmtText`, `fmtMonthDay`, `fmtHourMin`, `fmtHourMinBlink`, `fmtMinSec`, `fmtBlankPadded`, `fmtZeroPadded`, `fmtDaysWithLabel`, `fmtDaysRight`. Use these for common patterns; do not add bare `snprintf` duplicates.
    - Numeric-only rows are right-justified across the full 4-character panel (`7` renders as `"   7"`).
    - For colon formats, the value left of the colon is blank-padded, not zero-padded (` 9:05`, not `09:05`).
    - When a blinking colon is off, render the time without a separator (` 905`) so all minute digits remain visible.
+  - `clockFormatValidateInvariants()` validates format-table counts against plan-table counts at boot.
+  - Intentional behavior: token labels in `format.cpp` intentionally differ from rendered labels in `clock_format.cpp`, and custom day abbreviations in `dowAbbrev()` are intentional.
 
 3. **`display.h/cpp`** - `SegmentDisplay` singleton wrapping 3 `TM1637Display` objects.
    - `begin(brightness)`, `setBrightness(0-7)`, `showPanels(r1, r2, r3)`, `blank()`.
@@ -114,12 +118,13 @@ The display system has four layers:
    - Caches last-written segments per panel; skips hardware write on identical content.
    - ASCII-to-segment glyph mapping lives in `display.cpp` as `ASCII_SEGMENTS`; adjust that table when a letter does not display well on 7-segment hardware.
 
-4. **`display_manager.h/cpp`** - `DisplayManager` singleton; the single entry point for all display state. Three distinct concepts on purpose, each answering a different question:
+4. **`display_manager.h/cpp`** - `DisplayManager` singleton; the single entry point for display state and transitions. Three distinct concepts on purpose, each answering a different question:
    - **`Mode`** (`format.h`) - the persisted, user-selected setting. Answers "what did the user configure the clock to do." Stored in `ClockConfig.activeMode`.
    - **`View`** (`display_manager.h`) - what content is currently the normal thing to render: `kClock`, `kCountdown`, `kCountup`, each with its own payload (`ViewState`/`ViewPayload`, a tagged union like the old `DisplayPayload`: `countdown` (endTime, formatIndex), `countup` (startTime, formatIndex), `clock` (formatIndex)). For Countdown/Countup/Clock modes, `View` is fixed by the `Mode` (`viewForMode()` sets it once). **Friday mode is the one case where `View` changes on its own** - `FridayModeController` recomputes it as its phase changes and pushes the update via `setView()`.
    - **`Overlay`** (`display_manager.h`) - a temporary layer shown on top of the current `View`: `kDemo` (live countdown from `overlay_.transition.expiresAtMs`, no `formatIndex`, not stored in config), `kMessage`, `kPagedMessage` (`OverlayState`/`OverlayPayload`: `message[64]` or `paged`). Pushed by `showSplash`/`showDemo`/`showInfo`/`showPages`, popped by `clearOverlay()` or its own expiration. `PagedDisplayPayload` and `DisplayPage` have no default member initializers; callers set all fields explicitly.
    - Rendering rule, always: show the overlay if `hasOverlay_` is true, otherwise show `baseView_` (there is no third option). There is no separate "state to restore" snapshot — when an overlay clears, whatever `baseView_` *currently* is (possibly updated by Friday mode while the overlay was up) is what appears next. This is a deliberate change from the old `defaultState_`/`currentState_`/`previousState_` model, which stored a frozen snapshot to restore to and could go stale relative to `defaultState_` (a real bug we hit: a boot splash captured Friday mode's placeholder clock view *before* its first tick corrected it, and restored that stale snapshot instead of the corrected countdown once the splash cleared).
-   - `begin(config)`, `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`.
+  - `begin(config)`, `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`.
+  - Render timing/blink policy lives in `DisplayScheduler` (`display_scheduler.h/cpp`): render throttling, message/page blink cadence, and clock-colon blink cadence.
    - `setView(view)` — updates `baseView_`. If no overlay is active, also re-renders immediately. If one is active, nothing else needs to happen — the new view simply becomes visible once the overlay clears. Used by `FridayModeController` to switch phases.
    - `renderedName()` returns whatever's actually on the segments right now, as a string (the overlay's name if one is active, else the view's) — useful for logging.
    - `activeMode()` returns the persisted `Mode`; `activeView()` returns the `View` backing `baseView_` (not the overlay, so a transient splash/info/demo never counts as a view change). `main.cpp`'s periodic SQW log line and its mode/view transition log both use these two accessors, not `renderedName()`.
@@ -155,6 +160,27 @@ The display system has four layers:
   - SolarCalculator returns UTC hours. The code derives the UTC calculation date from the requested local sunset date by anchoring at 18:00 local, converts the returned UTC sunset to a UTC `DateTime`, then applies `utcOffsetMinutes` once to return local time.
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
+### Sunset Calculation Model
+- Implementation: `sunset_calculator.cpp` (`calculateSunset`).
+- Goal: return local sunset wall time for the requested local date and location.
+- Algorithm:
+  1. Validate coordinates (`latitude` in [-90, 90], `longitude` in [-180, 180]).
+  2. Build `localEvening` at `18:00:00` on the requested local date.
+  3. Convert that anchor to UTC (`utcDateForLocalSunsetDate`) by subtracting `utcOffsetMinutes`.
+  4. Run `calcSunriseSunset` for `utcDate` and location.
+  5. If sunset is NaN, return fallback local `18:00:00`.
+  6. Convert sunset hours to rounded seconds.
+  7. Build `utcSunset` as `utcMidnight + sunsetSeconds`.
+  8. Convert back to local by adding `utcOffsetMinutes`.
+- Fallback behavior:
+  - Invalid coordinates -> local `18:00:00`.
+  - NaN sunset -> local `18:00:00`.
+- Timezone semantics:
+  - Sunset math is offset-based (`utcOffsetMinutes`), not timezone-rule-based.
+  - `dst` is informational/persisted but not directly consumed by the math.
+- Integration:
+  - Friday mode caches and uses these local sunset values as countdown targets in `friday_mode.cpp`.
+
 ### Storage / config
 - `ClockConfig` (in `config.h`) holds: `activeMode`, format indices (`countdownFmt`, `countupFmt`, `clockFmt`), friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`), `countdownDatetime[20]`, `countupDatetime[20]`, `splashMessage[64]`, `finalMessage[64]`, `brightness`, `location` (`LocationInfo`), `sunsetTest` (`LocationInfo`), `timezone[40]`, `utcOffsetMinutes`, `dst`, `clockUse12Hour`.
 - `clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour). Applies to clock mode and the Friday mode clock phase; does not affect countdown/countup hours.
@@ -169,7 +195,7 @@ The display system has four layers:
   - `serializeWifiConfig(doc, wifi)` - writes full wifi including passwords (for disk storage).
   - `serializeWifiStatus(doc, wifi)` - writes wifi without station password (for HTTP responses).
 - **`config_validation.h/cpp`** - sanitize and convert config values. Canonical home of `modeName(mode)` and `modeFromName(name, out)`. Do not redeclare these elsewhere.
-- **`config_api.cpp`** — `parseJsonBody(doc, route)` is a private `ConfigApi` helper that deserializes the request body; on failure it logs, sends 400, and returns `false`. All POST handlers call it instead of repeating the boilerplate. `applyModeAndFormats()` and `applyMessageFields()` are the two static sub-helpers used by `handleSaveConfig()`.
+- **`config_api.cpp` + `config_update_service.cpp`** — `parseJsonBody(doc, route)` remains the private `ConfigApi` helper for request parsing. `handleSaveConfig()` delegates payload mapping + persistence orchestration to `ConfigUpdateService`, which keeps route handlers thin and avoids duplicating config-update logic.
 
 ### Networking
 - **`wifi_connection_manager.h/cpp`**: `WifiConnectionManager` singleton.

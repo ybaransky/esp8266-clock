@@ -38,3 +38,6 @@ void renderCountup  (uint8_t idx, const TimeFields& f, char* r1, char* r2, char*
 // colonVisible only matters when clockBlinkColon(idx) is true.
 void renderClock    (uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3,
                      bool colonVisible = true);
+
+// Validates static renderer-table coverage against format table counts.
+bool clockFormatValidateInvariants();

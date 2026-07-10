@@ -219,14 +219,13 @@ void fmtSecTenthsAnchored(char* out, int seconds, int tenths) {
 }  // namespace
 
 // -- Countdown -----------------------------------------------------------------
-// Padding rules applied below:
-//   dd      -> formats 0-3 use compact d suffix; formats 4-7 right-justify
+// Counting output is produced by table-driven row plans (kCountingPlans).
+// Padding/formatting rules are preserved from the previous per-index renderer:
+//   dd      -> compact d-label variants and right-justified variants
 //   hh      -> fmtZeroPadded before ':', fmtBlankPadded otherwise
-//   mm, ss  -> %02d after ':', else %2d
-//   u       -> single digit
-//   hhh (formats 10-11) -> no days row; f.days * 24 + f.hours instead, so a
-//                        multi-day remaining time doesn't wrap the hour
-//                        count back down once days would otherwise absorb it
+//   mm, ss  -> %02d after ':', otherwise numeric right-aligned rendering
+//   u       -> single tenths digit anchored with seconds
+//   hhh     -> total elapsed/remaining hours (days * 24 + hours)
 
 namespace {
 
@@ -243,244 +242,183 @@ struct ClockRenderContext {
   bool colonVisible;
 };
 
-using CountingRenderer = void (*)(const CountingRenderContext&, char*, char*, char*);
-using ClockRenderer = void (*)(const ClockRenderContext&, char*, char*, char*);
-
-void renderCountFmt0(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysWithLabel(r1, c.f.days);
-  snprintf(r2, 8, "%s:%02d", c.hhColon, c.f.minutes);
-  fmtSecTenthsAnchored(r3, c.f.seconds, c.f.tenths);
-}
-
-void renderCountFmt1(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysWithLabel(r1, c.f.days);
-  snprintf(r2, 8, "%s:%02d", c.hhColon, c.f.minutes);
-  fmtNumber(r3, c.f.seconds);
-}
-
-void renderCountFmt2(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysWithLabel(r1, c.f.days);
-  fmtValueWithLabel(r2, c.hh, kHourLabel);
-  fmtMinSec(r3, c.f.minutes, c.f.seconds);
-}
-
-void renderCountFmt3(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysWithLabel(r1, c.f.days);
-  fmtValueWithLabel(r2, c.hh, kHourLabel);
-  fmtIntWithLabel(r3, c.f.minutes, kMinuteLabel);
-}
-
-void renderCountFmt4(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysRight(r1, c.f.days);
-  snprintf(r2, 8, "%s:%02d", c.hhColon, c.f.minutes);
-  fmtSecTenthsAnchored(r3, c.f.seconds, c.f.tenths);
-}
-
-void renderCountFmt5(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysRight(r1, c.f.days);
-  snprintf(r2, 8, "%s:%02d", c.hhColon, c.f.minutes);
-  fmtNumber(r3, c.f.seconds);
-}
-
-void renderCountFmt6(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysRight(r1, c.f.days);
-  fmtText(r2, c.hh);
-  fmtMinSec(r3, c.f.minutes, c.f.seconds);
-}
-
-void renderCountFmt7(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtDaysRight(r1, c.f.days);
-  fmtText(r2, c.hh);
-  fmtNumber(r3, c.f.minutes);
-}
-
-void renderCountFmt8(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtValueWithLabel(r1, c.hh, kHourLabel);
-  fmtIntWithLabel(r2, c.f.minutes, kMinuteLabel);
-  fmtSecTenthsAnchored(r3, c.f.seconds, c.f.tenths);
-}
-
-void renderCountFmt9(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtValueWithLabel(r1, c.hh, kHourLabel);
-  fmtIntWithLabel(r2, c.f.minutes, kMinuteLabel);
-  fmtNumber(r3, c.f.seconds);
-}
-
-void renderCountFmt10(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtNumber(r1, c.totalHours);
-  fmtNumber(r2, c.f.minutes);
-  fmtSecTenthsAnchored(r3, c.f.seconds, c.f.tenths);
-}
-
-void renderCountFmt11(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtNumber(r1, c.totalHours);
-  fmtNumber(r2, c.f.minutes);
-  fmtNumber(r3, c.f.seconds);
-}
-
-void renderCountFmt12(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, "    ");
-  fmtHourMin(r2, c.totalHours, c.f.minutes);
-  fmtSecTenthsAnchored(r3, c.f.seconds, c.f.tenths);
-}
-
-void renderCountFmt13(const CountingRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, "    ");
-  fmtHourMin(r2, c.totalHours, c.f.minutes);
-  fmtNumber(r3, c.f.seconds);
-}
-
-const CountingRenderer kCountingRenderers[] = {
-  renderCountFmt0,
-  renderCountFmt1,
-  renderCountFmt2,
-  renderCountFmt3,
-  renderCountFmt4,
-  renderCountFmt5,
-  renderCountFmt6,
-  renderCountFmt7,
-  renderCountFmt8,
-  renderCountFmt9,
-  renderCountFmt10,
-  renderCountFmt11,
-  renderCountFmt12,
-  renderCountFmt13,
+enum class CountingRowOp : uint8_t {
+  kDaysWithLabel,
+  kDaysRight,
+  kHoursLabel,
+  kMinutesLabel,
+  kTotalHours,
+  kHourMin,
+  kTotalHourMin,
+  kHoursText,
+  kMinSec,
+  kSecondsTenths,
+  kSeconds,
+  kMinutes,
+  kBlank,
 };
 
-void renderClockFmt0(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, c.dow);
-  fmtMonthDay(r2, c.f.month, c.f.dayOfMonth);
-  fmtHourMinBlink(r3, c.f.hours, c.f.minutes, c.colonVisible);
+struct CountingPlan {
+  CountingRowOp rows[3];
+};
+
+void renderCountingRow(CountingRowOp op, const CountingRenderContext& c, char* out) {
+  switch (op) {
+    case CountingRowOp::kDaysWithLabel:
+      fmtDaysWithLabel(out, c.f.days);
+      return;
+    case CountingRowOp::kDaysRight:
+      fmtDaysRight(out, c.f.days);
+      return;
+    case CountingRowOp::kHoursLabel:
+      fmtValueWithLabel(out, c.hh, kHourLabel);
+      return;
+    case CountingRowOp::kMinutesLabel:
+      fmtIntWithLabel(out, c.f.minutes, kMinuteLabel);
+      return;
+    case CountingRowOp::kTotalHours:
+      fmtNumber(out, c.totalHours);
+      return;
+    case CountingRowOp::kHourMin:
+      snprintf(out, 8, "%s:%02d", c.hhColon, c.f.minutes);
+      return;
+    case CountingRowOp::kTotalHourMin:
+      fmtHourMin(out, c.totalHours, c.f.minutes);
+      return;
+    case CountingRowOp::kHoursText:
+      fmtText(out, c.hh);
+      return;
+    case CountingRowOp::kMinSec:
+      fmtMinSec(out, c.f.minutes, c.f.seconds);
+      return;
+    case CountingRowOp::kSecondsTenths:
+      fmtSecTenthsAnchored(out, c.f.seconds, c.f.tenths);
+      return;
+    case CountingRowOp::kSeconds:
+      fmtNumber(out, c.f.seconds);
+      return;
+    case CountingRowOp::kMinutes:
+      fmtNumber(out, c.f.minutes);
+      return;
+    case CountingRowOp::kBlank:
+      fmtText(out, "    ");
+      return;
+  }
 }
 
-void renderClockFmt1(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, c.dow);
-  fmtText(r2, "    ");
-  fmtHourMinBlink(r3, c.f.hours, c.f.minutes, c.colonVisible);
+const CountingPlan kCountingPlans[] = {
+  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,   CountingRowOp::kSecondsTenths}},
+  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,   CountingRowOp::kSeconds}},
+  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel, CountingRowOp::kMinSec}},
+  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel, CountingRowOp::kMinutesLabel}},
+  {{CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,   CountingRowOp::kSecondsTenths}},
+  {{CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,   CountingRowOp::kSeconds}},
+  {{CountingRowOp::kDaysRight,     CountingRowOp::kHoursText, CountingRowOp::kMinSec}},
+  {{CountingRowOp::kDaysRight,     CountingRowOp::kHoursText, CountingRowOp::kMinutes}},
+  {{CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSecondsTenths}},
+  {{CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSeconds}},
+  {{CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,   CountingRowOp::kSecondsTenths}},
+  {{CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,   CountingRowOp::kSeconds}},
+  {{CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSecondsTenths}},
+  {{CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSeconds}},
+};
+
+enum class ClockRowOp : uint8_t {
+  kDow,
+  kBlank,
+  kMonthDay,
+  kHourMinBlink,
+  kMonthNumber,
+  kDayNumber,
+  kHourMin,
+  kSecondsTenthsCompact,
+  kSecondsTenthsAnchored,
+  kSeconds,
+  kHoursLabel,
+  kMinSec,
+  kMinutesLabel,
+  kYear,
+  kHoursNumber,
+  kMinutesNumber,
+};
+
+struct ClockPlan {
+  ClockRowOp rows[3];
+};
+
+void renderClockRow(ClockRowOp op, const ClockRenderContext& c, char* out) {
+  switch (op) {
+    case ClockRowOp::kDow:
+      fmtText(out, c.dow);
+      return;
+    case ClockRowOp::kBlank:
+      fmtText(out, "    ");
+      return;
+    case ClockRowOp::kMonthDay:
+      fmtMonthDay(out, c.f.month, c.f.dayOfMonth);
+      return;
+    case ClockRowOp::kHourMinBlink:
+      fmtHourMinBlink(out, c.f.hours, c.f.minutes, c.colonVisible);
+      return;
+    case ClockRowOp::kMonthNumber:
+      fmtNumber(out, c.f.month);
+      return;
+    case ClockRowOp::kDayNumber:
+      fmtNumber(out, c.f.dayOfMonth);
+      return;
+    case ClockRowOp::kHourMin:
+      fmtHourMin(out, c.f.hours, c.f.minutes);
+      return;
+    case ClockRowOp::kSecondsTenthsCompact:
+      snprintf(out, 8, "%2d:%d", c.f.seconds, c.f.tenths);
+      return;
+    case ClockRowOp::kSecondsTenthsAnchored:
+      fmtSecTenthsAnchored(out, c.f.seconds, c.f.tenths);
+      return;
+    case ClockRowOp::kSeconds:
+      fmtNumber(out, c.f.seconds);
+      return;
+    case ClockRowOp::kHoursLabel:
+      fmtIntWithLabel(out, c.f.hours, kHourLabel);
+      return;
+    case ClockRowOp::kMinSec:
+      fmtMinSec(out, c.f.minutes, c.f.seconds);
+      return;
+    case ClockRowOp::kMinutesLabel:
+      fmtIntWithLabel(out, c.f.minutes, kMinuteLabel);
+      return;
+    case ClockRowOp::kYear:
+      snprintf(out, 8, "%4d", c.f.year);
+      return;
+    case ClockRowOp::kHoursNumber:
+      fmtNumber(out, c.f.hours);
+      return;
+    case ClockRowOp::kMinutesNumber:
+      fmtNumber(out, c.f.minutes);
+      return;
+  }
 }
 
-void renderClockFmt2(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, "    ");
-  fmtText(r2, c.dow);
-  fmtHourMinBlink(r3, c.f.hours, c.f.minutes, c.colonVisible);
-}
-
-void renderClockFmt3(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, c.dow);
-  fmtNumber(r2, c.f.month);
-  fmtNumber(r3, c.f.dayOfMonth);
-}
-
-void renderClockFmt4(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, c.dow);
-  fmtHourMin(r2, c.f.hours, c.f.minutes);
-  snprintf(r3, 8, "%2d:%d", c.f.seconds, c.f.tenths);
-}
-
-void renderClockFmt5(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, c.dow);
-  fmtHourMin(r2, c.f.hours, c.f.minutes);
-  fmtNumber(r3, c.f.seconds);
-}
-
-void renderClockFmt6(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, c.dow);
-  fmtIntWithLabel(r2, c.f.hours, kHourLabel);
-  fmtMinSec(r3, c.f.minutes, c.f.seconds);
-}
-
-void renderClockFmt7(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtText(r1, c.dow);
-  fmtIntWithLabel(r2, c.f.hours, kHourLabel);
-  fmtIntWithLabel(r3, c.f.minutes, kMinuteLabel);
-}
-
-void renderClockFmt8(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  snprintf(r1, 8, "%4d", c.f.year);
-  fmtMonthDay(r2, c.f.month, c.f.dayOfMonth);
-  fmtHourMinBlink(r3, c.f.hours, c.f.minutes, c.colonVisible);
-}
-
-void renderClockFmt9(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  snprintf(r1, 8, "%4d", c.f.year);
-  fmtNumber(r2, c.f.month);
-  fmtNumber(r3, c.f.dayOfMonth);
-}
-
-void renderClockFmt10(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtNumber(r1, c.f.month);
-  fmtNumber(r2, c.f.dayOfMonth);
-  fmtHourMinBlink(r3, c.f.hours, c.f.minutes, c.colonVisible);
-}
-
-void renderClockFmt11(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtMonthDay(r1, c.f.month, c.f.dayOfMonth);
-  fmtHourMin(r2, c.f.hours, c.f.minutes);
-  fmtSecTenthsAnchored(r3, c.f.seconds, c.f.tenths);
-}
-
-void renderClockFmt12(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtMonthDay(r1, c.f.month, c.f.dayOfMonth);
-  fmtHourMin(r2, c.f.hours, c.f.minutes);
-  fmtNumber(r3, c.f.seconds);
-}
-
-void renderClockFmt13(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtMonthDay(r1, c.f.month, c.f.dayOfMonth);
-  fmtNumber(r2, c.f.hours);
-  fmtMinSec(r3, c.f.minutes, c.f.seconds);
-}
-
-void renderClockFmt14(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtMonthDay(r1, c.f.month, c.f.dayOfMonth);
-  fmtNumber(r2, c.f.hours);
-  fmtNumber(r3, c.f.minutes);
-}
-
-void renderClockFmt15(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtNumber(r1, c.f.dayOfMonth);
-  fmtHourMin(r2, c.f.hours, c.f.minutes);
-  fmtSecTenthsAnchored(r3, c.f.seconds, c.f.tenths);
-}
-
-void renderClockFmt16(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtNumber(r1, c.f.dayOfMonth);
-  fmtHourMin(r2, c.f.hours, c.f.minutes);
-  fmtNumber(r3, c.f.seconds);
-}
-
-void renderClockFmt17(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtNumber(r1, c.f.dayOfMonth);
-  fmtNumber(r2, c.f.hours);
-  fmtMinSec(r3, c.f.minutes, c.f.seconds);
-}
-
-void renderClockFmt18(const ClockRenderContext& c, char* r1, char* r2, char* r3) {
-  fmtNumber(r1, c.f.dayOfMonth);
-  fmtNumber(r2, c.f.hours);
-  fmtNumber(r3, c.f.minutes);
-}
-
-const ClockRenderer kClockRenderers[] = {
-  renderClockFmt0,
-  renderClockFmt1,
-  renderClockFmt2,
-  renderClockFmt3,
-  renderClockFmt4,
-  renderClockFmt5,
-  renderClockFmt6,
-  renderClockFmt7,
-  renderClockFmt8,
-  renderClockFmt9,
-  renderClockFmt10,
-  renderClockFmt11,
-  renderClockFmt12,
-  renderClockFmt13,
-  renderClockFmt14,
-  renderClockFmt15,
-  renderClockFmt16,
-  renderClockFmt17,
-  renderClockFmt18,
+const ClockPlan kClockPlans[] = {
+  {{ClockRowOp::kDow,       ClockRowOp::kMonthDay, ClockRowOp::kHourMinBlink}},
+  {{ClockRowOp::kDow,       ClockRowOp::kBlank,    ClockRowOp::kHourMinBlink}},
+  {{ClockRowOp::kBlank,     ClockRowOp::kDow,      ClockRowOp::kHourMinBlink}},
+  {{ClockRowOp::kDow,       ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
+  {{ClockRowOp::kDow,       ClockRowOp::kHourMin,  ClockRowOp::kSecondsTenthsCompact}},
+  {{ClockRowOp::kDow,       ClockRowOp::kHourMin,  ClockRowOp::kSeconds}},
+  {{ClockRowOp::kDow,       ClockRowOp::kHoursLabel, ClockRowOp::kMinSec}},
+  {{ClockRowOp::kDow,       ClockRowOp::kHoursLabel, ClockRowOp::kMinutesLabel}},
+  {{ClockRowOp::kYear,      ClockRowOp::kMonthDay, ClockRowOp::kHourMinBlink}},
+  {{ClockRowOp::kYear,      ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
+  {{ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber, ClockRowOp::kHourMinBlink}},
+  {{ClockRowOp::kMonthDay,  ClockRowOp::kHourMin,  ClockRowOp::kSecondsTenthsAnchored}},
+  {{ClockRowOp::kMonthDay,  ClockRowOp::kHourMin,  ClockRowOp::kSeconds}},
+  {{ClockRowOp::kMonthDay,  ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
+  {{ClockRowOp::kMonthDay,  ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
+  {{ClockRowOp::kDayNumber, ClockRowOp::kHourMin,  ClockRowOp::kSecondsTenthsAnchored}},
+  {{ClockRowOp::kDayNumber, ClockRowOp::kHourMin,  ClockRowOp::kSeconds}},
+  {{ClockRowOp::kDayNumber, ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
+  {{ClockRowOp::kDayNumber, ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
 };
 
 }  // namespace
@@ -493,11 +431,14 @@ void renderCountdown(uint8_t idx, const TimeFields& f, char* r1, char* r2, char*
   fmtBlankPadded(hh, f.hours);
   fmtZeroPadded(hhColon, f.hours);
 
-  const uint8_t safeIdx = (effectiveIdx < static_cast<uint8_t>(sizeof(kCountingRenderers) / sizeof(kCountingRenderers[0])))
+  const uint8_t safeIdx = (effectiveIdx < static_cast<uint8_t>(sizeof(kCountingPlans) / sizeof(kCountingPlans[0])))
                               ? effectiveIdx
                               : 0;
   const CountingRenderContext context{f, totalHours, hh, hhColon};
-  kCountingRenderers[safeIdx](context, r1, r2, r3);
+  const CountingPlan& plan = kCountingPlans[safeIdx];
+  renderCountingRow(plan.rows[0], context, r1);
+  renderCountingRow(plan.rows[1], context, r2);
+  renderCountingRow(plan.rows[2], context, r3);
 
   clockFormatDebugLog("count idx=%u effective=%u rows='%s'/'%s'/'%s'", idx, safeIdx, r1, r2, r3);
 }
@@ -507,16 +448,45 @@ void renderCountup(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r
 }
 
 // -- Clock ---------------------------------------------------------------------
-// All calendar fields (YYYY, MM, DD) are zero-padded - they are real dates,
-// not elapsed values, so "0 hours" suppression does not apply.
-// hh:mm uses %2d so midnight shows " 0:00", right-justified to the colon.
+// Clock output is produced by table-driven row plans (kClockPlans).
+// Calendar fields are rendered as date values (not elapsed fields), and time
+// fields preserve anchored-colon behavior for compact 4-character rows.
 
 void renderClock(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3, bool colonVisible) {
-  const uint8_t safeIdx = (idx < static_cast<uint8_t>(sizeof(kClockRenderers) / sizeof(kClockRenderers[0])))
+  const uint8_t safeIdx = (idx < static_cast<uint8_t>(sizeof(kClockPlans) / sizeof(kClockPlans[0])))
                               ? idx
                               : 0;
   const ClockRenderContext context{f, dowAbbrev(f.dayOfWeek), colonVisible};
-  kClockRenderers[safeIdx](context, r1, r2, r3);
+  const ClockPlan& plan = kClockPlans[safeIdx];
+  renderClockRow(plan.rows[0], context, r1);
+  renderClockRow(plan.rows[1], context, r2);
+  renderClockRow(plan.rows[2], context, r3);
 
   clockFormatDebugLog("clock idx=%u effective=%u rows='%s'/'%s'/'%s'", idx, safeIdx, r1, r2, r3);
+}
+
+bool clockFormatValidateInvariants() {
+  const uint8_t kCountingPlanCount =
+      static_cast<uint8_t>(sizeof(kCountingPlans) / sizeof(kCountingPlans[0]));
+  const uint8_t kClockPlanCount =
+      static_cast<uint8_t>(sizeof(kClockPlans) / sizeof(kClockPlans[0]));
+
+  bool ok = true;
+  if (formatCount(kFmtGroupCountdown) != kCountingPlanCount ||
+      formatCount(kFmtGroupCountUp) != kCountingPlanCount) {
+    Serial.printf("clock_format: invariant failed (counting tables %u/%u vs plans %u)\n",
+                  formatCount(kFmtGroupCountdown),
+                  formatCount(kFmtGroupCountUp),
+                  kCountingPlanCount);
+    ok = false;
+  }
+
+  if (formatCount(kFmtGroupClock) != kClockPlanCount) {
+    Serial.printf("clock_format: invariant failed (clock table %u vs plans %u)\n",
+                  formatCount(kFmtGroupClock),
+                  kClockPlanCount);
+    ok = false;
+  }
+
+  return ok;
 }

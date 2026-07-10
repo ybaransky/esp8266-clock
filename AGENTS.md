@@ -21,16 +21,19 @@ pio device monitor               # serial monitor at 74880 baud
 main.cpp
   ├── rtc_ds3231          – DS3231 driver; 1 Hz SQW interrupt drives the main tick and a
   │                         zero-I2C-cost cached DateTime (rtcGetNowCached())
+  ├── time_service        – TimeService abstraction over RTC tick/cache/health/log-interval
   ├── clock_source        – ClockSource abstraction; DisplayManager reads time through this,
   │                         backed by rtcGetNowCached()
   ├── display (4 layers)
   │     format            – format-string tables + FormatMetadata
-  │     clock_format      – pure renderers → three 4-char buffers
+  │     clock_format      – plan-driven pure renderers → three 4-char buffers
   │     display           – SegmentDisplay singleton (TM1637 hardware)
-  │     display_manager   – DisplayManager singleton (all state/transitions)
+  │     display_manager   – DisplayManager singleton (state + transitions)
+  │     display_scheduler – blink/colon cadence + render throttling policy
   ├── friday_mode         – FridayMode controller; ticked on every real SQW second via
   │                         rtcConsumeSqwPulse(), NOT the throttled log-interval pulse
   ├── config              – ConfigManager singleton (/config.json on LittleFS)
+  │     config_update_service – /api/config payload mapping + persistence orchestration
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
   ├── wifi_connection_manager – STA → AP fallback; captive DNS in AP mode
@@ -61,10 +64,22 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 
 `ClockConfig.clockUse12Hour` (`display.clock12Hour` in JSON, default `false`) converts the hour to 1–12 scale in `DisplayManager::renderClock()` before passing fields to the pure renderer. Countdown and countup modes are unaffected — their `hours` field is elapsed time, not a time of day.
 
+## Sunset Computation
+
+- Sunset is computed in `sunset_calculator.cpp` using SolarCalculator and returned as local wall-clock `DateTime`.
+- Inputs are: local target date, latitude/longitude, and `utcOffsetMinutes`.
+- The calculation date is anchored at local 18:00, then shifted to UTC before calling SolarCalculator. This avoids wrong-day results when local and UTC dates differ.
+- SolarCalculator sunset hours are converted to rounded seconds, applied to UTC midnight for that UTC date, then shifted back to local using `utcOffsetMinutes`.
+- Fallback behavior is deterministic:
+  - invalid coordinates -> local `18:00:00`
+  - NaN sunset from SolarCalculator -> local `18:00:00`
+- `dst` is persisted/echoed by APIs but sunset math is driven only by numeric `utcOffsetMinutes`.
+
 ## Critical invariants
 
 - **`ViewPayload`/`OverlayPayload` are unions** — only the member matching `ViewState::view` / `OverlayState::overlay` is valid. Never read a different union member.
-- **Format metadata rows must stay in sync** — whenever a format string is added or reordered in `format.cpp`, a matching `FormatMetadata` row must be added in the same position in `kClockMeta` / `kCountdownMeta` / `kCountupMeta`. Index mismatches cause silent rendering bugs. The `renderClock()` switch in `clock_format.cpp` must also be updated to match.
+- **Format metadata and renderer plans must stay in sync** — whenever a format string is added or reordered in `format.cpp`, keep `FormatMetadata` aligned and update plan tables in `clock_format.cpp` (`kCountingPlans` and `kClockPlans`) to the same shape/order. `clockFormatValidateInvariants()` catches count mismatches at boot, but not semantic row mistakes.
+- **Intentional token/render differences are required** — format tokens in `format.cpp` are intentionally different from rendered labels in `clock_format.cpp`, and custom day abbreviations in `dowAbbrev()` are intentional. Do not normalize these unless explicitly requested.
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.
 - **`location` vs `sunsetTest`** — `ClockConfig.location` is the physical device location used by friday_mode; `ClockConfig.sunsetTest` is the Sunset Calculator page's test input. Do not substitute one for the other.
 - **`webHandleClients()` must be called every `loop()` iteration** — skipping it stalls the web server and DNS.

@@ -90,11 +90,7 @@ void DisplayManager::applySettings(const ClockConfig& config) {
     clockSource_ = &systemClockSource();
   }
   settings_ = config;
-  colonVisible_ = true;
-  colonMs_ = 0;
-  blinkOn_ = true;
-  blinkMs_ = millis();
-  lastRenderMs_ = 0;
+  scheduler_.reset(millis());
 
   updateCountupOrigin(config);
   baseView_ = viewForMode(config.activeMode);
@@ -243,7 +239,7 @@ void DisplayManager::setView(const ViewState& state) {
 
   demoActive_ = false;
   const uint32_t nowMs = millis();
-  lastRenderMs_ = 0;
+  scheduler_.invalidateRender();
   logTransition(oldName, viewName(baseView_.view), "view update");
   render(nowMs, true);
 }
@@ -274,9 +270,8 @@ void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
   const char* oldName = renderedName();
   overlay_ = state;
   hasOverlay_ = true;
-  lastRenderMs_ = 0;
-  blinkOn_ = true;
-  blinkMs_ = nowMs;
+  scheduler_.invalidateRender();
+  scheduler_.resetBlink(nowMs);
   logTransition(oldName, overlayName(overlay_.overlay), "overlay");
 }
 
@@ -284,9 +279,8 @@ void DisplayManager::installView(uint32_t nowMs, bool forceRender) {
   const char* oldName = renderedName();
   demoActive_ = false;
   hasOverlay_ = false;
-  lastRenderMs_ = 0;
-  blinkOn_ = true;
-  blinkMs_ = nowMs;
+  scheduler_.invalidateRender();
+  scheduler_.resetBlink(nowMs);
   logTransition(oldName, viewName(baseView_.view), "view install");
   if (forceRender) {
     render(nowMs, true);
@@ -305,7 +299,7 @@ void DisplayManager::finishOverlay(uint32_t nowMs) {
 void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
   const char* oldName = renderedName();
   hasOverlay_ = false;
-  lastRenderMs_ = 0;
+  scheduler_.invalidateRender();
   logTransition(oldName, viewName(baseView_.view), "overlay cleared");
   render(nowMs, true);
 }
@@ -353,16 +347,7 @@ uint32_t DisplayManager::refreshInterval() const {
 }
 
 bool DisplayManager::renderElapsed(uint32_t nowMs, bool force) {
-  if (force) {
-    lastRenderMs_ = nowMs;
-    return true;
-  }
-
-  if (static_cast<long>(nowMs - lastRenderMs_) < static_cast<long>(refreshInterval())) {
-    return false;
-  }
-  lastRenderMs_ = nowMs;
-  return true;
+  return scheduler_.shouldRender(nowMs, refreshInterval(), force);
 }
 
 bool DisplayManager::overlayExpired(uint32_t nowMs) const {
@@ -389,10 +374,7 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
 
 void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   const uint8_t formatIndex = baseView_.payload.clock.formatIndex;
-  if (clockBlinkColon(formatIndex) &&
-      static_cast<long>(nowMs - colonMs_) >= static_cast<long>(kColonBlinkMs)) {
-    colonMs_ = nowMs;
-    colonVisible_ = !colonVisible_;
+  if (clockBlinkColon(formatIndex) && scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
     force = true;
   }
   if (!renderElapsed(nowMs, force)) return;
@@ -408,7 +390,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
 
   char r1[8], r2[8], r3[8];
   ::renderClock(formatIndex, fields, r1, r2, r3,
-                !clockBlinkColon(formatIndex) || colonVisible_);
+                !clockBlinkColon(formatIndex) || scheduler_.colonVisible());
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
@@ -471,17 +453,14 @@ void DisplayManager::renderDemo(uint32_t nowMs, bool force) {
 }
 
 void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
-  if (overlay_.blink &&
-      static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kMessageBlinkMs)) {
-    blinkMs_ = nowMs;
-    blinkOn_ = !blinkOn_;
+  if (overlay_.blink && scheduler_.toggleBlinkIfDue(nowMs, kMessageBlinkMs)) {
     force = true;
   }
 
   if (!renderElapsed(nowMs, force)) return;
 
   char r1[8], r2[8], r3[8];
-  if (overlay_.blink && !blinkOn_) {
+  if (overlay_.blink && !scheduler_.blinkOn()) {
     blankBuffers(r1, r2, r3);
   } else {
     messageToBuffers(overlay_.payload.message, r1, r2, r3);
@@ -510,12 +489,9 @@ void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
   }
 
   if (pageChanged) {
-    blinkOn_ = true;
-    blinkMs_ = nowMs;
+    scheduler_.resetBlink(nowMs);
     force = true;
-  } else if (static_cast<long>(nowMs - blinkMs_) >= static_cast<long>(kMessageBlinkMs)) {
-    blinkMs_ = nowMs;
-    blinkOn_ = !blinkOn_;
+  } else if (scheduler_.toggleBlinkIfDue(nowMs, kMessageBlinkMs)) {
     force = true;
   }
 
@@ -524,7 +500,7 @@ void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
   }
 
   const DisplayPage& page = paged.pages[paged.currentPage];
-  segmentDisplay.showPanels(blinkOn_ ? page.rows[0] : "    ",
+  segmentDisplay.showPanels(scheduler_.blinkOn() ? page.rows[0] : "    ",
                             page.rows[1],
                             page.rows[2]);
 }

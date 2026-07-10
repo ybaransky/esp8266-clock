@@ -6,6 +6,7 @@
 #include "clock_source.h"
 #include "config.h"
 #include "defaults.h"
+#include "display_scheduler.h"
 
 // What content is currently the "normal" thing to render - i.e. what the
 // active Mode resolves to right now. For Countdown/Countup/Clock modes this
@@ -166,11 +167,7 @@ class DisplayManager {
   bool demoActive_ = false;                      // True during demo's first (countdown) phase.
 
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
-  bool blinkOn_ = true;          // Current visible/blank phase for blinking overlays.
-  uint32_t blinkMs_ = 0;         // millis() timestamp of the last blink phase change.
-  uint32_t lastRenderMs_ = 0;    // millis() timestamp of the last rendered frame.
-  bool colonVisible_ = true;     // Current colon phase for clock views with blinking colon.
-  uint32_t colonMs_ = 0;         // millis() timestamp of the last colon phase change.
+  DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
 };
 
 extern DisplayManager displayManager;
