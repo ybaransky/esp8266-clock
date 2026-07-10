@@ -242,7 +242,7 @@ struct ClockRenderContext {
   bool colonVisible;
 };
 
-enum class CountingRowOp : uint8_t {
+enum class CountingSegment : uint8_t {
   kDaysWithLabel,
   kDaysRight,
   kHoursLabel,
@@ -259,52 +259,52 @@ enum class CountingRowOp : uint8_t {
 };
 
 // One catalog entry: the label shown by the web configurator plus the three
-// render ops that produce rows r1/r2/r3. Label and behavior can't drift
-// apart because they live in the same row.
+// segments that produce rows r1/r2/r3. Label and behavior can't drift
+// apart because they live in the same table entry.
 struct CountingFormat {
   const char* label;
-  CountingRowOp rows[3];
+  CountingSegment segments[3];
 };
 
-void renderCountingRow(CountingRowOp op, const CountingRenderContext& c, char* out) {
+void renderCountingRow(CountingSegment op, const CountingRenderContext& c, char* out) {
   switch (op) {
-    case CountingRowOp::kDaysWithLabel:
+    case CountingSegment::kDaysWithLabel:
       fmtDaysWithLabel(out, c.f.days);
       return;
-    case CountingRowOp::kDaysRight:
+    case CountingSegment::kDaysRight:
       fmtDaysRight(out, c.f.days);
       return;
-    case CountingRowOp::kHoursLabel:
+    case CountingSegment::kHoursLabel:
       fmtValueWithLabel(out, c.hh, kHourLabel);
       return;
-    case CountingRowOp::kMinutesLabel:
+    case CountingSegment::kMinutesLabel:
       fmtIntWithLabel(out, c.f.minutes, kMinuteLabel);
       return;
-    case CountingRowOp::kTotalHours:
+    case CountingSegment::kTotalHours:
       fmtNumber(out, c.totalHours);
       return;
-    case CountingRowOp::kHourMin:
+    case CountingSegment::kHourMin:
       snprintf(out, 8, "%s:%02d", c.hhColon, c.f.minutes);
       return;
-    case CountingRowOp::kTotalHourMin:
+    case CountingSegment::kTotalHourMin:
       fmtHourMin(out, c.totalHours, c.f.minutes);
       return;
-    case CountingRowOp::kHoursText:
+    case CountingSegment::kHoursText:
       fmtText(out, c.hh);
       return;
-    case CountingRowOp::kMinSec:
+    case CountingSegment::kMinSec:
       fmtMinSec(out, c.f.minutes, c.f.seconds);
       return;
-    case CountingRowOp::kSecondsTenths:
+    case CountingSegment::kSecondsTenths:
       fmtSecTenthsAnchored(out, c.f.seconds, c.f.tenths);
       return;
-    case CountingRowOp::kSeconds:
+    case CountingSegment::kSeconds:
       fmtNumber(out, c.f.seconds);
       return;
-    case CountingRowOp::kMinutes:
+    case CountingSegment::kMinutes:
       fmtNumber(out, c.f.minutes);
       return;
-    case CountingRowOp::kBlank:
+    case CountingSegment::kBlank:
       fmtText(out, "    ");
       return;
   }
@@ -319,39 +319,39 @@ void renderCountingRow(CountingRowOp op, const CountingRenderContext& c, char* o
 // hhh | mm variant (see resolveCountingOverflowIndex).
 const CountingFormat kCountingFormats[] = {
   {"dd D |  hh:mm |  ss:u",
-     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,      CountingRowOp::kSecondsTenths}},
+     {CountingSegment::kDaysWithLabel, CountingSegment::kHourMin,      CountingSegment::kSecondsTenths}},
   {"dd D |  hh:mm |    ss",
-     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,      CountingRowOp::kSeconds}},
+     {CountingSegment::kDaysWithLabel, CountingSegment::kHourMin,      CountingSegment::kSeconds}},
   {"dd D |  hh  H | mm:ss",
-     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel,   CountingRowOp::kMinSec}},
+     {CountingSegment::kDaysWithLabel, CountingSegment::kHoursLabel,   CountingSegment::kMinSec}},
   {"dd D |  hh  H |  mm N",
-     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel,   CountingRowOp::kMinutesLabel}},
+     {CountingSegment::kDaysWithLabel, CountingSegment::kHoursLabel,   CountingSegment::kMinutesLabel}},
   {"  dd |  hh:mm |  ss:u",
-     {CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,      CountingRowOp::kSecondsTenths}},
+     {CountingSegment::kDaysRight,     CountingSegment::kHourMin,      CountingSegment::kSecondsTenths}},
   {"  dd |  hh:mm |    ss",
-     {CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,      CountingRowOp::kSeconds}},
+     {CountingSegment::kDaysRight,     CountingSegment::kHourMin,      CountingSegment::kSeconds}},
   {"  dd |     hh | mm:ss",
-     {CountingRowOp::kDaysRight,     CountingRowOp::kHoursText,    CountingRowOp::kMinSec}},
+     {CountingSegment::kDaysRight,     CountingSegment::kHoursText,    CountingSegment::kMinSec}},
   {"  dd |     hh |    mm",
-     {CountingRowOp::kDaysRight,     CountingRowOp::kHoursText,    CountingRowOp::kMinutes}},
+     {CountingSegment::kDaysRight,     CountingSegment::kHoursText,    CountingSegment::kMinutes}},
   {"hh H |   mm N |  ss:u",
-     {CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSecondsTenths}},
+     {CountingSegment::kHoursLabel,    CountingSegment::kMinutesLabel, CountingSegment::kSecondsTenths}},
   {"hh H |   mm N |    ss",
-     {CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSeconds}},
+     {CountingSegment::kHoursLabel,    CountingSegment::kMinutesLabel, CountingSegment::kSeconds}},
   {" hhh |     mm |  ss:u",
-     {CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,      CountingRowOp::kSecondsTenths}},
+     {CountingSegment::kTotalHours,    CountingSegment::kMinutes,      CountingSegment::kSecondsTenths}},
   {" hhh |     mm |    ss",
-     {CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,      CountingRowOp::kSeconds}},
+     {CountingSegment::kTotalHours,    CountingSegment::kMinutes,      CountingSegment::kSeconds}},
   {"     | hhh:mm |  ss:u",
-     {CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSecondsTenths}},
+     {CountingSegment::kBlank,         CountingSegment::kTotalHourMin, CountingSegment::kSecondsTenths}},
   {"     | hhh:mm |    ss",
-     {CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSeconds}},
+     {CountingSegment::kBlank,         CountingSegment::kTotalHourMin, CountingSegment::kSeconds}},
 };
 
 constexpr uint8_t kCountingFormatCount =
     static_cast<uint8_t>(sizeof(kCountingFormats) / sizeof(kCountingFormats[0]));
 
-enum class ClockRowOp : uint8_t {
+enum class ClockSegment : uint8_t {
   kDow,
   kBlank,
   kMonthDay,
@@ -372,57 +372,57 @@ enum class ClockRowOp : uint8_t {
 
 struct ClockFormat {
   const char* label;
-  ClockRowOp rows[3];
+  ClockSegment segments[3];
 };
 
-void renderClockRow(ClockRowOp op, const ClockRenderContext& c, char* out) {
+void renderClockRow(ClockSegment op, const ClockRenderContext& c, char* out) {
   switch (op) {
-    case ClockRowOp::kDow:
+    case ClockSegment::kDow:
       fmtText(out, c.dow);
       return;
-    case ClockRowOp::kBlank:
+    case ClockSegment::kBlank:
       fmtText(out, "    ");
       return;
-    case ClockRowOp::kMonthDay:
+    case ClockSegment::kMonthDay:
       fmtMonthDay(out, c.f.month, c.f.dayOfMonth);
       return;
-    case ClockRowOp::kHourMinBlink:
+    case ClockSegment::kHourMinBlink:
       fmtHourMinBlink(out, c.f.hours, c.f.minutes, c.colonVisible);
       return;
-    case ClockRowOp::kMonthNumber:
+    case ClockSegment::kMonthNumber:
       fmtNumber(out, c.f.month);
       return;
-    case ClockRowOp::kDayNumber:
+    case ClockSegment::kDayNumber:
       fmtNumber(out, c.f.dayOfMonth);
       return;
-    case ClockRowOp::kHourMin:
+    case ClockSegment::kHourMin:
       fmtHourMin(out, c.f.hours, c.f.minutes);
       return;
-    case ClockRowOp::kSecondsTenthsCompact:
+    case ClockSegment::kSecondsTenthsCompact:
       snprintf(out, 8, "%2d:%d", c.f.seconds, c.f.tenths);
       return;
-    case ClockRowOp::kSecondsTenthsAnchored:
+    case ClockSegment::kSecondsTenthsAnchored:
       fmtSecTenthsAnchored(out, c.f.seconds, c.f.tenths);
       return;
-    case ClockRowOp::kSeconds:
+    case ClockSegment::kSeconds:
       fmtNumber(out, c.f.seconds);
       return;
-    case ClockRowOp::kHoursLabel:
+    case ClockSegment::kHoursLabel:
       fmtIntWithLabel(out, c.f.hours, kHourLabel);
       return;
-    case ClockRowOp::kMinSec:
+    case ClockSegment::kMinSec:
       fmtMinSec(out, c.f.minutes, c.f.seconds);
       return;
-    case ClockRowOp::kMinutesLabel:
+    case ClockSegment::kMinutesLabel:
       fmtIntWithLabel(out, c.f.minutes, kMinuteLabel);
       return;
-    case ClockRowOp::kYear:
+    case ClockSegment::kYear:
       snprintf(out, 8, "%4d", c.f.year);
       return;
-    case ClockRowOp::kHoursNumber:
+    case ClockSegment::kHoursNumber:
       fmtNumber(out, c.f.hours);
       return;
-    case ClockRowOp::kMinutesNumber:
+    case ClockSegment::kMinutesNumber:
       fmtNumber(out, c.f.minutes);
       return;
   }
@@ -435,61 +435,61 @@ void renderClockRow(ClockRowOp op, const ClockRenderContext& c, char* out) {
 // A semi-colon in hh;mm marks the colon as blinking (kHourMinBlink).
 const ClockFormat kClockFormats[] = {
   {" DOW  | MM:DD | hh;mm",
-     {ClockRowOp::kDow,         ClockRowOp::kMonthDay,    ClockRowOp::kHourMinBlink}},
+     {ClockSegment::kDow,         ClockSegment::kMonthDay,    ClockSegment::kHourMinBlink}},
   {" DOW  |       | hh;mm",
-     {ClockRowOp::kDow,         ClockRowOp::kBlank,       ClockRowOp::kHourMinBlink}},
+     {ClockSegment::kDow,         ClockSegment::kBlank,       ClockSegment::kHourMinBlink}},
   {"      |   DOW | hh;mm",
-     {ClockRowOp::kBlank,       ClockRowOp::kDow,         ClockRowOp::kHourMinBlink}},
+     {ClockSegment::kBlank,       ClockSegment::kDow,         ClockSegment::kHourMinBlink}},
   {" DOW  |    MM |    DD",
-     {ClockRowOp::kDow,         ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
+     {ClockSegment::kDow,         ClockSegment::kMonthNumber, ClockSegment::kDayNumber}},
   {" DOW  | hh:mm |  ss:u",
-     {ClockRowOp::kDow,         ClockRowOp::kHourMin,     ClockRowOp::kSecondsTenthsCompact}},
+     {ClockSegment::kDow,         ClockSegment::kHourMin,     ClockSegment::kSecondsTenthsCompact}},
   {" DOW  | hh:mm |    ss",
-     {ClockRowOp::kDow,         ClockRowOp::kHourMin,     ClockRowOp::kSeconds}},
+     {ClockSegment::kDow,         ClockSegment::kHourMin,     ClockSegment::kSeconds}},
   {" DOW  | hh  H | mm:ss",
-     {ClockRowOp::kDow,         ClockRowOp::kHoursLabel,  ClockRowOp::kMinSec}},
+     {ClockSegment::kDow,         ClockSegment::kHoursLabel,  ClockSegment::kMinSec}},
   {" DOW  | hh  H |  mm N",
-     {ClockRowOp::kDow,         ClockRowOp::kHoursLabel,  ClockRowOp::kMinutesLabel}},
+     {ClockSegment::kDow,         ClockSegment::kHoursLabel,  ClockSegment::kMinutesLabel}},
   {" YYYY | MM:DD | hh;mm",
-     {ClockRowOp::kYear,        ClockRowOp::kMonthDay,    ClockRowOp::kHourMinBlink}},
+     {ClockSegment::kYear,        ClockSegment::kMonthDay,    ClockSegment::kHourMinBlink}},
   {" YYYY |    MM |    DD",
-     {ClockRowOp::kYear,        ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
+     {ClockSegment::kYear,        ClockSegment::kMonthNumber, ClockSegment::kDayNumber}},
   {"   MM |    DD | hh;mm",
-     {ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber,   ClockRowOp::kHourMinBlink}},
+     {ClockSegment::kMonthNumber, ClockSegment::kDayNumber,   ClockSegment::kHourMinBlink}},
   {"MM:DD | hh:mm |  ss:u",
-     {ClockRowOp::kMonthDay,    ClockRowOp::kHourMin,     ClockRowOp::kSecondsTenthsAnchored}},
+     {ClockSegment::kMonthDay,    ClockSegment::kHourMin,     ClockSegment::kSecondsTenthsAnchored}},
   {"MM:DD | hh:mm |    ss",
-     {ClockRowOp::kMonthDay,    ClockRowOp::kHourMin,     ClockRowOp::kSeconds}},
+     {ClockSegment::kMonthDay,    ClockSegment::kHourMin,     ClockSegment::kSeconds}},
   {"MM:DD |    hh | mm:ss",
-     {ClockRowOp::kMonthDay,    ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
+     {ClockSegment::kMonthDay,    ClockSegment::kHoursNumber, ClockSegment::kMinSec}},
   {"MM:DD |    hh |    mm",
-     {ClockRowOp::kMonthDay,    ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
+     {ClockSegment::kMonthDay,    ClockSegment::kHoursNumber, ClockSegment::kMinutesNumber}},
   {"   DD | hh:mm |  ss:u",
-     {ClockRowOp::kDayNumber,   ClockRowOp::kHourMin,     ClockRowOp::kSecondsTenthsAnchored}},
+     {ClockSegment::kDayNumber,   ClockSegment::kHourMin,     ClockSegment::kSecondsTenthsAnchored}},
   {"   DD | hh:mm |    ss",
-     {ClockRowOp::kDayNumber,   ClockRowOp::kHourMin,     ClockRowOp::kSeconds}},
+     {ClockSegment::kDayNumber,   ClockSegment::kHourMin,     ClockSegment::kSeconds}},
   {"   DD |    hh | mm:ss",
-     {ClockRowOp::kDayNumber,   ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
+     {ClockSegment::kDayNumber,   ClockSegment::kHoursNumber, ClockSegment::kMinSec}},
   {"   DD |    hh |    mm",
-     {ClockRowOp::kDayNumber,   ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
+     {ClockSegment::kDayNumber,   ClockSegment::kHoursNumber, ClockSegment::kMinutesNumber}},
 };
 
 constexpr uint8_t kClockFormatCount =
     static_cast<uint8_t>(sizeof(kClockFormats) / sizeof(kClockFormats[0]));
 
-// True when op appears in a format's three-row plan.
-template <typename RowOp>
-bool rowsContain(const RowOp (&rows)[3], RowOp op) {
-  return rows[0] == op || rows[1] == op || rows[2] == op;
+// True when op appears in a format's three segments.
+template <typename Segment>
+bool segmentsContain(const Segment (&segments)[3], Segment op) {
+  return segments[0] == op || segments[1] == op || segments[2] == op;
 }
 
 bool countingHasTenths(uint8_t index) {
-  return rowsContain(kCountingFormats[index].rows, CountingRowOp::kSecondsTenths);
+  return segmentsContain(kCountingFormats[index].segments, CountingSegment::kSecondsTenths);
 }
 
 bool clockHasTenths(uint8_t index) {
-  return rowsContain(kClockFormats[index].rows, ClockRowOp::kSecondsTenthsCompact) ||
-         rowsContain(kClockFormats[index].rows, ClockRowOp::kSecondsTenthsAnchored);
+  return segmentsContain(kClockFormats[index].segments, ClockSegment::kSecondsTenthsCompact) ||
+         segmentsContain(kClockFormats[index].segments, ClockSegment::kSecondsTenthsAnchored);
 }
 
 }  // namespace
@@ -505,9 +505,9 @@ void renderCountdown(uint8_t idx, const TimeFields& f, char* r1, char* r2, char*
   const uint8_t safeIdx = effectiveIdx < kCountingFormatCount ? effectiveIdx : 0;
   const CountingRenderContext context{f, totalHours, hh, hhColon};
   const CountingFormat& format = kCountingFormats[safeIdx];
-  renderCountingRow(format.rows[0], context, r1);
-  renderCountingRow(format.rows[1], context, r2);
-  renderCountingRow(format.rows[2], context, r3);
+  renderCountingRow(format.segments[0], context, r1);
+  renderCountingRow(format.segments[1], context, r2);
+  renderCountingRow(format.segments[2], context, r3);
 
   clockFormatDebugLog("count idx=%u effective=%u rows='%s'/'%s'/'%s'", idx, safeIdx, r1, r2, r3);
 }
@@ -525,9 +525,9 @@ void renderClock(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3,
   const uint8_t safeIdx = idx < kClockFormatCount ? idx : 0;
   const ClockRenderContext context{f, dowAbbrev(f.dayOfWeek), colonVisible};
   const ClockFormat& format = kClockFormats[safeIdx];
-  renderClockRow(format.rows[0], context, r1);
-  renderClockRow(format.rows[1], context, r2);
-  renderClockRow(format.rows[2], context, r3);
+  renderClockRow(format.segments[0], context, r1);
+  renderClockRow(format.segments[1], context, r2);
+  renderClockRow(format.segments[2], context, r3);
 
   clockFormatDebugLog("clock idx=%u effective=%u rows='%s'/'%s'/'%s'", idx, safeIdx, r1, r2, r3);
 }
@@ -559,19 +559,19 @@ bool formatHasTenths(FormatGroup group, uint8_t index) {
 
 bool clockFormatBlinksColon(uint8_t index) {
   if (index >= kClockFormatCount) return false;
-  return rowsContain(kClockFormats[index].rows, ClockRowOp::kHourMinBlink);
+  return segmentsContain(kClockFormats[index].segments, ClockSegment::kHourMinBlink);
 }
 
 uint8_t resolveCountingOverflowIndex(uint8_t index, int totalHours) {
   if (totalHours <= 99 || index >= kCountingFormatCount) return index;
-  if (!rowsContain(kCountingFormats[index].rows, CountingRowOp::kTotalHourMin)) {
+  if (!segmentsContain(kCountingFormats[index].segments, CountingSegment::kTotalHourMin)) {
     return index;
   }
 
   // Find a split hhh | mm variant with the same tenths behavior.
   const bool wantTenths = countingHasTenths(index);
   for (uint8_t candidate = 0; candidate < kCountingFormatCount; ++candidate) {
-    if (rowsContain(kCountingFormats[candidate].rows, CountingRowOp::kTotalHours) &&
+    if (segmentsContain(kCountingFormats[candidate].segments, CountingSegment::kTotalHours) &&
         countingHasTenths(candidate) == wantTenths) {
       return candidate;
     }
