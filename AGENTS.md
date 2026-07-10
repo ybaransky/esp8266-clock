@@ -19,11 +19,9 @@ pio device monitor               # serial monitor at 74880 baud
 
 ```
 main.cpp
-  ├── rtc_ds3231          – DS3231 driver; 1 Hz SQW interrupt drives the main tick and a
-  │                         zero-I2C-cost cached DateTime (rtcGetNowCached())
-  ├── time_service        – TimeService abstraction over RTC tick/cache/health/log-interval
-  ├── clock_source        – ClockSource abstraction; DisplayManager reads time through this,
-  │                         backed by rtcGetNowCached()
+  ├── rtc_ds3231          – DS3231 driver; 1 Hz SQW interrupt drives the main tick, a
+  │                         zero-I2C-cost cached DateTime (rtcGetNowCached()), and the
+  │                         phase reference for tenths (rtcMsIntoSecond(), ISR-timestamped)
   ├── display (4 layers)
   │     format            – format-string tables + FormatMetadata
   │     clock_format      – plan-driven pure renderers → three 4-char buffers
@@ -33,7 +31,7 @@ main.cpp
   ├── friday_mode         – FridayMode controller; ticked on every real SQW second via
   │                         rtcConsumeSqwPulse(), NOT the throttled log-interval pulse
   ├── config              – ConfigManager singleton (/config.json on LittleFS)
-  │     config_update_service – /api/config payload mapping + persistence orchestration
+  │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
   ├── wifi_connection_manager – STA → AP fallback; captive DNS in AP mode
@@ -58,7 +56,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 | `kModeCountdown` | countdown | Counts down to a configured end datetime |
 | `kModeCountup`   | countup   | Counts up from a configured start datetime |
 | `kModeClock`     | clock     | Displays current time (24h or 12h per `clockUse12Hour`) |
-| `kModeFriday`    | friday    | Clock phase (Sun-Thu) → Fri midnight → countdown to Fri sunset → countdown to Sat sunset → repeats |
+| `kModeFriday`    | friday    | Clock phase (Sun-Thu) → Fri midnight → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `fridaySunsetMessage` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. |
 
 ## 12-hour clock mode
 
@@ -86,4 +84,6 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - **GPIO15 must stay LOW at boot** — do not add any pull-up on D8.
 - **`setView()` vs `applySettings()`** — use `setView()` to update the base view without disturbing an active overlay (e.g. from `FridayModeController`). Use `applySettings()` only for full config reloads (it resets colon state and re-evaluates the full mode). Don't reintroduce a "previous state" snapshot to restore when an overlay clears — that pattern (the old `defaultState_`/`currentState_`/`previousState_` model) is what caused a real bug where a boot splash restored a stale pre-Friday-correction view instead of the live one. The current model has no snapshot: clearing an overlay just re-renders whatever `baseView_` currently is.
 - **`rtcGetNow()` vs `rtcGetNowCached()`** — `rtcGetNow()` is a live I2C read; `rtcGetNowCached()` is a second-resolution cache advanced by the SQW pulse in `rtcConsumeSqwPulse()`, with a live-read fallback if the pulse goes stale. `RtcClockSource` (used by `DisplayManager` for all rendering) uses the cached version — do not swap it back to `rtcGetNow()`, since tenths-of-a-second formats render every 100ms and would turn that into 10 I2C transactions/sec. Reserve `rtcGetNow()` for infrequent one-off reads.
+- **LOG macros require string literals** — `LOG_PRINTLN`/`LOG_PRINTF` keep their strings in flash (`PSTR` + `printf_P`) to hold static RAM under 50% for OTA. For a runtime string use `LOG_PRINTF("%s\n", value)`; a literal `%` in a `LOG_PRINTLN` message must be `%%` (it is pasted into the printf format).
+- **Tenths are phase-locked to the RTC second** — compute them from `rtcMsIntoSecond(nowMs)`, never `millis() % 1000` (unrelated phase). `main.cpp` calls `displayManager.notifySecondBoundary()` on each accepted SQW pulse so the first redraw of each second lands on the real boundary.
 - **`rtcConsumeSqwPulse()` vs `rtcIsLogIntervalDue()`** — `rtcConsumeSqwPulse()` fires every real RTC second; `rtcIsLogIntervalDue()` is only true on the `:00`/`:30` wall-clock second boundary (`kSqwLogIntervalSeconds` = 30) and exists only to pace the periodic log line. Anything that must react promptly to the RTC (e.g. `fridayModeTick()`) has to gate on `rtcConsumeSqwPulse()`. This was a real bug once — `fridayModeTick()` was piggybacked on the log-interval gate, so Friday-mode phase transitions (e.g. Thu→Fri midnight) lagged the real crossing by up to a minute.

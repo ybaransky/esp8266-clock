@@ -79,15 +79,19 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 - Initialize I2C early in `setup()` with explicit SDA/SCL pins before probing the RTC.
 - `rtc_ds3231.h` is the time module. It is a set of free functions; there is deliberately **no interface layer** (no TimeService/ClockSource) over it - call the `rtc*` functions directly.
   - `rtcBegin()`, `rtcGetStatus()` (returns `RtcStatus`: present, powerLost, lowBattery, sqwConfigured, error), `rtcGetNow()` (live I2C read - one-off/correctness-critical reads only), `rtcSetNow()` (also resyncs the cache).
-  - SQW 1Hz processing: call `rtcBeginSqwProcessing()` after `rtcBegin()`, then `rtcConsumeSqwPulse()` every loop - it returns `true` exactly once per real RTC second and advances the cached time in software. Gate time-sensitive per-second logic (e.g. Friday-mode transitions) on it.
+  - SQW 1Hz processing: call `rtcBeginSqwProcessing()` after `rtcBegin()`, then `rtcConsumeSqwPulse()` every loop - it returns `true` exactly once per real RTC second and advances the cached time in software. Gate time-sensitive per-second logic (e.g. Friday-mode transitions) on it. `main.cpp` also calls `displayManager.notifySecondBoundary()` on each accepted pulse so rendering re-phases to the real second boundary.
   - `rtcIsLogIntervalDue()` is only for pacing the periodic log line (:00/:30 boundaries); it also resyncs the cache. Never gate time-sensitive logic on it.
   - `rtcGetNowCached()`: second-resolution time at zero I2C cost (advanced by SQW pulses); falls back to a live read when unseeded or the pulse goes stale. **Use this on the display-render path** (it runs up to 10x/sec for tenths formats).
   - `rtcIsHealthy()`: RTC present and SQW pulse arriving on schedule. Drives the "no rtc" overlay in `main.cpp`.
+  - `rtcMsIntoSecond(nowMs)`: milliseconds into the current RTC second (clamped 0-999), measured from the last accepted SQW edge - which is timestamped **in the ISR**, so loop-servicing latency (e.g. an HTTP request) can't skew the phase. This is what phase-locks the display's tenths digit to the real RTC second; it falls back to `nowMs % 1000` when the pulse is stale, matching `rtcGetNowCached()`'s degradation. Never compute tenths from `millis() % 1000` directly - that phase is unrelated to the RTC second (this was the pre-phase-lock behavior).
 - For fatal exception debugging, keep exception decoding enabled and include decoded stack traces in reports.
 
 ### Logging
 - `log.h` provides `LOG_PRINTLN(msg)` and `LOG_PRINTF(fmt, ...)` macros.
 - Each line is prefixed with `logCurrentTime()` and `logSourceName(__FILE__):__LINE__`.
+- Both macros keep their strings in **flash** (`PSTR` + `Serial.printf_P`). On the ESP8266 a plain string literal occupies RAM for the life of the program; moving the log strings to flash is what holds static RAM under 50% (OTA headroom). Consequences:
+  - `LOG_PRINTLN(msg)` and the `fmt` of `LOG_PRINTF` **must be string literals**. For a runtime string, use `LOG_PRINTF("%s\n", value)`.
+  - `LOG_PRINTLN` pastes its literal into the printf format, so a literal `%` must be written `%%`.
 
 ### Display / mode architecture
 The display system has four layers:
@@ -117,6 +121,7 @@ The display system has four layers:
    - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = FOREVER)`, `showPages(pages, count, ...)`, `clearOverlay()`.
    - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday is the only mode whose view changes over time.
    - Clock colon blink toggles once per second (2-second full cycle); message/page blinking uses its own 500ms cadence. Tenths formats refresh at 100ms, others at 1s (`formatHasTenths` drives this).
+   - Tenths values come from `rtcMsIntoSecond(nowMs)` (phase-locked to the SQW edge), not `millis() % 1000`. `notifySecondBoundary()` - called from `main.cpp` on every accepted SQW pulse - invalidates the render throttle so each second's first redraw lands on the real boundary (this also keeps whole-second formats from lagging the boundary by up to their 1s interval). The demo overlay's tenths are deadline-derived and stay that way.
    - When `ClockConfig.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in `renderClock()` only; countdown/countup are unaffected.
 
 4. **`clock_state.h`** - exactly one function: `clockApplySettings(cfg)`, which fans a new config out to `displayManager` **and** `fridayMode` (defined in `display_manager.cpp`). For single display actions (demo, brightness, splash, info), call `displayManager` directly - do not add wrapper functions.
@@ -129,6 +134,7 @@ The display system has four layers:
   - **To Friday sunset**: Thursday midnight → Friday sunset.
   - **To Saturday sunset**: Friday sunset → Saturday sunset.
 - Each phase transition calls `displayManager.setView()` with a `ViewState` built from `ClockConfig.fridayClockFmt` / `fridayToFridaySunsetFmt` / `fridayToSatSunsetFmt`.
+- Crossing Friday sunset **live** (previous phase `kToFridaySunset` → `kToSaturdaySunset` while running) blinks `ClockConfig.fridaySunsetMessage` for 5s via `displayManager.showInfo()`, called *after* `applyPhase()` so the Saturday-sunset countdown is the base view revealed when the overlay expires. The previous-phase check is deliberate: arriving at `kToSaturdaySunset` from `kNone` (boot, or a config save on a Friday evening - `applySettings()` resets the phase to `kNone`) must **not** fire the message.
 - Sunset targets are cached and recomputed at most once per week (when `fridayDateFor(now)` changes). `calculateSunset()` is **not** called on every tick.
 - `applySettings()` and `fridayModeResetSunsetCache()` (called after a browser time sync) invalidate the cache to force recomputation on the next tick.
 
@@ -144,8 +150,9 @@ The display system has four layers:
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
 ### Storage / config
-- `ClockConfig` (in `config.h`) holds: `activeMode`, format indices (`countdownFmt`, `countupFmt`, `clockFmt`), friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`), `countdownDatetime[20]`, `countupDatetime[20]` (`"now"` allowed), `splashMessage[64]`, `finalMessage[64]`, `brightness`, `location` (`LocationInfo`), `sunsetTest` (`LocationInfo`), `timezone[40]`, `utcOffsetMinutes`, `dst`, `clockUse12Hour`.
+- `ClockConfig` (in `config.h`) holds: `activeMode`, format indices (`countdownFmt`, `countupFmt`, `clockFmt`), friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`), `countdownDatetime[20]`, `countupDatetime[20]` (`"now"` allowed), `splashMessage[64]`, `finalMessage[64]`, `fridaySunsetMessage[64]` (blinked at the live Friday-sunset crossing), `brightness`, `location` (`LocationInfo`), `sunsetTest` (`LocationInfo`), `timezone[40]`, `utcOffsetMinutes`, `dst`, `clockUse12Hour`.
 - `clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
+- The three display messages serialize under `display.messages` as `splash` / `final` / `fridaySunset`; all are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII chars, split across the three 4-char panel rows). Defaults live in `defaults.cpp` (`fridaySunsetMessage` defaults to `"     SUN SET"`).
 - `LocationInfo` struct (in `config.h`): `latitude`, `longitude`, `zipcode[6]`. Used for both `location` (physical device location) and `sunsetTest` (Sunset Calculator test inputs). `/config.json` has separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.
 - `WifiConfig` holds: `staSsid`, `staPassword`, `apSsid`, `apPassword`.
 - **`config_serializer.h/cpp` is the only home of the JSON schema, in both directions.** Never spell out config field paths anywhere else.
@@ -166,5 +173,6 @@ The display system has four layers:
   - UI pages: `GET /`, `/settings`, `/config`, `/format`, `/time`, `/sunset`, `/messages`, `/location`, `/wifi`.
   - REST API: `POST /api/config`, `GET /api/config`, `GET /api/formats`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `POST /api/field-mismatch`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
   - File management: `GET /api/files`, `GET|DELETE /api/file`, `POST /api/file/upload`, `GET /view`.
+- `POST /api/message/test` accepts an optional `"blink": true`, which previews via the blinking `showInfo(msg, 5000)` path instead of the static `showSplash()` - used by the `/messages` page's "Test Friday Sunset" button so the preview matches the real sunset behavior.
 - `/location` edits the persisted device `location`. `/sunset` edits/persists only the `sunset` test fields before posting to `/api/sunset`.
 - On `/time`, "Set Time from Browser" updates the RTC/config (and resets the Friday sunset cache) and mirrors the new browser-derived values into the Device fields after a successful save.

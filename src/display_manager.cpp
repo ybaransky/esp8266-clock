@@ -102,6 +102,10 @@ void DisplayManager::tick(uint32_t nowMs) {
   render(nowMs);
 }
 
+void DisplayManager::notifySecondBoundary() {
+  scheduler_.invalidateRender();
+}
+
 void DisplayManager::showSplash(const char* message) {
   const uint32_t nowMs = millis();
   OverlayState state;
@@ -374,7 +378,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
     if (fields.hours == 0) fields.hours = 12;
   }
   if (formatHasTenths(kFmtGroupClock, formatIndex)) {
-    fields.tenths = (nowMs % kSecondMs) / kTenthMs;
+    fields.tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
   }
 
   char r1[8], r2[8], r3[8];
@@ -404,7 +408,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
 
   TimeFields fields = deltaToFields(secs);
   if (formatHasTenths(kFmtGroupCountdown, formatIndex)) {
-    fields.tenths = (secs > 0) ? (10 - (nowMs % kSecondMs) / kTenthMs) % 10 : 0;
+    fields.tenths = (secs > 0) ? (10 - rtcMsIntoSecond(nowMs) / kTenthMs) % 10 : 0;
   }
 
   char r1[8], r2[8], r3[8];
@@ -422,7 +426,7 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
 
   TimeFields fields = deltaToFields(secs);
   if (formatHasTenths(kFmtGroupCountUp, formatIndex)) {
-    fields.tenths = (nowMs % kSecondMs) / kTenthMs;
+    fields.tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
   }
 
   char r1[8], r2[8], r3[8];

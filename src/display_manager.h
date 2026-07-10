@@ -82,6 +82,12 @@ class DisplayManager {
   void setBrightness(uint8_t brightness);
   void tick(uint32_t nowMs);
 
+  // Called from loop() on each accepted SQW pulse (the real RTC second
+  // boundary). Invalidates the render throttle so the next tick() redraws
+  // immediately - the seconds digit flips within one loop pass of the
+  // physical edge, and the 100ms tenths cadence re-phases to it each second.
+  void notifySecondBoundary();
+
   void showSplash(const char* message);
   void showDemo();
   void showInfo(const char* message, int32_t durationMs = FOREVER);

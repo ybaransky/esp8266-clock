@@ -47,6 +47,13 @@ bool rtcIsLogIntervalDue();
 // Returns true when the RTC is present and the SQW 1Hz pulse is arriving on schedule.
 bool rtcIsHealthy();
 
+// Milliseconds elapsed since the current RTC second began (the last accepted
+// SQW edge, timestamped in the ISR), clamped to 0-999. This is what phase-
+// locks the display's tenths digit to the real RTC second. Falls back to
+// nowMs % 1000 when SQW processing hasn't started or the pulse has gone
+// stale - same graceful degradation as rtcGetNowCached().
+uint32_t rtcMsIntoSecond(uint32_t nowMs);
+
 // Second-resolution RTC time maintained by rtcConsumeSqwPulse(), at
 // effectively zero I2C cost (advanced in software from the SQW pulse rather
 // than re-reading the chip). Automatically falls back to a live rtcGetNow()

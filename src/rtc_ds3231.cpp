@@ -175,6 +175,7 @@ static constexpr uint32_t kSqwPulseStaleMs = 3000;
 struct SqwState {
   volatile uint32_t pendingPulseCount = 0;  // Incremented by the ISR, consumed in loop.
   volatile uint32_t isrPulseCount = 0;      // Lifetime ISR pulses (diagnostics).
+  volatile uint32_t edgeAtMs = 0;           // millis() stamped in the ISR at the last rising edge.
   bool processingStarted = false;
   bool sawPulse = false;
   uint32_t processingStartedAtMs = 0;
@@ -198,6 +199,10 @@ void rtcSetNow(const DateTime& timeValue) {
 }
 
 static void IRAM_ATTR onRtcSqwPulse() {
+  // The edge marks the instant the RTC second increments; capturing millis()
+  // here (rather than when loop() consumes the pulse) keeps the phase
+  // reference free of loop-servicing latency. millis() is ISR-safe.
+  sqw.edgeAtMs = millis();
   sqw.pendingPulseCount++;
   sqw.isrPulseCount++;
 }
@@ -250,16 +255,20 @@ static bool consumeSqwPulse() {
     return false;
   }
 
-  const uint32_t nowMs = millis();
+  // Use the ISR-captured edge time, not millis() here: consumption can lag
+  // the physical edge by however long loop() was busy (e.g. serving an HTTP
+  // request), and this timestamp is the phase reference for rtcMsIntoSecond().
+  // A 32-bit aligned volatile read is atomic on the ESP8266.
+  const uint32_t edgeMs = sqw.edgeAtMs;
   // DS3231 SQW is 1 Hz; ignore impossible back-to-back pulses caused by
   // sampling races/noise so the cached time stays aligned to real seconds.
-  if (sqw.sawPulse && static_cast<long>(nowMs - sqw.lastAcceptedPulseAtMs) < 500L) {
+  if (sqw.sawPulse && static_cast<long>(edgeMs - sqw.lastAcceptedPulseAtMs) < 500L) {
     return false;
   }
 
   sqw.sawPulse = true;
-  sqw.lastPulseAtMs = nowMs;
-  sqw.lastAcceptedPulseAtMs = nowMs;
+  sqw.lastPulseAtMs = edgeMs;
+  sqw.lastAcceptedPulseAtMs = edgeMs;
   return true;
 }
 
@@ -333,4 +342,17 @@ bool rtcIsHealthy() {
 DateTime rtcGetNowCached() {
   if (!sqw.cachedNowSynced || !sqwPulseIsFresh()) return rtc.now();
   return sqw.cachedNow;
+}
+
+// Phase-locked "how far into the current RTC second are we": elapsed millis
+// since the last accepted SQW edge. Clamped to 999 because consecutive edges
+// won't land exactly 1000 millis() ticks apart (timer jitter, crystal drift) -
+// just before the next edge the raw value can read 1000+, and clamping parks
+// the tenths digit at 9 instead of wrapping to 0 early. Falls back to the
+// old millis()-phase behavior when the SQW pulse can't be trusted, matching
+// rtcGetNowCached()'s degradation.
+uint32_t rtcMsIntoSecond(uint32_t nowMs) {
+  if (!sqw.sawPulse || !sqwPulseIsFresh()) return nowMs % 1000UL;
+  const uint32_t elapsed = nowMs - sqw.lastAcceptedPulseAtMs;
+  return elapsed > 999UL ? 999UL : elapsed;
 }

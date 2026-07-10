@@ -176,6 +176,9 @@ void loop() {
   buttonTick();
   processButtonEvents();
   if (rtcConsumeSqwPulse()) {
+    // Re-phase rendering to the real second boundary: displayManager.tick()
+    // below redraws immediately instead of waiting out its throttle window.
+    displayManager.notifySecondBoundary();
     fridayModeTick(rtcGetNowCached());
     if (rtcIsLogIntervalDue()) {
       LOG_PRINTF("SQW: mode=%s view=%s\n",
