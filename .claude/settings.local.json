@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pio run *)"
+      "Bash(pio run *)",
+      "PowerShell(pio run 2>&1)",
+      "PowerShell(Remove-Item src\\\\format.cpp -Confirm:$false)"
     ]
   }
 }
