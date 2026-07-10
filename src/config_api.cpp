@@ -5,14 +5,15 @@
 
 #include "clock_state.h"
 #include "config.h"
-#include "config_update_service.h"
 #include "config_serializer.h"
 #include "config_validation.h"
+#include "display_manager.h"
 #include "format.h"
 #include "friday_mode.h"
 #include "log.h"
 #include "rtc_ds3231.h"
 #include "sunset_calculator.h"
+#include "web_server.h"
 #include "zipcode.h"
 
 namespace {
@@ -70,9 +71,6 @@ bool parseTimeOfDay(const char* text, int* hour, int* minute, int* second) {
          *second >= 0 && *second <= 59;
 }
 
-// Keeps /api/config handler thin by owning save-payload mapping + persistence.
-ConfigUpdateService configUpdateService;
-
 }  // namespace
 
 // -- API handlers --------------------------------------------------------------
@@ -101,7 +99,7 @@ void ConfigApi::handleDemoTest() {
     }
   }
 
-  clockTriggerDemo();
+  displayManager.showDemo();
   responder_.sendJson(200, "{\"preview_ms\":10000}");
 }
 
@@ -111,7 +109,7 @@ void ConfigApi::handleMessageTest() {
 
   char message[64];
   sanitizeDisplayMessage(doc["message"] | "", message, sizeof(message));
-  clockShowMessagePreview(message);
+  displayManager.showSplash(message);
   responder_.sendJson(200, "{\"message\":\"Previewing message\",\"preview_ms\":5000}");
 }
 
@@ -143,7 +141,7 @@ void ConfigApi::handleBrightness() {
     return;
   }
 
-  clockSetBrightness(sanitizeBrightness(doc["brightness"].as<int>()));
+  displayManager.setBrightness(sanitizeBrightness(doc["brightness"].as<int>()));
   responder_.sendJson(200, "{\"message\":\"Brightness previewed\"}");
 }
 
@@ -209,16 +207,22 @@ void ConfigApi::handleGetConfig() {
 void ConfigApi::handleSaveConfig() {
   JsonDocument doc;
   if (!parseJsonBody(doc, "/api/config")) return;
+  JsonVariantConst payload = doc.as<JsonVariantConst>();
 
-  const SaveConfigResult result = configUpdateService.applySavePayload(doc);
-  if (!result.ok) {
-    responder_.sendJson(400, result.errorJson);
+  ClockConfig clockConfig = configManager.loadClockConfig();
+  const char* error = applyJsonToClockConfig(payload, clockConfig);
+  if (error != nullptr) {
+    responder_.sendJson(400, error);
     return;
   }
+  configManager.saveClockConfig(clockConfig);
+  clockApplySettings(configManager.sanitizeClockConfig(clockConfig));
 
-  if (result.wifiChanged) {
+  WifiConfig wifiConfig = configManager.loadWifiConfig();
+  if (applyJsonToWifiConfig(payload, wifiConfig)) {
+    configManager.saveWifiConfig(wifiConfig);
     responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
-    rebootScheduler_.scheduleReboot(kRebootDelayMs);
+    webScheduleReboot(kRebootDelayMs);
   } else {
     responder_.sendJson(200, "{\"message\":\"Saved\"}");
   }
@@ -350,38 +354,11 @@ void ConfigApi::handleFieldMismatch() {
 void ConfigApi::populateConfigJson(JsonDocument& doc) {
   const ClockConfig clockConfig = configManager.loadClockConfig();
   const WifiConfig  wifiConfig  = configManager.loadWifiConfig();
-  logConfigResponse(clockConfig, wifiConfig);
+  LOG_PRINTF("/api/config response: mode=%s brightness=%u staSsid=\"%s\"\n",
+             modeName(clockConfig.activeMode),
+             clockConfig.brightness,
+             wifiConfig.staSsid.c_str());
 
   serializeClockConfig(doc, clockConfig);
   serializeWifiStatus(doc, wifiConfig);
-}
-
-void ConfigApi::logConfigResponse(const ClockConfig& clockConfig,
-                                  const WifiConfig& wifiConfig) const {
-  LOG_PRINTF("/api/config response: mode=%u countdownFmt=%u countupFmt=%u clockFmt=%u brightness=%u\n",
-             static_cast<unsigned>(clockConfig.activeMode),
-             clockConfig.countdownFmt,
-             clockConfig.countupFmt,
-             clockConfig.clockFmt,
-             clockConfig.brightness);
-  LOG_PRINTF("/api/config response: countdownDatetime=\"%s\" countupDatetime=\"%s\"\n",
-             clockConfig.countdownDatetime,
-             clockConfig.countupDatetime);
-  LOG_PRINTF("/api/config response: splashMessage=\"%s\" finalMessage=\"%s\"\n",
-             clockConfig.splashMessage,
-             clockConfig.finalMessage);
-  LOG_PRINTF("/api/config response: latitude=%.6f longitude=%.6f zipcode=\"%s\" sunsetLatitude=%.6f sunsetLongitude=%.6f sunsetZipcode=\"%s\" timezone=\"%s\" utcOffsetMinutes=%d dst=%s\n",
-             clockConfig.location.latitude,
-             clockConfig.location.longitude,
-             clockConfig.location.zipcode,
-             clockConfig.sunsetTest.latitude,
-             clockConfig.sunsetTest.longitude,
-             clockConfig.sunsetTest.zipcode,
-             clockConfig.timezone,
-             clockConfig.utcOffsetMinutes,
-             clockConfig.dst ? "true" : "false");
-  LOG_PRINTF("/api/config response: staSsid=\"%s\" apSsid=\"%s\" apPassword=<%u chars>\n",
-             wifiConfig.staSsid.c_str(),
-             wifiConfig.apSsid.c_str(),
-             wifiConfig.apPassword.length());
 }

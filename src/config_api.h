@@ -5,17 +5,14 @@
 #include <ESP8266WebServer.h>
 
 #include "http_responder.h"
-#include "reboot_scheduler.h"
 
 struct ClockConfig;
 struct WifiConfig;
 
 class ConfigApi {
  public:
-  ConfigApi(ESP8266WebServer& server,
-            HttpResponder& responder,
-            RebootScheduler& rebootScheduler)
-      : server_(server), responder_(responder), rebootScheduler_(rebootScheduler) {}
+  ConfigApi(ESP8266WebServer& server, HttpResponder& responder)
+      : server_(server), responder_(responder) {}
 
   void handleDemoTest();
   void handleMessageTest();
@@ -35,10 +32,7 @@ class ConfigApi {
   bool parseJsonBody(JsonDocument& doc, const char* route);
 
   void populateConfigJson(JsonDocument& doc);
-  void logConfigResponse(const ClockConfig& clockConfig,
-                         const WifiConfig& wifiConfig) const;
 
   ESP8266WebServer& server_;       // Source of request payloads and query args.
   HttpResponder& responder_;       // Sends JSON/HTML API responses.
-  RebootScheduler& rebootScheduler_;  // Schedules deferred reboot after config changes.
 };

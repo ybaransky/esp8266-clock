@@ -83,10 +83,7 @@ WifiConfig ConfigManager::loadWifiConfig() {
     JsonDocument doc;
     if (!openAndParse(doc)) return cfg;
 
-    cfg.staSsid     = doc["wifi"]["station"]["ssid"]         | cfg.staSsid;
-    cfg.staPassword = doc["wifi"]["station"]["password"]     | cfg.staPassword;
-    cfg.apSsid      = doc["wifi"]["accessPoint"]["ssid"]     | cfg.apSsid;
-    cfg.apPassword  = doc["wifi"]["accessPoint"]["password"] | cfg.apPassword;
+    applyJsonToWifiConfig(doc.as<JsonVariantConst>(), cfg);
     return cfg;
 }
 
@@ -108,56 +105,11 @@ ClockConfig ConfigManager::loadClockConfig() {
     JsonDocument doc;
     if (!openAndParse(doc)) return cfg;
 
-    Mode mode;
-    const String activeMode = doc["display"]["activeMode"] | modeName(cfg.activeMode);
-    if (modeFromName(activeMode, &mode)) {
-        cfg.activeMode = mode;
+    // Invalid values are skipped; the field keeps its default.
+    const char* error = applyJsonToClockConfig(doc.as<JsonVariantConst>(), cfg);
+    if (error != nullptr) {
+        LOG_PRINTF("config.json has invalid values: %s\n", error);
     }
-
-    cfg.countdownFmt  = doc["display"]["modes"]["countdown"]["format"] | cfg.countdownFmt;
-    cfg.countupFmt    = doc["display"]["modes"]["countup"]["format"]   | cfg.countupFmt;
-    cfg.clockFmt      = doc["display"]["modes"]["clock"]["format"]     | cfg.clockFmt;
-    cfg.fridayClockFmt          = doc["display"]["modes"]["friday"]["clockFormat"]            | cfg.fridayClockFmt;
-    cfg.fridayToFridaySunsetFmt = doc["display"]["modes"]["friday"]["toFridaySunsetFormat"]  | cfg.fridayToFridaySunsetFmt;
-    cfg.fridayToSatSunsetFmt    = doc["display"]["modes"]["friday"]["toSaturdaySunsetFormat"] | cfg.fridayToSatSunsetFmt;
-    cfg.brightness    = doc["display"]["brightness"]                   | cfg.brightness;
-
-    const char* end = doc["display"]["modes"]["countdown"]["end"] | "";
-    if (end[0]) snprintf(cfg.countdownDatetime, sizeof(cfg.countdownDatetime), "%s", end);
-
-    const char* start = doc["display"]["modes"]["countup"]["start"] | "";
-    if (start[0]) snprintf(cfg.countupDatetime, sizeof(cfg.countupDatetime), "%s", start);
-
-    const char* splash = doc["display"]["messages"]["splash"] | cfg.splashMessage;
-    sanitizeDisplayMessage(splash, cfg.splashMessage, sizeof(cfg.splashMessage));
-
-    const char* finalMsg = doc["display"]["messages"]["final"] | cfg.finalMessage;
-    sanitizeDisplayMessage(finalMsg, cfg.finalMessage, sizeof(cfg.finalMessage));
-
-    JsonVariantConst location = doc["location"];
-    cfg.location.latitude  = location["latitude"]  | cfg.location.latitude;
-    cfg.location.longitude = location["longitude"] | cfg.location.longitude;
-    const char* zipcode = location["zipcode"] | "";
-    if (zipcode[0]) {
-        snprintf(cfg.location.zipcode, sizeof(cfg.location.zipcode), "%s", zipcode);
-    }
-
-    JsonVariantConst sunset = doc["sunset"];
-    cfg.sunsetTest.latitude  = sunset["latitude"]  | cfg.sunsetTest.latitude;
-    cfg.sunsetTest.longitude = sunset["longitude"] | cfg.sunsetTest.longitude;
-    const char* sunsetZipcode = sunset["zipcode"] | "";
-    if (sunsetZipcode[0]) {
-        snprintf(cfg.sunsetTest.zipcode, sizeof(cfg.sunsetTest.zipcode), "%s", sunsetZipcode);
-    }
-
-    const char* timezone = doc["time"]["timezone"]["name"] | "";
-    char cleanTimezone[sizeof(cfg.timezone)];
-    sanitizePrintableText(timezone, cleanTimezone, sizeof(cleanTimezone));
-    if (cleanTimezone[0]) snprintf(cfg.timezone, sizeof(cfg.timezone), "%s", cleanTimezone);
-    cfg.utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | cfg.utcOffsetMinutes;
-    cfg.dst = doc["time"]["dst"] | cfg.dst;
-    cfg.clockUse12Hour = doc["display"]["clock12Hour"] | cfg.clockUse12Hour;
-
     return sanitizeClockConfig(cfg);
 }
 

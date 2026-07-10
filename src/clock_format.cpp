@@ -219,7 +219,7 @@ void fmtSecTenthsAnchored(char* out, int seconds, int tenths) {
 }  // namespace
 
 // -- Countdown -----------------------------------------------------------------
-// Counting output is produced by table-driven row plans (kCountingPlans).
+// Counting output is produced by the table-driven format catalog (kCountingFormats).
 // Padding/formatting rules are preserved from the previous per-index renderer:
 //   dd      -> compact d-label variants and right-justified variants
 //   hh      -> fmtZeroPadded before ':', fmtBlankPadded otherwise
@@ -258,7 +258,11 @@ enum class CountingRowOp : uint8_t {
   kBlank,
 };
 
-struct CountingPlan {
+// One catalog entry: the label shown by the web configurator plus the three
+// render ops that produce rows r1/r2/r3. Label and behavior can't drift
+// apart because they live in the same row.
+struct CountingFormat {
+  const char* label;
   CountingRowOp rows[3];
 };
 
@@ -306,22 +310,46 @@ void renderCountingRow(CountingRowOp op, const CountingRenderContext& c, char* o
   }
 }
 
-const CountingPlan kCountingPlans[] = {
-  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,   CountingRowOp::kSecondsTenths}},
-  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,   CountingRowOp::kSeconds}},
-  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel, CountingRowOp::kMinSec}},
-  {{CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel, CountingRowOp::kMinutesLabel}},
-  {{CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,   CountingRowOp::kSecondsTenths}},
-  {{CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,   CountingRowOp::kSeconds}},
-  {{CountingRowOp::kDaysRight,     CountingRowOp::kHoursText, CountingRowOp::kMinSec}},
-  {{CountingRowOp::kDaysRight,     CountingRowOp::kHoursText, CountingRowOp::kMinutes}},
-  {{CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSecondsTenths}},
-  {{CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSeconds}},
-  {{CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,   CountingRowOp::kSecondsTenths}},
-  {{CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,   CountingRowOp::kSeconds}},
-  {{CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSecondsTenths}},
-  {{CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSeconds}},
+// -- Counting formats (shared by Countdown + Count-Up) --------------------------
+// Label tokens: dd=days  hh/mm/ss=time  u=tenths
+// Label literals: D=days-label  H=hours-label  N=minutes-label
+// hhh: total hours (days * 24 + hours) - no separate days row; accumulates
+// past 24. Any format combining hhh:mm on one 4-digit row only works through
+// 99:59; above 99 hours, rendering auto-falls back to a compatible split
+// hhh | mm variant (see resolveCountingOverflowIndex).
+const CountingFormat kCountingFormats[] = {
+  {"dd D |  hh:mm |  ss:u",
+     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,      CountingRowOp::kSecondsTenths}},
+  {"dd D |  hh:mm |    ss",
+     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHourMin,      CountingRowOp::kSeconds}},
+  {"dd D |  hh  H | mm:ss",
+     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel,   CountingRowOp::kMinSec}},
+  {"dd D |  hh  H |  mm N",
+     {CountingRowOp::kDaysWithLabel, CountingRowOp::kHoursLabel,   CountingRowOp::kMinutesLabel}},
+  {"  dd |  hh:mm |  ss:u",
+     {CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,      CountingRowOp::kSecondsTenths}},
+  {"  dd |  hh:mm |    ss",
+     {CountingRowOp::kDaysRight,     CountingRowOp::kHourMin,      CountingRowOp::kSeconds}},
+  {"  dd |     hh | mm:ss",
+     {CountingRowOp::kDaysRight,     CountingRowOp::kHoursText,    CountingRowOp::kMinSec}},
+  {"  dd |     hh |    mm",
+     {CountingRowOp::kDaysRight,     CountingRowOp::kHoursText,    CountingRowOp::kMinutes}},
+  {"hh H |   mm N |  ss:u",
+     {CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSecondsTenths}},
+  {"hh H |   mm N |    ss",
+     {CountingRowOp::kHoursLabel,    CountingRowOp::kMinutesLabel, CountingRowOp::kSeconds}},
+  {" hhh |     mm |  ss:u",
+     {CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,      CountingRowOp::kSecondsTenths}},
+  {" hhh |     mm |    ss",
+     {CountingRowOp::kTotalHours,    CountingRowOp::kMinutes,      CountingRowOp::kSeconds}},
+  {"     | hhh:mm |  ss:u",
+     {CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSecondsTenths}},
+  {"     | hhh:mm |    ss",
+     {CountingRowOp::kBlank,         CountingRowOp::kTotalHourMin, CountingRowOp::kSeconds}},
 };
+
+constexpr uint8_t kCountingFormatCount =
+    static_cast<uint8_t>(sizeof(kCountingFormats) / sizeof(kCountingFormats[0]));
 
 enum class ClockRowOp : uint8_t {
   kDow,
@@ -342,7 +370,8 @@ enum class ClockRowOp : uint8_t {
   kMinutesNumber,
 };
 
-struct ClockPlan {
+struct ClockFormat {
+  const char* label;
   ClockRowOp rows[3];
 };
 
@@ -399,27 +428,69 @@ void renderClockRow(ClockRowOp op, const ClockRenderContext& c, char* out) {
   }
 }
 
-const ClockPlan kClockPlans[] = {
-  {{ClockRowOp::kDow,       ClockRowOp::kMonthDay, ClockRowOp::kHourMinBlink}},
-  {{ClockRowOp::kDow,       ClockRowOp::kBlank,    ClockRowOp::kHourMinBlink}},
-  {{ClockRowOp::kBlank,     ClockRowOp::kDow,      ClockRowOp::kHourMinBlink}},
-  {{ClockRowOp::kDow,       ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
-  {{ClockRowOp::kDow,       ClockRowOp::kHourMin,  ClockRowOp::kSecondsTenthsCompact}},
-  {{ClockRowOp::kDow,       ClockRowOp::kHourMin,  ClockRowOp::kSeconds}},
-  {{ClockRowOp::kDow,       ClockRowOp::kHoursLabel, ClockRowOp::kMinSec}},
-  {{ClockRowOp::kDow,       ClockRowOp::kHoursLabel, ClockRowOp::kMinutesLabel}},
-  {{ClockRowOp::kYear,      ClockRowOp::kMonthDay, ClockRowOp::kHourMinBlink}},
-  {{ClockRowOp::kYear,      ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
-  {{ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber, ClockRowOp::kHourMinBlink}},
-  {{ClockRowOp::kMonthDay,  ClockRowOp::kHourMin,  ClockRowOp::kSecondsTenthsAnchored}},
-  {{ClockRowOp::kMonthDay,  ClockRowOp::kHourMin,  ClockRowOp::kSeconds}},
-  {{ClockRowOp::kMonthDay,  ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
-  {{ClockRowOp::kMonthDay,  ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
-  {{ClockRowOp::kDayNumber, ClockRowOp::kHourMin,  ClockRowOp::kSecondsTenthsAnchored}},
-  {{ClockRowOp::kDayNumber, ClockRowOp::kHourMin,  ClockRowOp::kSeconds}},
-  {{ClockRowOp::kDayNumber, ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
-  {{ClockRowOp::kDayNumber, ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
+// -- Clock formats ---------------------------------------------------------------
+// Label tokens: YYYY=year  MM=month  DD=day-of-month  DOW=day-of-week
+//               hh/mm/ss=time  u=tenths
+// Label literals: H=hours-label  N=minutes-label
+// A semi-colon in hh;mm marks the colon as blinking (kHourMinBlink).
+const ClockFormat kClockFormats[] = {
+  {" DOW  | MM:DD | hh;mm",
+     {ClockRowOp::kDow,         ClockRowOp::kMonthDay,    ClockRowOp::kHourMinBlink}},
+  {" DOW  |       | hh;mm",
+     {ClockRowOp::kDow,         ClockRowOp::kBlank,       ClockRowOp::kHourMinBlink}},
+  {"      |   DOW | hh;mm",
+     {ClockRowOp::kBlank,       ClockRowOp::kDow,         ClockRowOp::kHourMinBlink}},
+  {" DOW  |    MM |    DD",
+     {ClockRowOp::kDow,         ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
+  {" DOW  | hh:mm |  ss:u",
+     {ClockRowOp::kDow,         ClockRowOp::kHourMin,     ClockRowOp::kSecondsTenthsCompact}},
+  {" DOW  | hh:mm |    ss",
+     {ClockRowOp::kDow,         ClockRowOp::kHourMin,     ClockRowOp::kSeconds}},
+  {" DOW  | hh  H | mm:ss",
+     {ClockRowOp::kDow,         ClockRowOp::kHoursLabel,  ClockRowOp::kMinSec}},
+  {" DOW  | hh  H |  mm N",
+     {ClockRowOp::kDow,         ClockRowOp::kHoursLabel,  ClockRowOp::kMinutesLabel}},
+  {" YYYY | MM:DD | hh;mm",
+     {ClockRowOp::kYear,        ClockRowOp::kMonthDay,    ClockRowOp::kHourMinBlink}},
+  {" YYYY |    MM |    DD",
+     {ClockRowOp::kYear,        ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber}},
+  {"   MM |    DD | hh;mm",
+     {ClockRowOp::kMonthNumber, ClockRowOp::kDayNumber,   ClockRowOp::kHourMinBlink}},
+  {"MM:DD | hh:mm |  ss:u",
+     {ClockRowOp::kMonthDay,    ClockRowOp::kHourMin,     ClockRowOp::kSecondsTenthsAnchored}},
+  {"MM:DD | hh:mm |    ss",
+     {ClockRowOp::kMonthDay,    ClockRowOp::kHourMin,     ClockRowOp::kSeconds}},
+  {"MM:DD |    hh | mm:ss",
+     {ClockRowOp::kMonthDay,    ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
+  {"MM:DD |    hh |    mm",
+     {ClockRowOp::kMonthDay,    ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
+  {"   DD | hh:mm |  ss:u",
+     {ClockRowOp::kDayNumber,   ClockRowOp::kHourMin,     ClockRowOp::kSecondsTenthsAnchored}},
+  {"   DD | hh:mm |    ss",
+     {ClockRowOp::kDayNumber,   ClockRowOp::kHourMin,     ClockRowOp::kSeconds}},
+  {"   DD |    hh | mm:ss",
+     {ClockRowOp::kDayNumber,   ClockRowOp::kHoursNumber, ClockRowOp::kMinSec}},
+  {"   DD |    hh |    mm",
+     {ClockRowOp::kDayNumber,   ClockRowOp::kHoursNumber, ClockRowOp::kMinutesNumber}},
 };
+
+constexpr uint8_t kClockFormatCount =
+    static_cast<uint8_t>(sizeof(kClockFormats) / sizeof(kClockFormats[0]));
+
+// True when op appears in a format's three-row plan.
+template <typename RowOp>
+bool rowsContain(const RowOp (&rows)[3], RowOp op) {
+  return rows[0] == op || rows[1] == op || rows[2] == op;
+}
+
+bool countingHasTenths(uint8_t index) {
+  return rowsContain(kCountingFormats[index].rows, CountingRowOp::kSecondsTenths);
+}
+
+bool clockHasTenths(uint8_t index) {
+  return rowsContain(kClockFormats[index].rows, ClockRowOp::kSecondsTenthsCompact) ||
+         rowsContain(kClockFormats[index].rows, ClockRowOp::kSecondsTenthsAnchored);
+}
 
 }  // namespace
 
@@ -431,14 +502,12 @@ void renderCountdown(uint8_t idx, const TimeFields& f, char* r1, char* r2, char*
   fmtBlankPadded(hh, f.hours);
   fmtZeroPadded(hhColon, f.hours);
 
-  const uint8_t safeIdx = (effectiveIdx < static_cast<uint8_t>(sizeof(kCountingPlans) / sizeof(kCountingPlans[0])))
-                              ? effectiveIdx
-                              : 0;
+  const uint8_t safeIdx = effectiveIdx < kCountingFormatCount ? effectiveIdx : 0;
   const CountingRenderContext context{f, totalHours, hh, hhColon};
-  const CountingPlan& plan = kCountingPlans[safeIdx];
-  renderCountingRow(plan.rows[0], context, r1);
-  renderCountingRow(plan.rows[1], context, r2);
-  renderCountingRow(plan.rows[2], context, r3);
+  const CountingFormat& format = kCountingFormats[safeIdx];
+  renderCountingRow(format.rows[0], context, r1);
+  renderCountingRow(format.rows[1], context, r2);
+  renderCountingRow(format.rows[2], context, r3);
 
   clockFormatDebugLog("count idx=%u effective=%u rows='%s'/'%s'/'%s'", idx, safeIdx, r1, r2, r3);
 }
@@ -448,45 +517,65 @@ void renderCountup(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r
 }
 
 // -- Clock ---------------------------------------------------------------------
-// Clock output is produced by table-driven row plans (kClockPlans).
+// Clock output is produced by the table-driven format catalog (kClockFormats).
 // Calendar fields are rendered as date values (not elapsed fields), and time
 // fields preserve anchored-colon behavior for compact 4-character rows.
 
 void renderClock(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3, bool colonVisible) {
-  const uint8_t safeIdx = (idx < static_cast<uint8_t>(sizeof(kClockPlans) / sizeof(kClockPlans[0])))
-                              ? idx
-                              : 0;
+  const uint8_t safeIdx = idx < kClockFormatCount ? idx : 0;
   const ClockRenderContext context{f, dowAbbrev(f.dayOfWeek), colonVisible};
-  const ClockPlan& plan = kClockPlans[safeIdx];
-  renderClockRow(plan.rows[0], context, r1);
-  renderClockRow(plan.rows[1], context, r2);
-  renderClockRow(plan.rows[2], context, r3);
+  const ClockFormat& format = kClockFormats[safeIdx];
+  renderClockRow(format.rows[0], context, r1);
+  renderClockRow(format.rows[1], context, r2);
+  renderClockRow(format.rows[2], context, r3);
 
   clockFormatDebugLog("clock idx=%u effective=%u rows='%s'/'%s'/'%s'", idx, safeIdx, r1, r2, r3);
 }
 
-bool clockFormatValidateInvariants() {
-  const uint8_t kCountingPlanCount =
-      static_cast<uint8_t>(sizeof(kCountingPlans) / sizeof(kCountingPlans[0]));
-  const uint8_t kClockPlanCount =
-      static_cast<uint8_t>(sizeof(kClockPlans) / sizeof(kClockPlans[0]));
+// -- Format catalog accessors (declared in format.h) ----------------------------
 
-  bool ok = true;
-  if (formatCount(kFmtGroupCountdown) != kCountingPlanCount ||
-      formatCount(kFmtGroupCountUp) != kCountingPlanCount) {
-    Serial.printf("clock_format: invariant failed (counting tables %u/%u vs plans %u)\n",
-                  formatCount(kFmtGroupCountdown),
-                  formatCount(kFmtGroupCountUp),
-                  kCountingPlanCount);
-    ok = false;
+uint8_t formatCount(FormatGroup group) {
+  switch (group) {
+    case kFmtGroupCountdown:
+    case kFmtGroupCountUp:
+      return kCountingFormatCount;
+    case kFmtGroupClock:
+      return kClockFormatCount;
+    default:
+      return 0;
+  }
+}
+
+const char* getFormat(FormatGroup group, uint8_t index) {
+  if (index >= formatCount(group)) return nullptr;
+  return group == kFmtGroupClock ? kClockFormats[index].label
+                                 : kCountingFormats[index].label;
+}
+
+bool formatHasTenths(FormatGroup group, uint8_t index) {
+  if (index >= formatCount(group)) return false;
+  return group == kFmtGroupClock ? clockHasTenths(index) : countingHasTenths(index);
+}
+
+bool clockFormatBlinksColon(uint8_t index) {
+  if (index >= kClockFormatCount) return false;
+  return rowsContain(kClockFormats[index].rows, ClockRowOp::kHourMinBlink);
+}
+
+uint8_t resolveCountingOverflowIndex(uint8_t index, int totalHours) {
+  if (totalHours <= 99 || index >= kCountingFormatCount) return index;
+  if (!rowsContain(kCountingFormats[index].rows, CountingRowOp::kTotalHourMin)) {
+    return index;
   }
 
-  if (formatCount(kFmtGroupClock) != kClockPlanCount) {
-    Serial.printf("clock_format: invariant failed (clock table %u vs plans %u)\n",
-                  formatCount(kFmtGroupClock),
-                  kClockPlanCount);
-    ok = false;
+  // Find a split hhh | mm variant with the same tenths behavior.
+  const bool wantTenths = countingHasTenths(index);
+  for (uint8_t candidate = 0; candidate < kCountingFormatCount; ++candidate) {
+    if (rowsContain(kCountingFormats[candidate].rows, CountingRowOp::kTotalHours) &&
+        countingHasTenths(candidate) == wantTenths) {
+      return candidate;
+    }
   }
 
-  return ok;
+  return index;
 }

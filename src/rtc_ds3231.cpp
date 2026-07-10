@@ -44,19 +44,6 @@ public:
     return status_;
   }
 
-  String currentTimeString() {
-    if (!status_.present) {
-      return "N/A";
-    }
-
-    DateTime now = rtc_.now();
-    char timeBuf[32];
-    snprintf(timeBuf, sizeof(timeBuf), "%04d-%02d-%02d %02d:%02d:%02d",
-             now.year(), now.month(), now.day(),
-             now.hour(), now.minute(), now.second());
-    return String(timeBuf);
-  }
-
   DateTime now() {
     return status_.present ? rtc_.now() : DateTime(2000, 1, 1, 0, 0, 0);
   }
@@ -156,10 +143,9 @@ bool rtcLogTimeProvider(char* buffer, size_t bufferSize) {
 
 }  // namespace
 
-bool rtcBegin()                  { return rtc.begin(); }
-RtcStatus rtcGetStatus()         { return rtc.getStatus(); }
-String rtcGetCurrentTimeString() { return rtc.currentTimeString(); }
-DateTime rtcGetNow()             { return rtc.now(); }
+bool rtcBegin()          { return rtc.begin(); }
+RtcStatus rtcGetStatus() { return rtc.getStatus(); }
+DateTime rtcGetNow()     { return rtc.now(); }
 
 // -- SQW 1 Hz interrupt processing ---------------------------------------------
 //
@@ -167,7 +153,7 @@ DateTime rtcGetNow()             { return rtc.now(); }
 // DS3231's internal clock registers. rtcConsumeSqwPulse() uses that edge to
 // advance cachedNow_ by one second in software instead of re-reading the
 // clock over I2C every time — see rtcGetNowCached() below. This is what lets
-// ClockSource callers (display rendering) get second-resolution time at
+// display rendering gets second-resolution time at
 // effectively zero I2C cost instead of one I2C transaction per read.
 //
 // rtcConsumeSqwPulse() and rtcIsLogIntervalDue() are deliberately separate
@@ -182,16 +168,23 @@ static constexpr uint8_t kSqwLogIntervalSeconds = 30;  // Log on :00 and :30 bou
 static constexpr uint32_t kSqwStartupWarnMs = 3500;
 static constexpr uint32_t kSqwHealthLogIntervalMs = 10000;
 static constexpr uint32_t kSqwPulseStaleMs = 3000;
-static volatile uint32_t sqwPendingPulseCount    = 0;
-static volatile uint32_t sqwIsrPulseCount        = 0;
-static bool              sqwProcessingStarted    = false;
-static bool              sqwSawPulse             = false;
-static uint32_t          sqwProcessingStartedAtMs = 0;
-static uint32_t          sqwLastPulseAtMs         = 0;
-static uint32_t          sqwLastAcceptedPulseAtMs = 0;
-static uint32_t          sqwLastHealthLogMs       = 0;
-static DateTime          cachedNow_;               // Second-resolution time, advanced by SQW pulses.
-static bool              cachedNowSynced_ = false;  // False until the first real read has seeded the cache.
+
+// All mutable state for SQW pulse tracking and the software-advanced time
+// cache: the RtcDs3231 class above talks to the chip; `sqw` tracks the 1 Hz
+// pulse and the cached time it drives.
+struct SqwState {
+  volatile uint32_t pendingPulseCount = 0;  // Incremented by the ISR, consumed in loop.
+  volatile uint32_t isrPulseCount = 0;      // Lifetime ISR pulses (diagnostics).
+  bool processingStarted = false;
+  bool sawPulse = false;
+  uint32_t processingStartedAtMs = 0;
+  uint32_t lastPulseAtMs = 0;
+  uint32_t lastAcceptedPulseAtMs = 0;
+  uint32_t lastHealthLogMs = 0;
+  DateTime cachedNow;            // Second-resolution time, advanced by SQW pulses.
+  bool cachedNowSynced = false;  // False until the first real read has seeded the cache.
+};
+static SqwState sqw;
 
 void rtcSetNow(const DateTime& timeValue) {
   rtc.setNow(timeValue);
@@ -199,14 +192,14 @@ void rtcSetNow(const DateTime& timeValue) {
     // Keep the second-resolution cache in step immediately, rather than
     // leaving it to tick forward from the old time until the next periodic
     // resync (see rtcConsumeSqwPulse()).
-    cachedNow_ = timeValue;
-    cachedNowSynced_ = true;
+    sqw.cachedNow = timeValue;
+    sqw.cachedNowSynced = true;
   }
 }
 
 static void IRAM_ATTR onRtcSqwPulse() {
-  sqwPendingPulseCount++;
-  sqwIsrPulseCount++;
+  sqw.pendingPulseCount++;
+  sqw.isrPulseCount++;
 }
 
 static void warnIfSqwSharesInternalLed() {
@@ -217,32 +210,32 @@ static void warnIfSqwSharesInternalLed() {
 
 static bool consumeSqwInterruptPulse() {
   noInterrupts();
-  const bool pending = sqwPendingPulseCount > 0;
-  if (pending) sqwPendingPulseCount--;
+  const bool pending = sqw.pendingPulseCount > 0;
+  if (pending) sqw.pendingPulseCount--;
   interrupts();
   return pending;
 }
 
 static uint32_t currentSqwIsrPulseCount() {
   noInterrupts();
-  const uint32_t count = sqwIsrPulseCount;
+  const uint32_t count = sqw.isrPulseCount;
   interrupts();
   return count;
 }
 
 static void logSqwHealthIfNeeded(uint32_t nowMs) {
-  if (!sqwProcessingStarted) return;
+  if (!sqw.processingStarted) return;
 
-  const uint32_t referenceMs = sqwSawPulse ? sqwLastPulseAtMs : sqwProcessingStartedAtMs;
+  const uint32_t referenceMs = sqw.sawPulse ? sqw.lastPulseAtMs : sqw.processingStartedAtMs;
   if (static_cast<long>(nowMs - referenceMs) < static_cast<long>(kSqwStartupWarnMs)) {
     return;
   }
-  if (static_cast<long>(nowMs - sqwLastHealthLogMs) <
+  if (static_cast<long>(nowMs - sqw.lastHealthLogMs) <
       static_cast<long>(kSqwHealthLogIntervalMs)) {
     return;
   }
 
-  sqwLastHealthLogMs = nowMs;
+  sqw.lastHealthLogMs = nowMs;
   LOG_PRINTF("SQW health: no pulse on GPIO%u for %lu ms, pin=%s, isrCount=%lu\n",
              Hardware::Pins::RTC_SQW,
              static_cast<unsigned long>(nowMs - referenceMs),
@@ -259,23 +252,23 @@ static bool consumeSqwPulse() {
 
   const uint32_t nowMs = millis();
   // DS3231 SQW is 1 Hz; ignore impossible back-to-back pulses caused by
-  // sampling races/noise so cachedNow_ stays aligned to real seconds.
-  if (sqwSawPulse && static_cast<long>(nowMs - sqwLastAcceptedPulseAtMs) < 500L) {
+  // sampling races/noise so the cached time stays aligned to real seconds.
+  if (sqw.sawPulse && static_cast<long>(nowMs - sqw.lastAcceptedPulseAtMs) < 500L) {
     return false;
   }
 
-  sqwSawPulse = true;
-  sqwLastPulseAtMs = nowMs;
-  sqwLastAcceptedPulseAtMs = nowMs;
+  sqw.sawPulse = true;
+  sqw.lastPulseAtMs = nowMs;
+  sqw.lastAcceptedPulseAtMs = nowMs;
   return true;
 }
 
-// True when a SQW pulse has been seen recently enough to trust cachedNow_.
+// True when a SQW pulse has been seen recently enough to trust sqw.cachedNow.
 // Shared by rtcIsHealthy() (user-facing "no rtc" banner) and
 // rtcGetNowCached() (falls back to a live I2C read when this is false).
 static bool sqwPulseIsFresh() {
-  if (!sqwProcessingStarted) return false;
-  const uint32_t lastEventMs = sqwSawPulse ? sqwLastPulseAtMs : sqwProcessingStartedAtMs;
+  if (!sqw.processingStarted) return false;
+  const uint32_t lastEventMs = sqw.sawPulse ? sqw.lastPulseAtMs : sqw.processingStartedAtMs;
   return static_cast<long>(millis() - lastEventMs) < static_cast<long>(kSqwPulseStaleMs);
 }
 
@@ -283,19 +276,19 @@ void rtcBeginSqwProcessing() {
   warnIfSqwSharesInternalLed();
   pinMode(Hardware::Pins::RTC_SQW, INPUT_PULLUP);
   const int initialLevel = digitalRead(Hardware::Pins::RTC_SQW);
-  sqwProcessingStartedAtMs = millis();
-  sqwLastPulseAtMs = sqwProcessingStartedAtMs;
-  sqwLastAcceptedPulseAtMs = 0;
-  sqwLastHealthLogMs = 0;
-  sqwSawPulse = false;
-  sqwProcessingStarted = true;
+  sqw.processingStartedAtMs = millis();
+  sqw.lastPulseAtMs = sqw.processingStartedAtMs;
+  sqw.lastAcceptedPulseAtMs = 0;
+  sqw.lastHealthLogMs = 0;
+  sqw.sawPulse = false;
+  sqw.processingStarted = true;
   noInterrupts();
-  sqwPendingPulseCount = 0;
-  sqwIsrPulseCount = 0;
+  sqw.pendingPulseCount = 0;
+  sqw.isrPulseCount = 0;
   interrupts();
 
-  cachedNow_ = rtc.now();
-  cachedNowSynced_ = true;
+  sqw.cachedNow = rtc.now();
+  sqw.cachedNowSynced = true;
 
   const int interruptNumber = digitalPinToInterrupt(Hardware::Pins::RTC_SQW);
   if (interruptNumber == NOT_AN_INTERRUPT) {
@@ -317,27 +310,27 @@ bool rtcConsumeSqwPulse() {
   // The pulse itself IS the "one second has elapsed" signal, so advance the
   // cache in software rather than spending an I2C transaction to learn what
   // we already know.
-  cachedNow_ = DateTime(cachedNow_.unixtime() + 1);
+  sqw.cachedNow = DateTime(sqw.cachedNow.unixtime() + 1);
   return true;
 }
 
 bool rtcIsLogIntervalDue() {
-  if (cachedNow_.second() % kSqwLogIntervalSeconds != 0) return false;
-  cachedNow_ = rtc.now();  // Also resyncs the cache, correcting drift from any pulses missed.
+  if (sqw.cachedNow.second() % kSqwLogIntervalSeconds != 0) return false;
+  sqw.cachedNow = rtc.now();  // Also resyncs the cache, correcting drift from any pulses missed.
   return true;
 }
 
 bool rtcIsHealthy() {
   if (!rtc.getStatus().present) return false;
-  if (!sqwProcessingStarted)    return true;
+  if (!sqw.processingStarted)   return true;
   return sqwPulseIsFresh();
 }
 
-// Second-resolution time backed by cachedNow_, avoiding an I2C transaction on
-// the hot display-render path (see the SQW section comment above). Falls
+// Second-resolution time backed by sqw.cachedNow, avoiding an I2C transaction
+// on the hot display-render path (see the SQW section comment above). Falls
 // back to a live rtc.now() read whenever the cache can't be trusted: before
 // rtcBeginSqwProcessing() has run, or if the SQW pulse has gone stale.
 DateTime rtcGetNowCached() {
-  if (!cachedNowSynced_ || !sqwPulseIsFresh()) return rtc.now();
-  return cachedNow_;
+  if (!sqw.cachedNowSynced || !sqwPulseIsFresh()) return rtc.now();
+  return sqw.cachedNow;
 }

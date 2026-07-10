@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
-#include "clock_source.h"
 #include "config.h"
 #include "defaults.h"
 #include "display_scheduler.h"
@@ -19,25 +18,10 @@ enum class View : uint8_t {
   kCountup,
 };
 
-// Tagged union: only the member matching the enclosing ViewState::view is
-// valid. The explicit default constructor is required because DateTime has
-// a non-trivial constructor; callers always set the active member before
-// reading it.
-union ViewPayload {
-  // DateTime has non-trivial ctor/copy so the compiler deletes these.
-  // All union members are bitwise-copyable, so memcpy is correct.
-  ViewPayload() {}
-  ViewPayload(const ViewPayload& o)            { memcpy(static_cast<void*>(this), &o, sizeof(*this)); }
-  ViewPayload& operator=(const ViewPayload& o) { memcpy(static_cast<void*>(this), &o, sizeof(*this)); return *this; }
-
-  struct { DateTime endTime; uint8_t formatIndex; } countdown;
-  struct { DateTime startTime; uint8_t formatIndex; } countup;
-  struct { uint8_t formatIndex; } clock;
-};
-
 struct ViewState {
-  View view = View::kClock;  // Selects which payload member is active.
-  ViewPayload payload;       // Data consumed by the selected renderer.
+  View view = View::kClock;
+  DateTime anchor;          // Countdown: end time. Countup: start time. Clock: unused.
+  uint8_t formatIndex = 0;  // Index into the view's format table.
 };
 
 // Short lowercase name for logging (e.g. "clock", "countdown").
@@ -68,24 +52,12 @@ struct DisplayPage {
 };
 
 struct PagedDisplayPayload {
-  DisplayPage pages[kMaxDisplayPages];
-  uint8_t  pageCount;
-  uint8_t  currentPage;
-  uint16_t pageDurationMs;
-  uint32_t pageStartedAtMs;
-  bool     repeat;
-};
-
-// Tagged union: only the member matching the enclosing OverlayState::overlay
-// is valid. kDemo needs no payload - it renders directly from the
-// transition's expiry deadline.
-union OverlayPayload {
-  OverlayPayload() {}
-  OverlayPayload(const OverlayPayload& o)            { memcpy(static_cast<void*>(this), &o, sizeof(*this)); }
-  OverlayPayload& operator=(const OverlayPayload& o) { memcpy(static_cast<void*>(this), &o, sizeof(*this)); return *this; }
-
-  char message[64];
-  PagedDisplayPayload paged;
+  DisplayPage pages[kMaxDisplayPages] = {};
+  uint8_t  pageCount = 0;
+  uint8_t  currentPage = 0;
+  uint16_t pageDurationMs = kDefaultPageDurationMs;
+  uint32_t pageStartedAtMs = 0;
+  bool     repeat = false;
 };
 
 struct OverlayTransition {
@@ -95,8 +67,11 @@ struct OverlayTransition {
 
 struct OverlayState {
   Overlay overlay = Overlay::kMessage;
-  bool blink = false;          // True when output alternates blank/on.
-  OverlayPayload payload;
+  bool blink = false;             // True when output alternates blank/on.
+  bool chainFinalMessage = false; // On expiry, show the final message instead
+                                  // of the base view (demo's second phase).
+  char message[64] = "";          // kMessage text; unused otherwise.
+  PagedDisplayPayload paged;      // kPagedMessage pages; unused otherwise.
   OverlayTransition transition;
 };
 
@@ -104,7 +79,6 @@ class DisplayManager {
  public:
   void begin(const ClockConfig& config);
   void applySettings(const ClockConfig& config);
-  void setClockSource(ClockSource& clockSource);
   void setBrightness(uint8_t brightness);
   void tick(uint32_t nowMs);
 
@@ -159,12 +133,10 @@ class DisplayManager {
   void renderMessage(uint32_t nowMs, bool force);
   void renderPagedMessage(uint32_t nowMs, bool force);
 
-  ClockSource* clockSource_ = nullptr;          // Provides current wall time for renderers.
   ClockConfig settings_ = defaultClockConfig();  // Persisted display settings currently applied.
   ViewState baseView_;                           // What to show when no overlay is active.
   bool hasOverlay_ = false;                      // True while overlay_ is what's actually on screen.
   OverlayState overlay_;                         // Only meaningful while hasOverlay_ is true.
-  bool demoActive_ = false;                      // True during demo's first (countdown) phase.
 
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.

@@ -86,17 +86,17 @@ class FridayModeController {
     switch (phase) {
       case Phase::kToFridaySunset:
         state.view = View::kCountdown;
-        state.payload.countdown.endTime     = cachedFridaySunset_;
-        state.payload.countdown.formatIndex = settings_.fridayToFridaySunsetFmt;
+        state.anchor      = cachedFridaySunset_;
+        state.formatIndex = settings_.fridayToFridaySunsetFmt;
         break;
       case Phase::kToSaturdaySunset:
         state.view = View::kCountdown;
-        state.payload.countdown.endTime     = cachedSaturdaySunset_;
-        state.payload.countdown.formatIndex = settings_.fridayToSatSunsetFmt;
+        state.anchor      = cachedSaturdaySunset_;
+        state.formatIndex = settings_.fridayToSatSunsetFmt;
         break;
       default:
         state.view = View::kClock;
-        state.payload.clock.formatIndex = settings_.fridayClockFmt;
+        state.formatIndex = settings_.fridayClockFmt;
         break;
     }
     displayManager.setView(state);

@@ -13,7 +13,6 @@ struct RtcStatus {
 
 bool rtcBegin();
 RtcStatus rtcGetStatus();
-String rtcGetCurrentTimeString();
 
 // Live I2C read of the RTC. Use for infrequent/correctness-critical reads
 // (e.g. a one-off API request). For a hot render/tick path, prefer
@@ -53,5 +52,5 @@ bool rtcIsHealthy();
 // than re-reading the chip). Automatically falls back to a live rtcGetNow()
 // read if the cache hasn't been seeded yet or the SQW pulse has gone stale
 // (see rtcIsHealthy()), so it degrades gracefully if SQW pulses stop.
-// This is what ClockSource uses for display rendering.
+// This is what display rendering uses.
 DateTime rtcGetNowCached();

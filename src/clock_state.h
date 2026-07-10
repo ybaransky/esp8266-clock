@@ -1,10 +1,8 @@
 #pragma once
 #include "config.h"
 
-// Public clock state API defined by DisplayManager and called from web_server.cpp.
+// Applies a new ClockConfig everywhere it matters: DisplayManager (what is
+// shown) and FridayModeController (phase schedule). Defined in
+// display_manager.cpp. Callers needing a single display action (demo,
+// brightness, splash) should call displayManager directly instead.
 void clockApplySettings(const ClockConfig& cfg);
-void clockSetBrightness(uint8_t brightness);
-void clockTriggerDemo();
-void clockShowMessagePreview(const char* msg);
-void clockShowInfo(const char* msg, int32_t durationMs = FOREVER);
-void clockClearInfo();

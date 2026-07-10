@@ -11,21 +11,20 @@
 #include "http_responder.h"
 #include "log.h"
 #include "page_api.h"
-#include "reboot_scheduler.h"
 #include "wifi_api.h"
 #include "wifi_connection_manager.h"
 
 namespace {
 
-class WebPortal : public RebootScheduler {
+class WebPortal {
  public:
   WebPortal()
       : server_(80),
         responder_(server_),
         pageApi_(server_, responder_),
-        configApi_(server_, responder_, *this),
+        configApi_(server_, responder_),
         fileApi_(server_, responder_),
-        wifiApi_(server_, responder_, *this) {}
+        wifiApi_(server_, responder_) {}
 
   void begin() {
     if (wifiConnectionManager.status().mode == WifiMode::kAccessPoint) {
@@ -101,7 +100,7 @@ class WebPortal : public RebootScheduler {
     ip = status.apIp;
   }
 
-  void scheduleReboot(uint32_t delayMs) override {
+  void scheduleReboot(uint32_t delayMs) {
     pendingRebootMs_ = millis() + delayMs;
   }
 
@@ -145,4 +144,8 @@ void webHandleClients() {
 
 void networkGetInfo(String& ssid, String& ip) {
   WebPortal::portal.getNetworkInfo(ssid, ip);
+}
+
+void webScheduleReboot(uint32_t delayMs) {
+  WebPortal::portal.scheduleReboot(delayMs);
 }

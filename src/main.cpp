@@ -3,7 +3,6 @@
 
 #include "button.h"
 #include "clock_state.h"
-#include "clock_format.h"
 #include "config.h"
 #include "config_validation.h"
 #include "display.h"
@@ -13,7 +12,6 @@
 #include "log.h"
 #include "page_manager.h"
 #include "rtc_ds3231.h"
-#include "time_service.h"
 #include "web_server.h"
 #include "wifi_connection_manager.h"
 
@@ -43,7 +41,7 @@ void checkRtcHealth(uint32_t nowMs) {
   static bool wasHealthy = true;
   if (static_cast<long>(nowMs - lastCheckMs) < 2000L) return;
   lastCheckMs = nowMs;
-  const bool healthy = systemTimeService().isHealthy();
+  const bool healthy = rtcIsHealthy();
   if (!healthy) {
     if (wasHealthy) LOG_PRINTLN("RTC health lost");
     displayManager.showInfo(kMsgNoRtc);
@@ -148,10 +146,6 @@ void setup() {
   }
   i2cBusScanner.scan();
 
-  if (!clockFormatValidateInvariants()) {
-    LOG_PRINTLN("WARNING: format/render invariants check failed");
-  }
-
   ClockConfig cs = configManager.loadClockConfig();
   segmentDisplay.begin(cs.brightness);
   LOG_PRINTF("Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
@@ -181,10 +175,9 @@ void loop() {
   uint32_t now = millis();
   buttonTick();
   processButtonEvents();
-  TimeService& timeService = systemTimeService();
-  if (timeService.consumeSecondTick()) {
-    fridayModeTick(timeService.nowCached());
-    if (timeService.isLogIntervalDue()) {
+  if (rtcConsumeSqwPulse()) {
+    fridayModeTick(rtcGetNowCached());
+    if (rtcIsLogIntervalDue()) {
       LOG_PRINTF("SQW: mode=%s view=%s\n",
                  modeName(displayManager.activeMode()),
                  viewName(displayManager.activeView()));

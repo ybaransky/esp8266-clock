@@ -5,6 +5,7 @@
 #include "display.h"
 #include "friday_mode.h"
 #include "log.h"
+#include "rtc_ds3231.h"
 
 namespace {
 
@@ -75,20 +76,10 @@ void copyDisplayTitle(char destination[kDisplayRowChars + 1], const char* source
 }  // namespace
 
 void DisplayManager::begin(const ClockConfig& config) {
-  if (clockSource_ == nullptr) {
-    clockSource_ = &systemClockSource();
-  }
   applySettings(config);
 }
 
-void DisplayManager::setClockSource(ClockSource& clockSource) {
-  clockSource_ = &clockSource;
-}
-
 void DisplayManager::applySettings(const ClockConfig& config) {
-  if (clockSource_ == nullptr) {
-    clockSource_ = &systemClockSource();
-  }
   settings_ = config;
   scheduler_.reset(millis());
 
@@ -115,7 +106,7 @@ void DisplayManager::showSplash(const char* message) {
   const uint32_t nowMs = millis();
   OverlayState state;
   state.overlay = Overlay::kMessage;
-  copyMessage(state.payload.message, message);
+  copyMessage(state.message, message);
   state.transition = {true, nowMs + kSplashDurationMs};
 
   installOverlay(state, nowMs);
@@ -126,9 +117,9 @@ void DisplayManager::showDemo() {
   const uint32_t nowMs = millis();
   OverlayState state;
   state.overlay = Overlay::kDemo;
+  state.chainFinalMessage = true;
   state.transition = {true, nowMs + kDemoCountdownMs};
 
-  demoActive_ = true;
   installOverlay(state, nowMs);
   render(nowMs, true);
 }
@@ -138,7 +129,7 @@ void DisplayManager::showInfo(const char* message, int32_t durationMs) {
   OverlayState state;
   state.overlay = Overlay::kMessage;
   state.blink = true;
-  copyMessage(state.payload.message, message);
+  copyMessage(state.message, message);
 
   const bool expires = durationMs != FOREVER;
   const uint32_t expiresAt = expires ? nowMs + static_cast<uint32_t>(durationMs) : 0;
@@ -159,28 +150,27 @@ void DisplayManager::showPages(const DisplayPage* pages,
   const uint32_t nowMs = millis();
   OverlayState state;
   state.overlay = Overlay::kPagedMessage;
-  state.payload.paged.pageCount =
+  state.paged.pageCount =
       pageCount < kMaxDisplayPages ? pageCount : kMaxDisplayPages;
-  state.payload.paged.currentPage = 0;
-  state.payload.paged.pageDurationMs = pageDurationMs;
-  state.payload.paged.pageStartedAtMs = nowMs;
-  state.payload.paged.repeat = repeat;
+  state.paged.currentPage = 0;
+  state.paged.pageDurationMs = pageDurationMs;
+  state.paged.pageStartedAtMs = nowMs;
+  state.paged.repeat = repeat;
 
-  for (uint8_t pageIndex = 0; pageIndex < state.payload.paged.pageCount; ++pageIndex) {
+  for (uint8_t pageIndex = 0; pageIndex < state.paged.pageCount; ++pageIndex) {
     for (uint8_t rowIndex = 0; rowIndex < kDisplayRowsPerPage; ++rowIndex) {
       if (rowIndex == 0) {
-        copyDisplayTitle(state.payload.paged.pages[pageIndex].rows[rowIndex],
+        copyDisplayTitle(state.paged.pages[pageIndex].rows[rowIndex],
                          pages[pageIndex].rows[rowIndex]);
       } else {
-        copyDisplayRow(state.payload.paged.pages[pageIndex].rows[rowIndex],
+        copyDisplayRow(state.paged.pages[pageIndex].rows[rowIndex],
                        pages[pageIndex].rows[rowIndex]);
       }
     }
   }
 
   const uint32_t durationMs =
-      static_cast<uint32_t>(state.payload.paged.pageDurationMs) *
-      state.payload.paged.pageCount;
+      static_cast<uint32_t>(state.paged.pageDurationMs) * state.paged.pageCount;
   state.transition = {!repeat, nowMs + durationMs};
 
   installOverlay(state, nowMs);
@@ -204,23 +194,23 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
   switch (mode) {
     case kModeCountup:
       state.view = View::kCountup;
-      state.payload.countup.startTime = countupOrigin_;
-      state.payload.countup.formatIndex = settings_.countupFmt;
+      state.anchor = countupOrigin_;
+      state.formatIndex = settings_.countupFmt;
       break;
     case kModeClock:
       state.view = View::kClock;
-      state.payload.clock.formatIndex = settings_.clockFmt;
+      state.formatIndex = settings_.clockFmt;
       break;
     case kModeCountdown:
       state.view = View::kCountdown;
-      state.payload.countdown.endTime = parseDateTime(settings_.countdownDatetime);
-      state.payload.countdown.formatIndex = settings_.countdownFmt;
+      state.anchor = parseDateTime(settings_.countdownDatetime);
+      state.formatIndex = settings_.countdownFmt;
       break;
     case kModeFriday:
       // FridayModeController will call setView() on the next tick.
       // Use the friday clock format as a safe initial view.
       state.view = View::kClock;
-      state.payload.clock.formatIndex = settings_.fridayClockFmt;
+      state.formatIndex = settings_.fridayClockFmt;
       break;
   }
 
@@ -237,7 +227,6 @@ void DisplayManager::setView(const ViewState& state) {
     return;
   }
 
-  demoActive_ = false;
   const uint32_t nowMs = millis();
   scheduler_.invalidateRender();
   logTransition(oldName, viewName(baseView_.view), "view update");
@@ -277,7 +266,6 @@ void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
 
 void DisplayManager::installView(uint32_t nowMs, bool forceRender) {
   const char* oldName = renderedName();
-  demoActive_ = false;
   hasOverlay_ = false;
   scheduler_.invalidateRender();
   scheduler_.resetBlink(nowMs);
@@ -288,7 +276,7 @@ void DisplayManager::installView(uint32_t nowMs, bool forceRender) {
 }
 
 void DisplayManager::finishOverlay(uint32_t nowMs) {
-  if (demoActive_) {
+  if (overlay_.chainFinalMessage) {
     startDemoMessageOverlay(nowMs);
     return;
   }
@@ -308,17 +296,16 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
   OverlayState state;
   state.overlay = Overlay::kMessage;
   state.blink = true;
-  copyMessage(state.payload.message, settings_.finalMessage);
+  copyMessage(state.message, settings_.finalMessage);
   state.transition = {true, nowMs + kDemoMessageMs};
 
-  demoActive_ = false;
   installOverlay(state, nowMs);
   render(nowMs, true);
 }
 
 void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
   countupOrigin_ = (strncmp(config.countupDatetime, "now", 3) == 0)
-      ? clockSource_->now()
+      ? rtcGetNowCached()
       : parseDateTime(config.countupDatetime);
 }
 
@@ -330,18 +317,18 @@ uint32_t DisplayManager::refreshInterval() const {
       case Overlay::kMessage:
         return overlay_.blink ? kMessageBlinkMs : kSecondMs;
       case Overlay::kPagedMessage:
-        return overlay_.payload.paged.pageDurationMs;
+        return overlay_.paged.pageDurationMs;
     }
     return kSecondMs;
   }
 
   switch (baseView_.view) {
     case View::kCountdown:
-      return countdownHasTenths(baseView_.payload.countdown.formatIndex) ? kTenthMs : kSecondMs;
+      return formatHasTenths(kFmtGroupCountdown, baseView_.formatIndex) ? kTenthMs : kSecondMs;
     case View::kCountup:
-      return countupHasTenths(baseView_.payload.countup.formatIndex) ? kTenthMs : kSecondMs;
+      return formatHasTenths(kFmtGroupCountUp, baseView_.formatIndex) ? kTenthMs : kSecondMs;
     case View::kClock:
-      return clockHasTenths(baseView_.payload.clock.formatIndex) ? kTenthMs : kSecondMs;
+      return formatHasTenths(kFmtGroupClock, baseView_.formatIndex) ? kTenthMs : kSecondMs;
   }
   return kSecondMs;
 }
@@ -373,39 +360,41 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
 }
 
 void DisplayManager::renderClock(uint32_t nowMs, bool force) {
-  const uint8_t formatIndex = baseView_.payload.clock.formatIndex;
-  if (clockBlinkColon(formatIndex) && scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
+  const uint8_t formatIndex = baseView_.formatIndex;
+  if (clockFormatBlinksColon(formatIndex) && scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
     force = true;
   }
   if (!renderElapsed(nowMs, force)) return;
 
-  TimeFields fields = rtcToFields(clockSource_->now());
+  // Cached read: this runs up to 10x/sec for tenths formats, and the RTC's
+  // registers only change once a second anyway.
+  TimeFields fields = rtcToFields(rtcGetNowCached());
   if (settings_.clockUse12Hour) {
     fields.hours = fields.hours % 12;
     if (fields.hours == 0) fields.hours = 12;
   }
-  if (clockHasTenths(formatIndex)) {
+  if (formatHasTenths(kFmtGroupClock, formatIndex)) {
     fields.tenths = (nowMs % kSecondMs) / kTenthMs;
   }
 
   char r1[8], r2[8], r3[8];
   ::renderClock(formatIndex, fields, r1, r2, r3,
-                !clockBlinkColon(formatIndex) || scheduler_.colonVisible());
+                !clockFormatBlinksColon(formatIndex) || scheduler_.colonVisible());
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
 void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const uint8_t formatIndex = baseView_.payload.countdown.formatIndex;
-  const DateTime now = clockSource_->now();
-  const long secs = static_cast<long>(baseView_.payload.countdown.endTime.unixtime()) -
+  const uint8_t formatIndex = baseView_.formatIndex;
+  const DateTime now = rtcGetNowCached();
+  const long secs = static_cast<long>(baseView_.anchor.unixtime()) -
                     static_cast<long>(now.unixtime());
 
   if (secs <= 0) {
     OverlayState state;
     state.overlay = Overlay::kMessage;
-    copyMessage(state.payload.message, settings_.finalMessage);
+    copyMessage(state.message, settings_.finalMessage);
     // No expiration set: the countdown has finished, so this stays up until
     // the next mode/config change installs a new view.
     installOverlay(state, nowMs);
@@ -414,7 +403,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   }
 
   TimeFields fields = deltaToFields(secs);
-  if (countdownHasTenths(formatIndex)) {
+  if (formatHasTenths(kFmtGroupCountdown, formatIndex)) {
     fields.tenths = (secs > 0) ? (10 - (nowMs % kSecondMs) / kTenthMs) % 10 : 0;
   }
 
@@ -426,13 +415,13 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
 void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const uint8_t formatIndex = baseView_.payload.countup.formatIndex;
-  const DateTime now = clockSource_->now();
+  const uint8_t formatIndex = baseView_.formatIndex;
+  const DateTime now = rtcGetNowCached();
   const long secs = static_cast<long>(now.unixtime()) -
-                    static_cast<long>(baseView_.payload.countup.startTime.unixtime());
+                    static_cast<long>(baseView_.anchor.unixtime());
 
   TimeFields fields = deltaToFields(secs);
-  if (countupHasTenths(formatIndex)) {
+  if (formatHasTenths(kFmtGroupCountUp, formatIndex)) {
     fields.tenths = (nowMs % kSecondMs) / kTenthMs;
   }
 
@@ -463,13 +452,13 @@ void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
   if (overlay_.blink && !scheduler_.blinkOn()) {
     blankBuffers(r1, r2, r3);
   } else {
-    messageToBuffers(overlay_.payload.message, r1, r2, r3);
+    messageToBuffers(overlay_.message, r1, r2, r3);
   }
   segmentDisplay.showPanels(r1, r2, r3);
 }
 
 void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
-  PagedDisplayPayload& paged = overlay_.payload.paged;
+  PagedDisplayPayload& paged = overlay_.paged;
   if (paged.pageCount == 0) {
     return;
   }
@@ -510,24 +499,4 @@ DisplayManager displayManager;
 void clockApplySettings(const ClockConfig& cfg) {
   displayManager.applySettings(cfg);
   fridayModeApplySettings(cfg);
-}
-
-void clockSetBrightness(uint8_t brightness) {
-  displayManager.setBrightness(brightness);
-}
-
-void clockTriggerDemo() {
-  displayManager.showDemo();
-}
-
-void clockShowMessagePreview(const char* msg) {
-  displayManager.showSplash(msg);
-}
-
-void clockShowInfo(const char* msg, int32_t durationMs) {
-  displayManager.showInfo(msg, durationMs);
-}
-
-void clockClearInfo() {
-  displayManager.clearOverlay();
 }

@@ -1,5 +1,6 @@
 #include "wifi_api.h"
 
+#include "web_server.h"
 #include "wifi_connection_manager.h"
 
 namespace {
@@ -42,6 +43,6 @@ void WifiApi::handleConnect() {
   }
 
   responder_.sendJson(200, "{\"message\":\"Saved - rebooting...\",\"reboot\":true}");
-  rebootScheduler_.scheduleReboot(kRebootDelayMs);
+  webScheduleReboot(kRebootDelayMs);
 }
 
