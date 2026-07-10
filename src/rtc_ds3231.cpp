@@ -186,10 +186,9 @@ static volatile uint32_t sqwPendingPulseCount    = 0;
 static volatile uint32_t sqwIsrPulseCount        = 0;
 static bool              sqwProcessingStarted    = false;
 static bool              sqwSawPulse             = false;
-static bool              sqwPollingObservedPulse = false;
-static int               sqwLastPolledLevel      = HIGH;
 static uint32_t          sqwProcessingStartedAtMs = 0;
 static uint32_t          sqwLastPulseAtMs         = 0;
+static uint32_t          sqwLastAcceptedPulseAtMs = 0;
 static uint32_t          sqwLastHealthLogMs       = 0;
 static DateTime          cachedNow_;               // Second-resolution time, advanced by SQW pulses.
 static bool              cachedNowSynced_ = false;  // False until the first real read has seeded the cache.
@@ -224,13 +223,6 @@ static bool consumeSqwInterruptPulse() {
   return pending;
 }
 
-static bool consumeSqwPolledPulse() {
-  const int level = digitalRead(Hardware::Pins::RTC_SQW);
-  const bool rising = sqwLastPolledLevel == LOW && level == HIGH;
-  sqwLastPolledLevel = level;
-  return rising;
-}
-
 static uint32_t currentSqwIsrPulseCount() {
   noInterrupts();
   const uint32_t count = sqwIsrPulseCount;
@@ -251,36 +243,30 @@ static void logSqwHealthIfNeeded(uint32_t nowMs) {
   }
 
   sqwLastHealthLogMs = nowMs;
-  LOG_PRINTF("SQW health: no pulse on GPIO%u for %lu ms, pin=%s, isrCount=%lu, pollFallback=%s\n",
+  LOG_PRINTF("SQW health: no pulse on GPIO%u for %lu ms, pin=%s, isrCount=%lu\n",
              Hardware::Pins::RTC_SQW,
              static_cast<unsigned long>(nowMs - referenceMs),
              digitalRead(Hardware::Pins::RTC_SQW) == HIGH ? "HIGH" : "LOW",
-             static_cast<unsigned long>(currentSqwIsrPulseCount()),
-             sqwPollingObservedPulse ? "used" : "idle");
+             static_cast<unsigned long>(currentSqwIsrPulseCount()));
 }
 
 static bool consumeSqwPulse() {
-  // Deliberately not short-circuited: consumeSqwPolledPulse() must run every
-  // call to keep its level-tracking (sqwLastPolledLevel) current. If it were
-  // skipped whenever the interrupt path already found a pending pulse,
-  // sqwLastPolledLevel would go one call stale, and the very next call would
-  // see the pin still HIGH from that same physical edge and falsely report a
-  // second "rising" transition for it - silently doubling the effective
-  // pulse rate (this caused cachedNow_ to run roughly 2x too fast).
   const bool interruptPulse = consumeSqwInterruptPulse();
-  const bool polledPulse = consumeSqwPolledPulse();
-
-  if (polledPulse && !interruptPulse) {
-    sqwPollingObservedPulse = true;  // Poll caught an edge the interrupt path missed.
-  }
-
-  if (!interruptPulse && !polledPulse) {
+  if (!interruptPulse) {
     logSqwHealthIfNeeded(millis());
     return false;
   }
 
+  const uint32_t nowMs = millis();
+  // DS3231 SQW is 1 Hz; ignore impossible back-to-back pulses caused by
+  // sampling races/noise so cachedNow_ stays aligned to real seconds.
+  if (sqwSawPulse && static_cast<long>(nowMs - sqwLastAcceptedPulseAtMs) < 500L) {
+    return false;
+  }
+
   sqwSawPulse = true;
-  sqwLastPulseAtMs = millis();
+  sqwLastPulseAtMs = nowMs;
+  sqwLastAcceptedPulseAtMs = nowMs;
   return true;
 }
 
@@ -296,12 +282,12 @@ static bool sqwPulseIsFresh() {
 void rtcBeginSqwProcessing() {
   warnIfSqwSharesInternalLed();
   pinMode(Hardware::Pins::RTC_SQW, INPUT_PULLUP);
-  sqwLastPolledLevel = digitalRead(Hardware::Pins::RTC_SQW);
+  const int initialLevel = digitalRead(Hardware::Pins::RTC_SQW);
   sqwProcessingStartedAtMs = millis();
   sqwLastPulseAtMs = sqwProcessingStartedAtMs;
+  sqwLastAcceptedPulseAtMs = 0;
   sqwLastHealthLogMs = 0;
   sqwSawPulse = false;
-  sqwPollingObservedPulse = false;
   sqwProcessingStarted = true;
   noInterrupts();
   sqwPendingPulseCount = 0;
@@ -313,7 +299,7 @@ void rtcBeginSqwProcessing() {
 
   const int interruptNumber = digitalPinToInterrupt(Hardware::Pins::RTC_SQW);
   if (interruptNumber == NOT_AN_INTERRUPT) {
-    LOG_PRINTF("WARNING: GPIO%u does not support attachInterrupt; SQW polling fallback enabled\n",
+    LOG_PRINTF("WARNING: GPIO%u does not support attachInterrupt; SQW pulse tracking disabled\n",
                Hardware::Pins::RTC_SQW);
     return;
   }
@@ -322,7 +308,7 @@ void rtcBeginSqwProcessing() {
   LOG_PRINTF("SQW interrupt attached on GPIO%u interrupt=%d (RISING, INPUT_PULLUP, initial=%s)\n",
              Hardware::Pins::RTC_SQW,
              interruptNumber,
-             sqwLastPolledLevel == HIGH ? "HIGH" : "LOW");
+             initialLevel == HIGH ? "HIGH" : "LOW");
 }
 
 bool rtcConsumeSqwPulse() {

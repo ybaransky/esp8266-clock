@@ -28,7 +28,7 @@ void rtcSetNow(const DateTime& timeValue);
 void rtcBeginSqwProcessing();
 
 // Call every loop iteration once rtcBeginSqwProcessing() has run. Consumes any
-// pending SQW pulse (ISR or polling fallback) and, on every real pulse,
+// pending SQW pulse captured by the ISR and, on every real pulse,
 // advances the rtcGetNowCached() cache by one second. Returns true exactly
 // once per real RTC second - callers that need to react promptly to a time
 // change (e.g. Friday-mode phase transitions) should gate on this, NOT on
@@ -52,6 +52,6 @@ bool rtcIsHealthy();
 // effectively zero I2C cost (advanced in software from the SQW pulse rather
 // than re-reading the chip). Automatically falls back to a live rtcGetNow()
 // read if the cache hasn't been seeded yet or the SQW pulse has gone stale
-// (see rtcIsHealthy()), so it degrades gracefully if the interrupt/polling
-// fallback ever stalls. This is what ClockSource uses for display rendering.
+// (see rtcIsHealthy()), so it degrades gracefully if SQW pulses stop.
+// This is what ClockSource uses for display rendering.
 DateTime rtcGetNowCached();

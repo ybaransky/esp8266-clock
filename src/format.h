@@ -23,23 +23,16 @@ struct FormatEntry {
   FormatMetadata meta;
 };
 
-// Number of entries in each group.
-extern const uint8_t kFormatGroupSizes[kFmtGroupCount];
+// Public format accessors. Countdown and CountUp share the same underlying
+// table, resolved internally by group.
+uint8_t formatCount(FormatGroup group);
+const char* getFormat(FormatGroup group, uint8_t index);
+const FormatMetadata* getFormatMeta(FormatGroup group, uint8_t index);
 
-// Master lookup: kFormatEntries[group][index] -> FormatEntry.
-extern const FormatEntry* const kFormatEntries[kFmtGroupCount];
-
-inline uint8_t formatCount(FormatGroup group) {
-  return kFormatGroupSizes[group];
-}
-
-inline const char* getFormat(FormatGroup group, uint8_t index) {
-  return (index < kFormatGroupSizes[group]) ? kFormatEntries[group][index].format : nullptr;
-}
-
-inline const FormatMetadata* getFormatMeta(FormatGroup group, uint8_t index) {
-  return (index < kFormatGroupSizes[group]) ? &kFormatEntries[group][index].meta : nullptr;
-}
+// For counting formats, automatically resolve hhh:mm overflow to a compatible
+// fallback format when totalHours exceeds 99. Resolution is semantic and does
+// not depend on hardcoded indices.
+uint8_t resolveCountingOverflowIndex(uint8_t index, int totalHours);
 
 // Persistent mode stored in config.json and selected from the web UI - what
 // the clock is fundamentally set to do. Distinct from View (what content is

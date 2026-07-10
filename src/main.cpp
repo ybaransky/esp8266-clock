@@ -146,7 +146,6 @@ void setup() {
   }
   i2cBusScanner.scan();
 
-
   ClockConfig cs = configManager.loadClockConfig();
   segmentDisplay.begin(cs.brightness);
   LOG_PRINTF("Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
@@ -179,10 +178,9 @@ void loop() {
   if (rtcConsumeSqwPulse()) {
     fridayModeTick(rtcGetNowCached());
     if (rtcIsLogIntervalDue()) {
-      LOG_PRINTF("SQW: mode=%s view=%s heap=%u\n",
+      LOG_PRINTF("SQW: mode=%s view=%s\n",
                  modeName(displayManager.activeMode()),
-                 viewName(displayManager.activeView()),
-                 ESP.getFreeHeap());
+                 viewName(displayManager.activeView()));
     }
   }
 
