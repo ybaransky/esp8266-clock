@@ -13,8 +13,9 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   display["clock12Hour"] = clock.clockUse12Hour;
 
   JsonObject messages = display["messages"].to<JsonObject>();
-  messages["splash"] = String(clock.splashMessage);
-  messages["final"]  = String(clock.finalMessage);
+  messages["splash"]       = String(clock.splashMessage);
+  messages["final"]        = String(clock.finalMessage);
+  messages["fridaySunset"] = String(clock.fridaySunsetMessage);
 
   JsonObject modes = display["modes"].to<JsonObject>();
 
@@ -141,6 +142,11 @@ void applyMessageFields(JsonVariantConst messages, ClockConfig& cfg) {
     sanitizeDisplayMessage(messages["final"].as<const char*>(),
                            cfg.finalMessage,
                            sizeof(cfg.finalMessage));
+  }
+  if (!messages["fridaySunset"].isNull()) {
+    sanitizeDisplayMessage(messages["fridaySunset"].as<const char*>(),
+                           cfg.fridaySunsetMessage,
+                           sizeof(cfg.fridaySunsetMessage));
   }
 }
 

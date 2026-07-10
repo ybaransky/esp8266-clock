@@ -86,6 +86,7 @@ hr{border:0;border-top:1px solid #333;margin:14px auto;max-width:260px}
 <h1>Settings</h1>
 <a class="btn" href="/format">Formats</a>
 <a class="btn" href="/messages">Messages</a>
+<hr>
 <a class="btn" href="/location">Location</a>
 <a class="btn" href="/time">Time</a>
 <a class="btn" href="/wifi">Wifi</a>
@@ -965,6 +966,17 @@ a{color:#6af;font-size:.9em}
   <button class="secondary" onclick="runDemo()">Run Demo</button>
 </div>
 
+<hr>
+<h2>Friday Sunset Text</h2>
+<label>Blinks for 5 seconds when Friday mode hits Friday sundown</label>
+<div class="row">
+  <input id="y1" maxlength="4" placeholder="R1" oninput="nextPanel(this,'y2')">
+  <input id="y2" maxlength="4" placeholder="R2" oninput="nextPanel(this,'y3')">
+  <input id="y3" maxlength="4" placeholder="R3" oninput="trimPanel(this)">
+</div>
+<div class="actions"><button class="secondary" onclick="testMsg('y',true)">Test Friday Sunset</button></div>
+
+<hr>
 <div class="actions saveActions"><button onclick="save()">Save Messages</button></div>
 <div id="st"></div>
 <p style="text-align:left"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
@@ -994,11 +1006,12 @@ fetch('/api/config').then(function(r){return r.json();}).then(function(d){
   var messages=((d.display||{}).messages)||{};
   split('s',messages.splash||'','display.messages.splash');
   split('f',messages.final||'','display.messages.final');
+  split('y',messages.fridaySunset||'','display.messages.fridaySunset');
 }).catch(function(){setStatus('Load failed');});
-function testMsg(prefix){
+function testMsg(prefix,blink){
   setStatus('Previewing for 5 seconds...');
   fetch('/api/message/test',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({message:msg(prefix)})
+    body:JSON.stringify({message:msg(prefix),blink:!!blink})
   }).then(function(r){return r.json();}).then(function(d){
     setStatus(d.message||d.error);
   }).catch(function(){setStatus('Test failed');});
@@ -1014,7 +1027,7 @@ function runDemo(){
 }
 function save(){
   fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({display:{messages:{splash:msg('s'),final:msg('f')}}})
+    body:JSON.stringify({display:{messages:{splash:msg('s'),final:msg('f'),fridaySunset:msg('y')}}})
   }).then(function(r){return r.json();}).then(function(d){
     setStatus(d.message||d.error);
   }).catch(function(){setStatus('Save failed');});

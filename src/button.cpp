@@ -48,7 +48,7 @@ public:
   }
 
   void handleAction(const char *message, ButtonEvent event = ButtonEvent::NONE) {
-    LOG_PRINTLN(message);
+    LOG_PRINTF("%s\n", message);
     if (event != ButtonEvent::NONE) {
       enqueueEvent(event);
     }

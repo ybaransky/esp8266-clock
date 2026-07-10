@@ -7,8 +7,9 @@ constexpr const char* kDefaultApPassword = "12345678";
 
 constexpr const char* kDefaultCountdownDatetime = "2026-07-04 00:00:00";
 constexpr const char* kDefaultCountupDatetime   = "now";
-constexpr const char* kDefaultSplashMessage     = "    YuriCloc";
-constexpr const char* kDefaultFinalMessage      = "    Good Luc";
+constexpr const char* kDefaultSplashMessage       = "    YuriCloc";
+constexpr const char* kDefaultFinalMessage        = "    Good Luc";
+constexpr const char* kDefaultFridaySunsetMessage = "     SUN SET";
 
 }  // namespace
 
@@ -26,6 +27,7 @@ ClockConfig defaultClockConfig() {
     snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "%s", kDefaultCountupDatetime);
     snprintf(s.splashMessage, sizeof(s.splashMessage), "%s", kDefaultSplashMessage);
     snprintf(s.finalMessage,  sizeof(s.finalMessage),  "%s", kDefaultFinalMessage);
+    snprintf(s.fridaySunsetMessage, sizeof(s.fridaySunsetMessage), "%s", kDefaultFridaySunsetMessage);
     s.location   = {};
     s.sunsetTest = {};
     s.timezone[0] = '\0';

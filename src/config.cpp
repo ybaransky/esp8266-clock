@@ -138,6 +138,7 @@ ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
     clean.utcOffsetMinutes = sanitizeUtcOffsetMinutes(cfg.utcOffsetMinutes);
     sanitizeDisplayMessage(cfg.splashMessage, clean.splashMessage, sizeof(clean.splashMessage));
     sanitizeDisplayMessage(cfg.finalMessage,  clean.finalMessage,  sizeof(clean.finalMessage));
+    sanitizeDisplayMessage(cfg.fridaySunsetMessage, clean.fridaySunsetMessage, sizeof(clean.fridaySunsetMessage));
     sanitizePrintableText(cfg.timezone, clean.timezone, sizeof(clean.timezone));
     return clean;
 }

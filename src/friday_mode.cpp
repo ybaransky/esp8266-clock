@@ -6,6 +6,8 @@
 
 namespace {
 
+constexpr int32_t kSunsetMessageMs = 5000;
+
 class FridayModeController {
  public:
   void applySettings(const ClockConfig& config) {
@@ -26,8 +28,21 @@ class FridayModeController {
 
     if (phase == currentPhase_) return;
     LOG_PRINTF("friday mode: phase -> %s\n", phaseName(phase));
+
+    // Only a live kToFridaySunset -> kToSaturdaySunset crossing announces
+    // sunset. Arriving at kToSaturdaySunset from kNone (boot or a config
+    // save on a Friday evening) is not the sun going down.
+    const bool crossedFridaySunset =
+        currentPhase_ == Phase::kToFridaySunset && phase == Phase::kToSaturdaySunset;
+
     currentPhase_ = phase;
     applyPhase(phase);
+
+    if (crossedFridaySunset) {
+      // After applyPhase(), so the Saturday-sunset countdown is the base
+      // view revealed when this overlay expires.
+      displayManager.showInfo(settings_.fridaySunsetMessage, kSunsetMessageMs);
+    }
   }
 
  private:

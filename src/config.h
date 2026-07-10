@@ -38,8 +38,9 @@ struct ClockConfig {
   char countdownDatetime[20]; // "YYYY-MM-DD HH:MM:SS"
   char countupDatetime[20];   // "YYYY-MM-DD HH:MM:SS" or "now"
 
-  char splashMessage[64];  // Startup message shown on the displays.
-  char finalMessage[64];   // Message shown when countdown reaches zero.
+  char splashMessage[64];       // Startup message shown on the displays.
+  char finalMessage[64];        // Message shown when countdown reaches zero.
+  char fridaySunsetMessage[64]; // Blinked for 5s when Friday mode crosses Friday sunset.
 
   LocationInfo location;    // Physical device location.
   LocationInfo sunsetTest;  // Sunset calculator test inputs (distinct from device location).

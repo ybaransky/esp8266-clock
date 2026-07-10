@@ -3,7 +3,21 @@
     "allow": [
       "Bash(pio run *)",
       "PowerShell(pio run 2>&1)",
-      "PowerShell(Remove-Item src\\\\format.cpp -Confirm:$false)"
+      "PowerShell(Remove-Item src\\\\format.cpp -Confirm:$false)",
+      "Bash(mkdir -p \"/c/Users/ybara/AppData/Local/Temp/claude/c--Users-ybara-Documents-Projects-esp8266-clock/9f188f3c-4575-42f0-9bf4-89132e05a130/scratchpad\")",
+      "PowerShell(\\(Get-Item src\\\\html.cpp\\).LastWriteTime; \\(Get-Item .pio\\\\build\\\\d1_mini\\\\src\\\\html.cpp.o\\).LastWriteTime)",
+      "Bash(grep -ohE 'LOG_PRINTF\\\\\\(\"\\([^\"\\\\\\\\]|\\\\\\\\.\\)*\"' *.cpp *.h)",
+      "Bash(awk '{ t += length\\($0\\) - 1 } END { print \"LOG_PRINTF literal bytes:\", t }')",
+      "Bash(grep -ohE 'LOG_PRINTLN\\\\\\(\"\\([^\"\\\\\\\\]|\\\\\\\\.\\)*\"' *.cpp *.h)",
+      "Bash(awk '{ t += length\\($0\\) - 1 } END { print \"LOG_PRINTLN literal bytes:\", t }')",
+      "Bash(awk -F: '{ t += $2 } END { print \"total LOG_ call sites:\", t }')",
+      "Bash(python -c ' *)",
+      "Bash(grep -n \"printf_P\" ~/.platformio/packages/framework-arduinoespressif8266/cores/esp8266/Print.h; echo ---; cd \"/c/Users/ybara/Documents/Projects/esp8266-clock/src\" && grep -nE 'LOG_PRINTF\\\\\\([^\"]' *.cpp *.h; echo ---; grep -cE 'LOG_PRINTLN\\\\\\([^\"]' *.cpp *.h | grep -v ':0')",
+      "Read(//c/Users/ybara/.platformio/packages/framework-arduinoespressif8266/cores/esp8266/**)",
+      "Bash(echo \"exit: $?\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\ybara\\AppData\\Local\\Temp\\claude\\c--Users-ybara-Documents-Projects-esp8266-clock\\9f188f3c-4575-42f0-9bf4-89132e05a130\\scratchpad"
     ]
   }
 }

@@ -109,7 +109,13 @@ void ConfigApi::handleMessageTest() {
 
   char message[64];
   sanitizeDisplayMessage(doc["message"] | "", message, sizeof(message));
-  displayManager.showSplash(message);
+  if (doc["blink"] | false) {
+    // Preview with the same blinking treatment the message gets for real
+    // (e.g. the Friday sunset message).
+    displayManager.showInfo(message, 5000);
+  } else {
+    displayManager.showSplash(message);
+  }
   responder_.sendJson(200, "{\"message\":\"Previewing message\",\"preview_ms\":5000}");
 }
 
