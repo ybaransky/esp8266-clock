@@ -131,6 +131,9 @@ The display system has four layers:
 5. **`time_api.h/cpp`** - owns `GET /api/time` and `POST /api/time`; reads through `RtcService` and synchronizes through `ClockController`.
 
 ### Friday Mode
+ - This needs an accurate sunset calcualtor. I use https://github.com/jpb10/SolarCalculator.git calculator. NASA's calculator is at https://github.com/jpb10/SolarCalculator.git
+ - **`sunset_calculator.h/cpp`**: `calculateSunset(localDate, location)` - uses SolarCalculator to return a `DateTime` for local sunset given a `Location` (lat/lon/UTC offset).
+  - SolarCalculator returns UTC hours. The code derives the UTC calculation date from the requested local sunset date by anchoring at 18:00 local, converts the returned UTC sunset to a UTC `DateTime`, then applies `utcOffsetMinutes` once to return local time.
 - **`friday_mode.h/cpp`**: `FridayModeController` (internal singleton). Public API: `fridayModeApplySettings(config)`, `fridayModeTick(now)`, `fridayModeResetSunsetCache()`.
 - `fridayModeTick()` is called once per SQW second from `main.cpp`; self-gates - does nothing unless `activeMode == kModeFriday`, and short-circuits when the phase hasn't changed.
 - Phase logic (all times local, derived from `locations.device` + `timezone.utcOffsetMinutes`):
@@ -148,9 +151,7 @@ The display system has four layers:
 - **`page_manager.h/cpp`**: `ClockApplication` owns `PageManager` and injects its `DisplayManager` dependency. `showSsid(ssid)` and `showIpAddress(ip)` build `DisplayPage` arrays and hand them to `showPages()`.
 
 ### Geography
-- **`zipcode.h/cpp`**: `zipcodeLookupLocation(zipcode, &out, path)` - searches `/zipcodes.txt` on LittleFS; `isValidZipcode(zipcode)`.
-- **`sunset_calculator.h/cpp`**: `calculateSunset(localDate, location)` - uses SolarCalculator to return a `DateTime` for local sunset given a `Location` (lat/lon/UTC offset).
-  - SolarCalculator returns UTC hours. The code derives the UTC calculation date from the requested local sunset date by anchoring at 18:00 local, converts the returned UTC sunset to a UTC `DateTime`, then applies `utcOffsetMinutes` once to return local time.
+- **`zipcode.h/cpp`**: `zipcodeLookupLocation(zipcode, &out, path)` - searches `/zipcodes.txt` on LittleFS; `isValidZipcode(zipcode)`. This table is not very accurate unfortunatly, but close enough.
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
 ### Storage / config

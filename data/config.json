@@ -3,13 +3,13 @@
     "activeMode": "countdown",
     "brightness": 3,
     "messages": {
-      "splash": "YuriCloc",
-      "final": "Good Luc"
+      "splash": "    YuriCloc",
+      "final":  "    Good Luc"
     },
     "modes": {
       "countdown": {
         "format": 0,
-        "end": "2026-09-22 00:00:00"
+        "end": "2026-09-17 05:00:00"
       },
       "countup": {
         "format": 0,
@@ -18,7 +18,7 @@
       "clock": {
         "format": 6
       }
-    }
+    }40.954549120772015, -74.14358386061143
   },
   "time": {
     "timezone": {
@@ -28,14 +28,14 @@
     "dst": true
   },
   "location": {
-    "zipcode": "",
-    "latitude": 0,
-    "longitude": 0
+    "zipcode": "07452",
+    "latitude": 40.95455,
+    "longitude": -74.14358
   },
   "sunset": {
-    "zipcode": "",
-    "latitude": 0,
-    "longitude": 0
+    "zipcode": "07452",
+    "latitude": 40.95455,
+    "longitude": -74.14358
   },
   "wifi": {
     "station": {
