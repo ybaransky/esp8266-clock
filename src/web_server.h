@@ -4,8 +4,11 @@
 
 class ClockController;
 class ConfigManager;
+class WifiConnectionManager;
 
-void webBegin(ClockController& clockController, ConfigManager& configManager);
+void webBegin(ClockController& clockController,
+              ConfigManager& configManager,
+              WifiConnectionManager& wifiConnectionManager);
 void webHandleClients();
 void networkGetInfo(String &ssid, String &ip);
 

@@ -41,5 +41,3 @@ class WifiConnectionManager {
   volatile bool apClientConnectedPending_ = false;  // Deferred AP-client log flag.
   uint8_t apClientMac_[6] = {};                     // MAC for deferred AP-client log.
 };
-
-extern WifiConnectionManager wifiConnectionManager;

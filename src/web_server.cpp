@@ -19,16 +19,19 @@ namespace {
 
 class WebPortal {
  public:
-  WebPortal(ClockController& clockController, ConfigManager& configManager)
+  WebPortal(ClockController& clockController,
+            ConfigManager& configManager,
+            WifiConnectionManager& wifiConnectionManager)
       : server_(80),
         responder_(server_),
         pageApi_(server_, responder_, configManager),
         configApi_(server_, responder_, clockController, configManager),
         fileApi_(server_, responder_),
-        wifiApi_(server_, responder_, configManager) {}
+        wifiApi_(server_, responder_, configManager, wifiConnectionManager),
+        wifiConnectionManager_(wifiConnectionManager) {}
 
   void begin() {
-    if (wifiConnectionManager.status().mode == WifiMode::kAccessPoint) {
+    if (wifiConnectionManager_.status().mode == WifiMode::kAccessPoint) {
       dnsRunning_ = dnsServer_.start(53, "*", WiFi.softAPIP());
       if (!dnsRunning_) {
         LOG_PRINTLN("Failed to start captive DNS server (no socket available)");
@@ -36,7 +39,8 @@ class WebPortal {
     }
 
     server_.on("/", HTTP_GET, []() {
-      activePortal->pageApi_.handleRoot(wifiConnectionManager.status());
+      activePortal->pageApi_.handleRoot(
+          activePortal->wifiConnectionManager_.status());
     });
     server_.on("/settings", HTTP_GET, []() { activePortal->pageApi_.sendHtml(SETTINGS_HTML); });
     server_.on("/config", HTTP_GET, []() { activePortal->pageApi_.sendHtml(CONFIG_JSON_HTML); });
@@ -91,7 +95,7 @@ class WebPortal {
   }
 
   void getNetworkInfo(String& ssid, String& ip) {
-    const WifiRuntimeStatus status = wifiConnectionManager.status();
+    const WifiRuntimeStatus status = wifiConnectionManager_.status();
     if (status.mode == WifiMode::kStation && status.connected) {
       ssid = status.ssid;
       ip = status.ip;
@@ -106,7 +110,7 @@ class WebPortal {
   }
 
   void handleCaptiveRedirect() {
-    if (wifiConnectionManager.status().mode != WifiMode::kAccessPoint) {
+    if (wifiConnectionManager_.status().mode != WifiMode::kAccessPoint) {
       responder_.sendText(404, "Not found");
       return;
     }
@@ -125,6 +129,7 @@ class WebPortal {
   ConfigApi configApi_;            // Display/time/location API endpoints.
   FileApi fileApi_;                // LittleFS file-management endpoints.
   WifiApi wifiApi_;                // WiFi status/scan/connect endpoints.
+  WifiConnectionManager& wifiConnectionManager_;
   DNSServer dnsServer_;            // Captive portal DNS responder.
   bool dnsRunning_ = false;        // True when captive DNS started successfully.
   uint32_t pendingRebootMs_ = 0;   // millis() deadline for deferred reboot.
@@ -135,8 +140,10 @@ WebPortal* WebPortal::activePortal = nullptr;
 
 }  // namespace
 
-void webBegin(ClockController& clockController, ConfigManager& configManager) {
-  static WebPortal portal(clockController, configManager);
+void webBegin(ClockController& clockController,
+              ConfigManager& configManager,
+              WifiConnectionManager& wifiConnectionManager) {
+  static WebPortal portal(clockController, configManager, wifiConnectionManager);
   WebPortal::activePortal = &portal;
   portal.begin();
 }

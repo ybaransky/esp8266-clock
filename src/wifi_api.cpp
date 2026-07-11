@@ -10,7 +10,7 @@ constexpr uint32_t kRebootDelayMs = 1500;
 }  // namespace
 
 void WifiApi::handleStatus() {
-  const WifiRuntimeStatus status = wifiConnectionManager.status();
+  const WifiRuntimeStatus status = wifiConnectionManager_.status();
   JsonDocument doc;
   doc["mode"] = status.mode == WifiMode::kStation ? "station" : "access_point";
   doc["connected"] = status.connected;
@@ -23,7 +23,7 @@ void WifiApi::handleStatus() {
 
 void WifiApi::handleScan() {
   JsonDocument doc;
-  wifiConnectionManager.scanNetworks(doc);
+  wifiConnectionManager_.scanNetworks(doc);
   responder_.sendJsonDocument(200, doc);
 }
 
@@ -37,7 +37,7 @@ void WifiApi::handleConnect() {
 
   const String ssid = doc["ssid"] | "";
   const String password = doc["password"] | "";
-  if (!wifiConnectionManager.connectAndSave(configManager_, ssid, password)) {
+  if (!wifiConnectionManager_.connectAndSave(configManager_, ssid, password)) {
     responder_.sendJson(400, "{\"error\":\"SSID required\"}");
     return;
   }

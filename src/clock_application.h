@@ -7,6 +7,7 @@
 #include "display.h"
 #include "display_manager.h"
 #include "page_manager.h"
+#include "wifi_connection_manager.h"
 
 class ClockApplication {
  public:
@@ -24,4 +25,5 @@ class ClockApplication {
   ClockController clockController_;
   ConfigManager configManager_;
   PageManager pageManager_;
+  WifiConnectionManager wifiConnectionManager_;
 };

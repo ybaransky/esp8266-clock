@@ -34,7 +34,7 @@ main.cpp
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
-  ├── wifi_connection_manager – STA → AP fallback; captive DNS in AP mode
+  ├── wifi_connection_manager – ClockApplication-owned STA → AP fallback service
   ├── web_server          – ESP8266WebServer; HTML pages + REST API
   │     ClockController   – application actions shared by the loop and web APIs
   ├── button / page_manager – debounced input; scrolling page display

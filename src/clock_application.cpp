@@ -120,8 +120,8 @@ void ClockApplication::begin() {
   }
 
   WifiConfig cfg = configManager_.loadWifiConfig();
-  wifiConnectionManager.begin(cfg);
-  webBegin(clockController_, configManager_);
+  wifiConnectionManager_.begin(cfg);
+  webBegin(clockController_, configManager_, wifiConnectionManager_);
 
   buttonBegin();
 }
@@ -141,7 +141,7 @@ void ClockApplication::tick(uint32_t nowMs) {
   logModeOrViewTransition();
   checkRtcHealth(nowMs);
   displayManager_.tick(nowMs);
-  wifiConnectionManager.tick();
+  wifiConnectionManager_.tick();
   webHandleClients();
 }
 

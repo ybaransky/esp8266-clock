@@ -137,5 +137,3 @@ void WifiConnectionManager::startAccessPoint() {
   apStationConnectedHandler =
       WiFi.onSoftAPModeStationConnected(onApStationConnected);
 }
-
-WifiConnectionManager wifiConnectionManager;

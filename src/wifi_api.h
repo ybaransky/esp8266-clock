@@ -7,12 +7,17 @@
 #include "http_responder.h"
 
 class ConfigManager;
+class WifiConnectionManager;
 
 class WifiApi {
  public:
   WifiApi(ESP8266WebServer& server, HttpResponder& responder,
-          ConfigManager& configManager)
-      : server_(server), responder_(responder), configManager_(configManager) {}
+          ConfigManager& configManager,
+          WifiConnectionManager& wifiConnectionManager)
+      : server_(server),
+        responder_(responder),
+        configManager_(configManager),
+        wifiConnectionManager_(wifiConnectionManager) {}
 
   void handleStatus();
   void handleScan();
@@ -22,4 +27,5 @@ class WifiApi {
   ESP8266WebServer& server_;       // Source of WiFi API request bodies.
   HttpResponder& responder_;       // Sends WiFi API responses.
   ConfigManager& configManager_;   // Persists requested station credentials.
+  WifiConnectionManager& wifiConnectionManager_;
 };
