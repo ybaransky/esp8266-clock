@@ -162,7 +162,7 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
     case kModeCountup:
       state.view = View::kCountup;
       state.anchor = countupOrigin_;
-      state.formatIndex = settings_.display.countupFmt;
+      state.formatIndex = settings_.countup.format;
       break;
     case kModeClock:
       state.view = View::kClock;
@@ -170,8 +170,8 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
       break;
     case kModeCountdown:
       state.view = View::kCountdown;
-      state.anchor = parseDateTime(settings_.countdownDatetime);
-      state.formatIndex = settings_.display.countdownFmt;
+      state.anchor = parseDateTime(settings_.countdown.end);
+      state.formatIndex = settings_.countdown.format;
       break;
     case kModeFriday:
       // FridayModeController will call setView() on the next tick.
@@ -271,9 +271,9 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
 }
 
 void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
-  countupOrigin_ = (strncmp(config.countupDatetime, "now", 3) == 0)
+  countupOrigin_ = (strncmp(config.countup.start, "now", 3) == 0)
       ? rtcGetNowCached()
-      : parseDateTime(config.countupDatetime);
+      : parseDateTime(config.countup.start);
 }
 
 uint32_t DisplayManager::refreshInterval() const {

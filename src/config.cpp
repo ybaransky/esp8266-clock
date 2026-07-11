@@ -128,8 +128,10 @@ ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
     const ClockConfig defaults = defaultClockConfig();
     ClockConfig clean = cfg;
     clean.activeMode   = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
-    clean.display.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.display.countdownFmt, defaults.display.countdownFmt);
-    clean.display.countupFmt   = sanitizeFormatIndex(kFmtGroupCountUp,   cfg.display.countupFmt,   defaults.display.countupFmt);
+    clean.countdown.format = sanitizeFormatIndex(
+        kFmtGroupCountdown, cfg.countdown.format, defaults.countdown.format);
+    clean.countup.format = sanitizeFormatIndex(
+        kFmtGroupCountUp, cfg.countup.format, defaults.countup.format);
     clean.display.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.display.clockFmt,     defaults.display.clockFmt);
     clean.friday.clockFmt = sanitizeFormatIndex(
         kFmtGroupClock, cfg.friday.clockFmt, defaults.friday.clockFmt);

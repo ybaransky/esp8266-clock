@@ -22,11 +22,19 @@ struct LocationInfo {
 };
 
 struct DisplayConfig {
-  uint8_t countdownFmt;
-  uint8_t countupFmt;
   uint8_t clockFmt;
   uint8_t brightness;
   bool clockUse12Hour;
+};
+
+struct CountdownConfig {
+  char end[20];  // "YYYY-MM-DD HH:MM:SS"
+  uint8_t format;
+};
+
+struct CountupConfig {
+  char start[20];  // "YYYY-MM-DD HH:MM:SS" or "now"
+  uint8_t format;
 };
 
 struct FridayConfig {
@@ -53,9 +61,6 @@ struct ClockConfig {
 
   FridayConfig friday;
 
-  char countdownDatetime[20]; // "YYYY-MM-DD HH:MM:SS"
-  char countupDatetime[20];   // "YYYY-MM-DD HH:MM:SS" or "now"
-
   MessageConfig messages;
 
   LocationConfig locations;
@@ -64,6 +69,8 @@ struct ClockConfig {
   int16_t utcOffsetMinutes;   // Current browser offset fallback.
   bool dst;                    // True when daylight saving time is active.
   DisplayConfig display;
+  CountdownConfig countdown;
+  CountupConfig countup;
 };
 
 // -- ConfigManager -------------------------------------------------------------

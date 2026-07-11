@@ -150,7 +150,7 @@ The display system has four layers:
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
 ### Storage / config
-- `ClockConfig` (in `config.h`) holds: `activeMode`; `display` (`DisplayConfig`) with the clock/counting format indices, brightness, and 12-hour setting; `friday` (`FridayConfig`) with its phase format selections; `countdownDatetime[20]`; `countupDatetime[20]` (`"now"` allowed); messages; locations; and timezone fields.
+- `ClockConfig` (in `config.h`) holds: `activeMode`; `display` (`DisplayConfig`) with clock format, brightness, and 12-hour setting; `countdown` and `countup` with their format and anchor text; `friday` with its phase formats; messages; locations; and timezone fields.
 - `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
 - `ClockConfig.messages` stores `splash`, `final`, and `fridaySunset`; they serialize under the unchanged `display.messages` JSON object and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Defaults live in `defaults.cpp` (`fridaySunset` defaults to `"     SUN SET"`).
 - `LocationInfo` contains `latitude`, `longitude`, and `zipcode[6]`. `ClockConfig.locations` keeps distinct `device` and `sunsetTest` values. `/config.json` retains separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.

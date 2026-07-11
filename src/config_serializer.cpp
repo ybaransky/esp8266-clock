@@ -20,12 +20,12 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject modes = display["modes"].to<JsonObject>();
 
   JsonObject countdown = modes["countdown"].to<JsonObject>();
-  countdown["format"] = clock.display.countdownFmt;
-  countdown["end"]    = String(clock.countdownDatetime);
+  countdown["format"] = clock.countdown.format;
+  countdown["end"]    = String(clock.countdown.end);
 
   JsonObject countup = modes["countup"].to<JsonObject>();
-  countup["format"] = clock.display.countupFmt;
-  countup["start"]  = String(clock.countupDatetime);
+  countup["format"] = clock.countup.format;
+  countup["start"]  = String(clock.countup.start);
 
   JsonObject clockMode = modes["clock"].to<JsonObject>();
   clockMode["format"] = clock.display.clockFmt;
@@ -89,12 +89,12 @@ bool applyZipcode(const char* zipcode, char* destination, size_t destinationSize
 
 void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& cfg) {
   if (!modes["countdown"]["format"].isNull()) {
-    cfg.display.countdownFmt = sanitizeFormatIndex(
-        kFmtGroupCountdown, modes["countdown"]["format"].as<int>(), cfg.display.countdownFmt);
+    cfg.countdown.format = sanitizeFormatIndex(
+        kFmtGroupCountdown, modes["countdown"]["format"].as<int>(), cfg.countdown.format);
   }
   if (!modes["countup"]["format"].isNull()) {
-    cfg.display.countupFmt = sanitizeFormatIndex(
-        kFmtGroupCountUp, modes["countup"]["format"].as<int>(), cfg.display.countupFmt);
+    cfg.countup.format = sanitizeFormatIndex(
+        kFmtGroupCountUp, modes["countup"]["format"].as<int>(), cfg.countup.format);
   }
   if (!modes["clock"]["format"].isNull()) {
     cfg.display.clockFmt = sanitizeFormatIndex(
@@ -123,11 +123,11 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
     cfg.display.clockUse12Hour = display["clock12Hour"].as<bool>();
   }
   if (!modes["countdown"]["end"].isNull()) {
-    snprintf(cfg.countdownDatetime, sizeof(cfg.countdownDatetime), "%s",
+    snprintf(cfg.countdown.end, sizeof(cfg.countdown.end), "%s",
              modes["countdown"]["end"].as<const char*>());
   }
   if (!modes["countup"]["start"].isNull()) {
-    snprintf(cfg.countupDatetime, sizeof(cfg.countupDatetime), "%s",
+    snprintf(cfg.countup.start, sizeof(cfg.countup.start), "%s",
              modes["countup"]["start"].as<const char*>());
   }
 }
