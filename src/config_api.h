@@ -28,7 +28,6 @@ class ConfigApi {
   void handleFormats();
   void handleGetConfig();
   void handleSaveConfig();
-  void handleSunset();
   void handleFieldMismatch();
 
  private:

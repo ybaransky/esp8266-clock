@@ -66,7 +66,8 @@ class WebPortal {
     server_.on("/api/formats", HTTP_GET, []() { activePortal->configApi_.handleFormats(); });
     server_.on("/api/config", HTTP_GET, []() { activePortal->configApi_.handleGetConfig(); });
     server_.on("/api/config", HTTP_POST, []() { activePortal->configApi_.handleSaveConfig(); });
-    server_.on("/api/sunset", HTTP_POST, []() { activePortal->configApi_.handleSunset(); });
+    server_.on("/api/sunset", HTTP_POST,
+               []() { activePortal->locationApi_.handleSunset(); });
     server_.on("/api/zipcode/lookup", HTTP_GET,
                []() { activePortal->locationApi_.handleZipcodeLookup(); });
     server_.on("/api/field-mismatch", HTTP_POST,

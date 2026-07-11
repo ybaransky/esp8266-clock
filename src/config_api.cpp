@@ -9,6 +9,7 @@
 #include "config_validation.h"
 #include "format.h"
 #include "log.h"
+#include "location_api.h"
 #include "rtc_ds3231.h"
 #include "sunset_calculator.h"
 #include "web_server.h"
@@ -195,7 +196,7 @@ void ConfigApi::handleSaveConfig() {
   }
 }
 
-void ConfigApi::handleSunset() {
+void LocationApi::handleSunset() {
   JsonDocument doc;
   if (!parseJsonBody(doc, "/api/sunset")) return;
 

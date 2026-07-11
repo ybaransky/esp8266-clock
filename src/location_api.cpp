@@ -3,6 +3,15 @@
 #include "log.h"
 #include "zipcode.h"
 
+bool LocationApi::parseJsonBody(JsonDocument& doc, const char* route) {
+  const DeserializationError error = deserializeJson(doc, server_.arg("plain"));
+  if (!error) return true;
+
+  LOG_PRINTF("%s failed: invalid JSON: %s\n", route, error.c_str());
+  responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
+  return false;
+}
+
 void LocationApi::handleZipcodeLookup() {
   const String zipcode = server_.arg("zip");
   LOG_PRINTF("/api/zipcode/lookup requested: zip=\"%s\"\n", zipcode.c_str());
