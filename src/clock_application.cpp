@@ -3,12 +3,10 @@
 #include <Wire.h>
 
 #include "button.h"
-#include "clock_state.h"
 #include "config.h"
 #include "config_validation.h"
 #include "display.h"
 #include "display_manager.h"
-#include "friday_mode.h"
 #include "hardware.h"
 #include "log.h"
 #include "page_manager.h"
@@ -101,7 +99,7 @@ void ClockApplication::begin() {
   segmentDisplay.begin(cs.brightness);
   LOG_PRINTF("Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
 
-  clockApplySettings(cs);
+  clockController_.applyConfig(cs);
   if (cs.splashMessage[0] != '\0') {
     displayManager.showSplash(cs.splashMessage);
   }
@@ -126,10 +124,7 @@ void ClockApplication::tick(uint32_t nowMs) {
   buttonTick();
   processButtonEvents();
   if (rtcConsumeSqwPulse()) {
-    // Re-phase rendering to the real second boundary: displayManager.tick()
-    // below redraws immediately instead of waiting out its throttle window.
-    displayManager.notifySecondBoundary();
-    fridayModeTick(rtcGetNowCached());
+    clockController_.onSecondBoundary(rtcGetNowCached());
     if (rtcIsLogIntervalDue()) {
       LOG_PRINTF("SQW: mode=%s view=%s\n",
                  modeName(displayManager.activeMode()),
