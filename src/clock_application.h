@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "clock_controller.h"
+#include "config.h"
 #include "page_manager.h"
 
 class ClockApplication {
@@ -16,5 +17,6 @@ class ClockApplication {
   void logModeOrViewTransition();
 
   ClockController clockController_;
+  ConfigManager configManager_;
   PageManager pageManager_;
 };

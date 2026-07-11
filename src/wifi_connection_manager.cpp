@@ -85,7 +85,9 @@ void WifiConnectionManager::scanNetworks(JsonDocument& doc) {
   WiFi.scanDelete();
 }
 
-bool WifiConnectionManager::connectAndSave(const String& ssid, const String& password) {
+bool WifiConnectionManager::connectAndSave(ConfigManager& configManager,
+                                           const String& ssid,
+                                           const String& password) {
   if (ssid.isEmpty()) {
     return false;
   }

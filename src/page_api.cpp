@@ -4,7 +4,7 @@
 #include "html.h"
 
 void PageApi::handleRoot(const WifiRuntimeStatus& status) {
-  const ClockConfig config = configManager.loadClockConfig();
+  const ClockConfig config = configManager_.loadClockConfig();
   String ssid;
   String ip;
   networkInfoFromStatus(status, ssid, ip);

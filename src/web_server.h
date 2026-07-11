@@ -3,8 +3,9 @@
 #include <Arduino.h>
 
 class ClockController;
+class ConfigManager;
 
-void webBegin(ClockController& clockController);
+void webBegin(ClockController& clockController, ConfigManager& configManager);
 void webHandleClients();
 void networkGetInfo(String &ssid, String &ip);
 

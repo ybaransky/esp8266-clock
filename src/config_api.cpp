@@ -89,7 +89,7 @@ void ConfigApi::handleDemoTest() {
     if (!parseJsonBody(doc, "/api/demo/test")) return;
     JsonVariant finalMessage = doc["display"]["messages"]["final"];
     if (!finalMessage.isNull()) {
-      ClockConfig cfg = configManager.loadClockConfig();
+      ClockConfig cfg = configManager_.loadClockConfig();
       sanitizeDisplayMessage(finalMessage.as<const char*>(),
                              cfg.messages.final,
                              sizeof(cfg.messages.final));
@@ -129,10 +129,10 @@ void ConfigApi::handleSetMode() {
     return;
   }
 
-  ClockConfig cfg = configManager.loadClockConfig();
+  ClockConfig cfg = configManager_.loadClockConfig();
   cfg.activeMode = nextMode;
-  configManager.saveClockConfig(cfg);
-  clockController_.applyConfig(configManager.sanitizeClockConfig(cfg));
+  configManager_.saveClockConfig(cfg);
+  clockController_.applyConfig(configManager_.sanitizeClockConfig(cfg));
   responder_.sendJson(200, "{\"message\":\"Mode changed\"}");
 }
 
@@ -212,18 +212,18 @@ void ConfigApi::handleSaveConfig() {
   if (!parseJsonBody(doc, "/api/config")) return;
   JsonVariantConst payload = doc.as<JsonVariantConst>();
 
-  ClockConfig clockConfig = configManager.loadClockConfig();
+  ClockConfig clockConfig = configManager_.loadClockConfig();
   const char* error = applyJsonToClockConfig(payload, clockConfig);
   if (error != nullptr) {
     responder_.sendJson(400, error);
     return;
   }
-  configManager.saveClockConfig(clockConfig);
-  clockController_.applyConfig(configManager.sanitizeClockConfig(clockConfig));
+  configManager_.saveClockConfig(clockConfig);
+  clockController_.applyConfig(configManager_.sanitizeClockConfig(clockConfig));
 
-  WifiConfig wifiConfig = configManager.loadWifiConfig();
+  WifiConfig wifiConfig = configManager_.loadWifiConfig();
   if (applyJsonToWifiConfig(payload, wifiConfig)) {
-    configManager.saveWifiConfig(wifiConfig);
+    configManager_.saveWifiConfig(wifiConfig);
     responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
     webScheduleReboot(kRebootDelayMs);
   } else {
@@ -355,8 +355,8 @@ void ConfigApi::handleFieldMismatch() {
 }
 
 void ConfigApi::populateConfigJson(JsonDocument& doc) {
-  const ClockConfig clockConfig = configManager.loadClockConfig();
-  const WifiConfig  wifiConfig  = configManager.loadWifiConfig();
+  const ClockConfig clockConfig = configManager_.loadClockConfig();
+  const WifiConfig  wifiConfig  = configManager_.loadWifiConfig();
   LOG_PRINTF("/api/config response: mode=%s brightness=%u staSsid=\"%s\"\n",
              modeName(clockConfig.activeMode),
              clockConfig.display.brightness,

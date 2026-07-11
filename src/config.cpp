@@ -152,5 +152,3 @@ ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
                           sizeof(clean.timezone.name));
     return clean;
 }
-
-ConfigManager configManager;

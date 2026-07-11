@@ -19,13 +19,13 @@ namespace {
 
 class WebPortal {
  public:
-  explicit WebPortal(ClockController& clockController)
+  WebPortal(ClockController& clockController, ConfigManager& configManager)
       : server_(80),
         responder_(server_),
-        pageApi_(server_, responder_),
-        configApi_(server_, responder_, clockController),
+        pageApi_(server_, responder_, configManager),
+        configApi_(server_, responder_, clockController, configManager),
         fileApi_(server_, responder_),
-        wifiApi_(server_, responder_) {}
+        wifiApi_(server_, responder_, configManager) {}
 
   void begin() {
     if (wifiConnectionManager.status().mode == WifiMode::kAccessPoint) {
@@ -135,8 +135,8 @@ WebPortal* WebPortal::activePortal = nullptr;
 
 }  // namespace
 
-void webBegin(ClockController& clockController) {
-  static WebPortal portal(clockController);
+void webBegin(ClockController& clockController, ConfigManager& configManager) {
+  static WebPortal portal(clockController, configManager);
   WebPortal::activePortal = &portal;
   portal.begin();
 }

@@ -9,8 +9,9 @@
 
 class PageApi {
  public:
-  PageApi(ESP8266WebServer& server, HttpResponder& responder)
-      : server_(server), responder_(responder) {}
+  PageApi(ESP8266WebServer& server, HttpResponder& responder,
+          ConfigManager& configManager)
+      : server_(server), responder_(responder), configManager_(configManager) {}
 
   void handleRoot(const WifiRuntimeStatus& status);
   void sendHtml(PGM_P html);
@@ -22,4 +23,5 @@ class PageApi {
 
   ESP8266WebServer& server_;  // Server used for page responses.
   HttpResponder& responder_;  // Sends PROGMEM HTML responses.
+  ConfigManager& configManager_;
 };

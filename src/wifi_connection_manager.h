@@ -27,7 +27,9 @@ class WifiConnectionManager {
 
   WifiRuntimeStatus status() const;
   void scanNetworks(JsonDocument& doc);
-  bool connectAndSave(const String& ssid, const String& password);
+  bool connectAndSave(ConfigManager& configManager,
+                      const String& ssid,
+                      const String& password);
 
  private:
   bool tryStationConnect(const String& ssid, const String& password);

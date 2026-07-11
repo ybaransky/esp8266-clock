@@ -95,7 +95,7 @@ void ClockApplication::begin() {
   }
   i2cBusScanner.scan();
 
-  ClockConfig cs = configManager.loadClockConfig();
+  ClockConfig cs = configManager_.loadClockConfig();
   segmentDisplay.begin(cs.display.brightness);
   LOG_PRINTF("Mode %u, brightness %u\n",
              (unsigned)cs.activeMode, cs.display.brightness);
@@ -114,9 +114,9 @@ void ClockApplication::begin() {
     LOG_PRINTLN("Low battery - showing info state");
   }
 
-  WifiConfig cfg = configManager.loadWifiConfig();
+  WifiConfig cfg = configManager_.loadWifiConfig();
   wifiConnectionManager.begin(cfg);
-  webBegin(clockController_);
+  webBegin(clockController_, configManager_);
 
   buttonBegin();
 }

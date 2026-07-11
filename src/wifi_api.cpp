@@ -37,7 +37,7 @@ void WifiApi::handleConnect() {
 
   const String ssid = doc["ssid"] | "";
   const String password = doc["password"] | "";
-  if (!wifiConnectionManager.connectAndSave(ssid, password)) {
+  if (!wifiConnectionManager.connectAndSave(configManager_, ssid, password)) {
     responder_.sendJson(400, "{\"error\":\"SSID required\"}");
     return;
   }

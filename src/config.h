@@ -88,5 +88,3 @@ public:
     ClockConfig sanitizeClockConfig(const ClockConfig& cfg) const;
 
 };
-
-extern ConfigManager configManager;

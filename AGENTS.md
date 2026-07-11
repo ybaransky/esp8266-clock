@@ -30,7 +30,7 @@ main.cpp
   │     display_scheduler – blink/colon cadence + render throttling policy
   ├── friday_mode         – FridayMode controller; ticked on every real SQW second via
   │                         rtcConsumeSqwPulse(), NOT the throttled log-interval pulse
-  ├── config              – ConfigManager singleton (/config.json on LittleFS)
+  ├── config              – ClockApplication-owned ConfigManager (/config.json on LittleFS)
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
