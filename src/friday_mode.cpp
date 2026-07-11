@@ -1,6 +1,7 @@
 #include "friday_mode.h"
 
 #include "display_manager.h"
+#include "friday_schedule.h"
 #include "log.h"
 #include "sunset_calculator.h"
 
@@ -12,7 +13,7 @@ class FridayModeController {
  public:
   void applySettings(const ClockConfig& config) {
     settings_ = config;
-    currentPhase_ = Phase::kNone;
+    currentPhase_ = FridayPhase::kNone;
     cachedFridayDate_ = DateTime();  // invalidate cache
   }
 
@@ -24,38 +25,30 @@ class FridayModeController {
     if (settings_.activeMode != kModeFriday) return;
 
     refreshSunsetCacheIfNeeded(now);
-    const Phase phase = computePhase(now);
+    const FridayScheduleResult result = evaluateFridaySchedule(
+        now, cachedFridaySunset_, cachedSaturdaySunset_, settings_);
 
-    if (phase == currentPhase_) return;
-    LOG_PRINTF("friday mode: phase -> %s\n", phaseName(phase));
+    if (result.phase == currentPhase_) return;
+    LOG_PRINTF("friday mode: phase -> %s\n", fridayPhaseName(result.phase));
 
     // Only a live kToFridaySunset -> kToSaturdaySunset crossing announces
     // sunset. Arriving at kToSaturdaySunset from kNone (boot or a config
     // save on a Friday evening) is not the sun going down.
     const bool crossedFridaySunset =
-        currentPhase_ == Phase::kToFridaySunset && phase == Phase::kToSaturdaySunset;
+        currentPhase_ == FridayPhase::kToFridaySunset &&
+        result.phase == FridayPhase::kToSaturdaySunset;
 
-    currentPhase_ = phase;
-    applyPhase(phase);
+    currentPhase_ = result.phase;
+    displayManager.setView(result.view);
 
     if (crossedFridaySunset) {
-      // After applyPhase(), so the Saturday-sunset countdown is the base
-      // view revealed when this overlay expires.
+      // The Saturday-sunset countdown is already the base view, so it is
+      // revealed when this overlay expires.
       displayManager.showInfo(settings_.fridaySunsetMessage, kSunsetMessageMs);
     }
   }
 
  private:
-  enum class Phase : uint8_t { kNone, kClock, kToFridaySunset, kToSaturdaySunset };
-
-  static const char* phaseName(Phase phase) {
-    switch (phase) {
-      case Phase::kToFridaySunset:   return "to friday sunset";
-      case Phase::kToSaturdaySunset: return "to saturday sunset";
-      default:                       return "clock";
-    }
-  }
-
   // Returns midnight of the most recent Friday (or today if Friday).
   // This stays constant from Saturday through the following Thursday, so the
   // Clock/DOW phase covers all of that span; it only advances once we reach
@@ -84,40 +77,7 @@ class FridayModeController {
                fridayDate.year(), fridayDate.month(), fridayDate.day());
   }
 
-  // cachedFridayDate_ is never in the future relative to `now` (see
-  // fridayDateFor), so it never needs to be checked directly here: Sat-Thu
-  // fall through to the default kClock below because both cached sunsets are
-  // stale (last week's, already in the past) until the Friday cache refresh.
-  Phase computePhase(const DateTime& now) const {
-    const uint32_t nowUnix = now.unixtime();
-
-    if (nowUnix < cachedFridaySunset_.unixtime())   return Phase::kToFridaySunset;
-    if (nowUnix < cachedSaturdaySunset_.unixtime()) return Phase::kToSaturdaySunset;
-    return Phase::kClock;
-  }
-
-  void applyPhase(Phase phase) {
-    ViewState state;
-    switch (phase) {
-      case Phase::kToFridaySunset:
-        state.view = View::kCountdown;
-        state.anchor      = cachedFridaySunset_;
-        state.formatIndex = settings_.fridayToFridaySunsetFmt;
-        break;
-      case Phase::kToSaturdaySunset:
-        state.view = View::kCountdown;
-        state.anchor      = cachedSaturdaySunset_;
-        state.formatIndex = settings_.fridayToSatSunsetFmt;
-        break;
-      default:
-        state.view = View::kClock;
-        state.formatIndex = settings_.fridayClockFmt;
-        break;
-    }
-    displayManager.setView(state);
-  }
-
-  Phase    currentPhase_       = Phase::kNone;
+  FridayPhase currentPhase_ = FridayPhase::kNone;
   ClockConfig settings_;
   DateTime cachedFridayDate_;     // Midnight of the reference Friday; invalid until first tick.
   DateTime cachedFridaySunset_;   // Cached local sunset for that Friday.
