@@ -150,7 +150,7 @@ void ConfigApi::handleBrightness() {
 }
 
 void ConfigApi::handleTime() {
-  const DateTime dt = rtcGetNow();
+  const DateTime dt = rtc_.getNow();
   char buf[96];
   snprintf(buf, sizeof(buf),
            "{\"date\":\"%04d-%02d-%02d\",\"time\":\"%02d:%02d:%02d\",\"dateTime\":\"%04d-%02d-%02d %02d:%02d:%02d\"}",

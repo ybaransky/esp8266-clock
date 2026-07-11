@@ -5,14 +5,15 @@
 
 struct ClockConfig;
 class DisplayManager;
+class RtcService;
 
 // Coordinates application-level clock actions. Hardware and feature modules
 // remain unchanged for now; this boundary lets callers stop coordinating them
 // independently as the architecture is migrated incrementally.
 class ClockController {
  public:
-  explicit ClockController(DisplayManager& displayManager)
-      : displayManager_(displayManager) {}
+  ClockController(DisplayManager& displayManager, RtcService& rtc)
+      : displayManager_(displayManager), rtc_(rtc) {}
 
   void applyConfig(const ClockConfig& config);
   void onSecondBoundary(const DateTime& now);
@@ -24,4 +25,5 @@ class ClockController {
 
  private:
   DisplayManager& displayManager_;
+  RtcService& rtc_;
 };

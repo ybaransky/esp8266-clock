@@ -143,9 +143,9 @@ bool rtcLogTimeProvider(char* buffer, size_t bufferSize) {
 
 }  // namespace
 
-bool rtcBegin()          { return rtc.begin(); }
-RtcStatus rtcGetStatus() { return rtc.getStatus(); }
-DateTime rtcGetNow()     { return rtc.now(); }
+bool RtcService::begin()              { return rtc.begin(); }
+RtcStatus RtcService::getStatus() const { return rtc.getStatus(); }
+DateTime RtcService::getNow()         { return rtc.now(); }
 
 // -- SQW 1 Hz interrupt processing ---------------------------------------------
 //
@@ -187,7 +187,7 @@ struct SqwState {
 };
 static SqwState sqw;
 
-void rtcSetNow(const DateTime& timeValue) {
+void RtcService::setNow(const DateTime& timeValue) {
   rtc.setNow(timeValue);
   if (rtc.getStatus().present) {
     // Keep the second-resolution cache in step immediately, rather than
@@ -248,7 +248,7 @@ static void logSqwHealthIfNeeded(uint32_t nowMs) {
              static_cast<unsigned long>(currentSqwIsrPulseCount()));
 }
 
-static bool consumeSqwPulse() {
+static bool consumeAcceptedSqwPulse() {
   const bool interruptPulse = consumeSqwInterruptPulse();
   if (!interruptPulse) {
     logSqwHealthIfNeeded(millis());
@@ -281,7 +281,7 @@ static bool sqwPulseIsFresh() {
   return static_cast<long>(millis() - lastEventMs) < static_cast<long>(kSqwPulseStaleMs);
 }
 
-void rtcBeginSqwProcessing() {
+void RtcService::beginSqwProcessing() {
   warnIfSqwSharesInternalLed();
   pinMode(Hardware::Pins::RTC_SQW, INPUT_PULLUP);
   const int initialLevel = digitalRead(Hardware::Pins::RTC_SQW);
@@ -313,8 +313,8 @@ void rtcBeginSqwProcessing() {
              initialLevel == HIGH ? "HIGH" : "LOW");
 }
 
-bool rtcConsumeSqwPulse() {
-  if (!consumeSqwPulse()) return false;
+bool RtcService::consumeSqwPulse() {
+  if (!consumeAcceptedSqwPulse()) return false;
 
   // The pulse itself IS the "one second has elapsed" signal, so advance the
   // cache in software rather than spending an I2C transaction to learn what
@@ -323,13 +323,13 @@ bool rtcConsumeSqwPulse() {
   return true;
 }
 
-bool rtcIsLogIntervalDue() {
+bool RtcService::isLogIntervalDue() {
   if (sqw.cachedNow.second() % kSqwLogIntervalSeconds != 0) return false;
   sqw.cachedNow = rtc.now();  // Also resyncs the cache, correcting drift from any pulses missed.
   return true;
 }
 
-bool rtcIsHealthy() {
+bool RtcService::isHealthy() const {
   if (!rtc.getStatus().present) return false;
   if (!sqw.processingStarted)   return true;
   return sqwPulseIsFresh();
@@ -339,7 +339,7 @@ bool rtcIsHealthy() {
 // on the hot display-render path (see the SQW section comment above). Falls
 // back to a live rtc.now() read whenever the cache can't be trusted: before
 // rtcBeginSqwProcessing() has run, or if the SQW pulse has gone stale.
-DateTime rtcGetNowCached() {
+DateTime RtcService::getNowCached() {
   if (!sqw.cachedNowSynced || !sqwPulseIsFresh()) return rtc.now();
   return sqw.cachedNow;
 }
@@ -351,7 +351,7 @@ DateTime rtcGetNowCached() {
 // the tenths digit at 9 instead of wrapping to 0 early. Falls back to the
 // old millis()-phase behavior when the SQW pulse can't be trusted, matching
 // rtcGetNowCached()'s degradation.
-uint32_t rtcMsIntoSecond(uint32_t nowMs) {
+uint32_t RtcService::msIntoSecond(uint32_t nowMs) const {
   if (!sqw.sawPulse || !sqwPulseIsFresh()) return nowMs % 1000UL;
   const uint32_t elapsed = nowMs - sqw.lastAcceptedPulseAtMs;
   return elapsed > 999UL ? 999UL : elapsed;

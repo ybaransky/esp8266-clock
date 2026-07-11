@@ -5,10 +5,12 @@
 class ClockController;
 class ConfigManager;
 class WifiConnectionManager;
+class RtcService;
 
 void webBegin(ClockController& clockController,
               ConfigManager& configManager,
-              WifiConnectionManager& wifiConnectionManager);
+              WifiConnectionManager& wifiConnectionManager,
+              RtcService& rtc);
 void webHandleClients();
 void networkGetInfo(String &ssid, String &ip);
 

@@ -77,13 +77,13 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 ### Serial / I2C / RTC time
 - Serial at 74880 baud for readable ESP8266 boot output.
 - Initialize I2C early in `setup()` with explicit SDA/SCL pins before probing the RTC.
-- `rtc_ds3231.h` is the time module. It is a set of free functions; there is deliberately **no interface layer** (no TimeService/ClockSource) over it - call the `rtc*` functions directly.
-  - `rtcBegin()`, `rtcGetStatus()` (returns `RtcStatus`: present, powerLost, lowBattery, sqwConfigured, error), `rtcGetNow()` (live I2C read - one-off/correctness-critical reads only), `rtcSetNow()` (also resyncs the cache).
-  - SQW 1Hz processing: call `rtcBeginSqwProcessing()` after `rtcBegin()`, then `rtcConsumeSqwPulse()` every loop - it returns `true` exactly once per real RTC second and advances the cached time in software. Gate time-sensitive per-second logic (e.g. Friday-mode transitions) on it. `ClockController` also notifies the owned display manager on each accepted pulse so rendering re-phases to the real second boundary.
-  - `rtcIsLogIntervalDue()` is only for pacing the periodic log line (:00/:30 boundaries); it also resyncs the cache. Never gate time-sensitive logic on it.
-  - `rtcGetNowCached()`: second-resolution time at zero I2C cost (advanced by SQW pulses); falls back to a live read when unseeded or the pulse goes stale. **Use this on the display-render path** (it runs up to 10x/sec for tenths formats).
+- `ClockApplication` owns `RtcService` from `rtc_ds3231.h` and injects it into the controller, display manager, and config API. The module keeps its ISR bridge and hardware state private.
+  - `begin()`, `getStatus()`, `getNow()` (live I2C read), and `setNow()` (also resyncs the cache) provide device operations.
+  - SQW processing uses `beginSqwProcessing()` and `consumeSqwPulse()`. Gate time-sensitive per-second logic on the latter.
+  - `isLogIntervalDue()` is only for pacing the periodic log line and cache resync; never gate transitions on it.
+  - `getNowCached()` provides second-resolution time at zero I2C cost and is required on the display-render path.
   - `rtcIsHealthy()`: RTC present and SQW pulse arriving on schedule. Drives the "no rtc" overlay in `main.cpp`.
-  - `rtcMsIntoSecond(nowMs)`: milliseconds into the current RTC second (clamped 0-999), measured from the last accepted SQW edge - which is timestamped **in the ISR**, so loop-servicing latency (e.g. an HTTP request) can't skew the phase. This is what phase-locks the display's tenths digit to the real RTC second; it falls back to `nowMs % 1000` when the pulse is stale, matching `rtcGetNowCached()`'s degradation. Never compute tenths from `millis() % 1000` directly - that phase is unrelated to the RTC second (this was the pre-phase-lock behavior).
+  - `msIntoSecond(nowMs)` is clamped to 0-999 and phase-locked to the ISR timestamp. Never compute tenths from `millis() % 1000` directly.
 - For fatal exception debugging, keep exception decoding enabled and include decoded stack traces in reports.
 
 ### Logging

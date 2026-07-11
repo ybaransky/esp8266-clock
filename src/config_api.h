@@ -10,16 +10,19 @@ struct ClockConfig;
 struct WifiConfig;
 class ClockController;
 class ConfigManager;
+class RtcService;
 
 class ConfigApi {
  public:
   ConfigApi(ESP8266WebServer& server, HttpResponder& responder,
             ClockController& clockController,
-            ConfigManager& configManager)
+            ConfigManager& configManager,
+            RtcService& rtc)
       : server_(server),
         responder_(responder),
         clockController_(clockController),
-        configManager_(configManager) {}
+        configManager_(configManager),
+        rtc_(rtc) {}
 
   void handleDemoTest();
   void handleMessageTest();
@@ -44,4 +47,5 @@ class ConfigApi {
   HttpResponder& responder_;       // Sends JSON/HTML API responses.
   ClockController& clockController_;  // Executes application-level clock actions.
   ConfigManager& configManager_;      // Loads, validates, and saves configuration.
+  RtcService& rtc_;
 };

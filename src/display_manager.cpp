@@ -270,7 +270,7 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
 
 void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
   countupOrigin_ = (strncmp(config.countup.start, "now", 3) == 0)
-      ? rtcGetNowCached()
+      ? rtc_.getNowCached()
       : parseDateTime(config.countup.start);
 }
 
@@ -336,10 +336,10 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
 
   // Cached read: this runs up to 10x/sec for tenths formats, and the RTC's
   // registers only change once a second anyway.
-  const DateTime now = rtcGetNowCached();
+  const DateTime now = rtc_.getNowCached();
   uint8_t tenths = 0;
   if (formatHasTenths(kFmtGroupClock, formatIndex)) {
-    tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
+    tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 
   const DisplayFrame frame = renderClockDisplayFrame(
@@ -352,7 +352,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
   const uint8_t formatIndex = baseView_.formatIndex;
-  const DateTime now = rtcGetNowCached();
+  const DateTime now = rtc_.getNowCached();
   const long secs = static_cast<long>(baseView_.anchor.unixtime()) -
                     static_cast<long>(now.unixtime());
 
@@ -369,7 +369,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
 
   uint8_t tenths = 0;
   if (formatHasTenths(kFmtGroupCountdown, formatIndex)) {
-    tenths = (secs > 0) ? (10 - rtcMsIntoSecond(nowMs) / kTenthMs) % 10 : 0;
+    tenths = (secs > 0) ? (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10 : 0;
   }
 
   const DisplayFrame frame =
@@ -381,13 +381,13 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
   const uint8_t formatIndex = baseView_.formatIndex;
-  const DateTime now = rtcGetNowCached();
+  const DateTime now = rtc_.getNowCached();
   const long secs = static_cast<long>(now.unixtime()) -
                     static_cast<long>(baseView_.anchor.unixtime());
 
   uint8_t tenths = 0;
   if (formatHasTenths(kFmtGroupCountUp, formatIndex)) {
-    tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
+    tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 
   const DisplayFrame frame = renderCountupDisplayFrame(formatIndex, secs, tenths);

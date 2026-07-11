@@ -8,6 +8,7 @@
 #include "display_scheduler.h"
 
 class SegmentDisplay;
+class RtcService;
 
 // What content is currently the "normal" thing to render - i.e. what the
 // active Mode resolves to right now. For Countdown/Countup/Clock modes this
@@ -80,7 +81,8 @@ struct OverlayState {
 
 class DisplayManager {
  public:
-  explicit DisplayManager(SegmentDisplay& display) : display_(display) {}
+  DisplayManager(SegmentDisplay& display, RtcService& rtc)
+      : display_(display), rtc_(rtc) {}
   void begin(const ClockConfig& config);
   void applySettings(const ClockConfig& config);
   void setBrightness(uint8_t brightness);
@@ -151,4 +153,5 @@ class DisplayManager {
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
   SegmentDisplay& display_;
+  RtcService& rtc_;
 };

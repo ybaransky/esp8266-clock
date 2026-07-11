@@ -7,6 +7,7 @@
 #include "display.h"
 #include "display_manager.h"
 #include "page_manager.h"
+#include "rtc_ds3231.h"
 #include "wifi_connection_manager.h"
 
 class ClockApplication {
@@ -21,6 +22,7 @@ class ClockApplication {
   void logModeOrViewTransition();
 
   SegmentDisplay segmentDisplay_;
+  RtcService rtc_;
   DisplayManager displayManager_;
   ClockController clockController_;
   ConfigManager configManager_;

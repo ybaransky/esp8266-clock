@@ -21,11 +21,12 @@ class WebPortal {
  public:
   WebPortal(ClockController& clockController,
             ConfigManager& configManager,
-            WifiConnectionManager& wifiConnectionManager)
+            WifiConnectionManager& wifiConnectionManager,
+            RtcService& rtc)
       : server_(80),
         responder_(server_),
         pageApi_(server_, responder_, configManager),
-        configApi_(server_, responder_, clockController, configManager),
+        configApi_(server_, responder_, clockController, configManager, rtc),
         fileApi_(server_, responder_),
         wifiApi_(server_, responder_, configManager, wifiConnectionManager),
         wifiConnectionManager_(wifiConnectionManager) {}
@@ -142,8 +143,9 @@ WebPortal* WebPortal::activePortal = nullptr;
 
 void webBegin(ClockController& clockController,
               ConfigManager& configManager,
-              WifiConnectionManager& wifiConnectionManager) {
-  static WebPortal portal(clockController, configManager, wifiConnectionManager);
+              WifiConnectionManager& wifiConnectionManager,
+              RtcService& rtc) {
+  static WebPortal portal(clockController, configManager, wifiConnectionManager, rtc);
   WebPortal::activePortal = &portal;
   portal.begin();
 }

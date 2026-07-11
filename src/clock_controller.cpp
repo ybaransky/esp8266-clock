@@ -18,7 +18,7 @@ void ClockController::onSecondBoundary(const DateTime& now) {
 }
 
 void ClockController::setTime(const DateTime& now) {
-  rtcSetNow(now);
+  rtc_.setNow(now);
   fridayModeResetSunsetCache();
 }
 

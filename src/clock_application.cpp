@@ -33,7 +33,8 @@ void printRtcErrorBanner(const char* detail) {
   Serial.println();
 }
 
-void handleButtonEvent(ButtonEvent event, PageManager& pageManager) {
+void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
+                       RtcService& rtc) {
   switch (event) {
     case ButtonEvent::SHOW_SSID: {
       String ssid;
@@ -54,7 +55,7 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager) {
     }
 
     case ButtonEvent::SHOW_RTC_STATUS: {
-      const RtcStatus status = rtcGetStatus();
+      const RtcStatus status = rtc.getStatus();
       LOG_PRINTF("present=%s powerLost=%s lowBattery=%s sqwConfigured=%s\n",
                  status.present ? "yes" : "no",
                  status.powerLost ? "yes" : "no",
@@ -74,8 +75,8 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager) {
 }  // namespace
 
 ClockApplication::ClockApplication()
-    : displayManager_(segmentDisplay_),
-      clockController_(displayManager_),
+    : displayManager_(segmentDisplay_, rtc_),
+      clockController_(displayManager_, rtc_),
       pageManager_(displayManager_) {}
 
 void ClockApplication::begin() {
@@ -91,10 +92,10 @@ void ClockApplication::begin() {
              Hardware::Pins::I2C_SDA,
              Hardware::Pins::I2C_SCL);
 
-  if (rtcBegin()) {
-    rtcBeginSqwProcessing();
+  if (rtc_.begin()) {
+    rtc_.beginSqwProcessing();
   } else {
-    const RtcStatus status = rtcGetStatus();
+    const RtcStatus status = rtc_.getStatus();
     printRtcErrorBanner(status.error.c_str());
     LOG_PRINTF("Init failed: %s\n", status.error.c_str());
   }
@@ -110,7 +111,7 @@ void ClockApplication::begin() {
     displayManager_.showSplash(cs.messages.splash);
   }
 
-  const RtcStatus rtcStatus = rtcGetStatus();
+  const RtcStatus rtcStatus = rtc_.getStatus();
   if (!rtcStatus.present) {
     displayManager_.showInfo(kMsgNoRtc);
     LOG_PRINTLN("RTC not found - showing no rtc");
@@ -121,7 +122,7 @@ void ClockApplication::begin() {
 
   WifiConfig cfg = configManager_.loadWifiConfig();
   wifiConnectionManager_.begin(cfg);
-  webBegin(clockController_, configManager_, wifiConnectionManager_);
+  webBegin(clockController_, configManager_, wifiConnectionManager_, rtc_);
 
   buttonBegin();
 }
@@ -129,9 +130,9 @@ void ClockApplication::begin() {
 void ClockApplication::tick(uint32_t nowMs) {
   buttonTick();
   processButtonEvents();
-  if (rtcConsumeSqwPulse()) {
-    clockController_.onSecondBoundary(rtcGetNowCached());
-    if (rtcIsLogIntervalDue()) {
+  if (rtc_.consumeSqwPulse()) {
+    clockController_.onSecondBoundary(rtc_.getNowCached());
+    if (rtc_.isLogIntervalDue()) {
       LOG_PRINTF("SQW: mode=%s view=%s\n",
                  modeName(displayManager_.activeMode()),
                  viewName(displayManager_.activeView()));
@@ -147,7 +148,7 @@ void ClockApplication::tick(uint32_t nowMs) {
 
 void ClockApplication::processButtonEvents() {
   while (buttonHasEvent()) {
-    handleButtonEvent(buttonNextEvent(), pageManager_);
+    handleButtonEvent(buttonNextEvent(), pageManager_, rtc_);
   }
 }
 
@@ -156,7 +157,7 @@ void ClockApplication::checkRtcHealth(uint32_t nowMs) {
   static bool wasHealthy = true;
   if (static_cast<long>(nowMs - lastCheckMs) < 2000L) return;
   lastCheckMs = nowMs;
-  const bool healthy = rtcIsHealthy();
+  const bool healthy = rtc_.isHealthy();
   if (!healthy) {
     if (wasHealthy) LOG_PRINTLN("RTC health lost");
     displayManager_.showInfo(kMsgNoRtc);

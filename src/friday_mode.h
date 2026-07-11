@@ -9,7 +9,7 @@ class DisplayManager;
 void fridayModeApplySettings(const ClockConfig& config);
 
 // Forces sunset targets to be recomputed on the next tick.
-// Call after rtcSetNow() so a time change is reflected immediately.
+// Called after RtcService::setNow() so a time change is reflected immediately.
 void fridayModeResetSunsetCache();
 
 // Called every real RTC second (on each SQW pulse, via rtcConsumeSqwPulse())
