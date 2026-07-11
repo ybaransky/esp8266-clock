@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 
-void webBegin();
+class ClockController;
+
+void webBegin(ClockController& clockController);
 void webHandleClients();
 void networkGetInfo(String &ssid, String &ip);
 

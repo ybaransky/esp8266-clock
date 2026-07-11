@@ -8,11 +8,15 @@
 
 struct ClockConfig;
 struct WifiConfig;
+class ClockController;
 
 class ConfigApi {
  public:
-  ConfigApi(ESP8266WebServer& server, HttpResponder& responder)
-      : server_(server), responder_(responder) {}
+  ConfigApi(ESP8266WebServer& server, HttpResponder& responder,
+            ClockController& clockController)
+      : server_(server),
+        responder_(responder),
+        clockController_(clockController) {}
 
   void handleDemoTest();
   void handleMessageTest();
@@ -35,4 +39,5 @@ class ConfigApi {
 
   ESP8266WebServer& server_;       // Source of request payloads and query args.
   HttpResponder& responder_;       // Sends JSON/HTML API responses.
+  ClockController& clockController_;  // Executes application-level clock actions.
 };

@@ -5,6 +5,7 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 
+#include "clock_controller.h"
 #include "config_api.h"
 #include "file_api.h"
 #include "html.h"
@@ -18,11 +19,11 @@ namespace {
 
 class WebPortal {
  public:
-  WebPortal()
+  explicit WebPortal(ClockController& clockController)
       : server_(80),
         responder_(server_),
         pageApi_(server_, responder_),
-        configApi_(server_, responder_),
+        configApi_(server_, responder_, clockController),
         fileApi_(server_, responder_),
         wifiApi_(server_, responder_) {}
 
@@ -35,45 +36,45 @@ class WebPortal {
     }
 
     server_.on("/", HTTP_GET, []() {
-      portal.pageApi_.handleRoot(wifiConnectionManager.status());
+      activePortal->pageApi_.handleRoot(wifiConnectionManager.status());
     });
-    server_.on("/settings", HTTP_GET, []() { portal.pageApi_.sendHtml(SETTINGS_HTML); });
-    server_.on("/config", HTTP_GET, []() { portal.pageApi_.sendHtml(CONFIG_JSON_HTML); });
-    server_.on("/format", HTTP_GET, []() { portal.pageApi_.sendHtml(CONFIG_HTML); });
-    server_.on("/time", HTTP_GET, []() { portal.pageApi_.sendHtml(TIME_SYNC_HTML); });
-    server_.on("/sunset", HTTP_GET, []() { portal.pageApi_.sendHtml(SUNSET_HTML); });
-    server_.on("/messages", HTTP_GET, []() { portal.pageApi_.sendHtml(MESSAGE_HTML); });
-    server_.on("/location", HTTP_GET, []() { portal.pageApi_.sendHtml(LOCATION_HTML); });
-    server_.on("/wifi", HTTP_GET, []() { portal.pageApi_.sendHtml(WIFI_HTML); });
-    server_.on("/view", HTTP_GET, []() { portal.pageApi_.sendHtml(VIEW_FILE_HTML); });
+    server_.on("/settings", HTTP_GET, []() { activePortal->pageApi_.sendHtml(SETTINGS_HTML); });
+    server_.on("/config", HTTP_GET, []() { activePortal->pageApi_.sendHtml(CONFIG_JSON_HTML); });
+    server_.on("/format", HTTP_GET, []() { activePortal->pageApi_.sendHtml(CONFIG_HTML); });
+    server_.on("/time", HTTP_GET, []() { activePortal->pageApi_.sendHtml(TIME_SYNC_HTML); });
+    server_.on("/sunset", HTTP_GET, []() { activePortal->pageApi_.sendHtml(SUNSET_HTML); });
+    server_.on("/messages", HTTP_GET, []() { activePortal->pageApi_.sendHtml(MESSAGE_HTML); });
+    server_.on("/location", HTTP_GET, []() { activePortal->pageApi_.sendHtml(LOCATION_HTML); });
+    server_.on("/wifi", HTTP_GET, []() { activePortal->pageApi_.sendHtml(WIFI_HTML); });
+    server_.on("/view", HTTP_GET, []() { activePortal->pageApi_.sendHtml(VIEW_FILE_HTML); });
 
-    server_.on("/api/demo/test", HTTP_POST, []() { portal.configApi_.handleDemoTest(); });
-    server_.on("/api/message/test", HTTP_POST, []() { portal.configApi_.handleMessageTest(); });
-    server_.on("/api/mode", HTTP_POST, []() { portal.configApi_.handleSetMode(); });
-    server_.on("/api/brightness", HTTP_POST, []() { portal.configApi_.handleBrightness(); });
-    server_.on("/api/time", HTTP_GET, []() { portal.configApi_.handleTime(); });
-    server_.on("/api/time", HTTP_POST, []() { portal.configApi_.handleTimeSync(); });
-    server_.on("/api/formats", HTTP_GET, []() { portal.configApi_.handleFormats(); });
-    server_.on("/api/config", HTTP_GET, []() { portal.configApi_.handleGetConfig(); });
-    server_.on("/api/config", HTTP_POST, []() { portal.configApi_.handleSaveConfig(); });
-    server_.on("/api/sunset", HTTP_POST, []() { portal.configApi_.handleSunset(); });
+    server_.on("/api/demo/test", HTTP_POST, []() { activePortal->configApi_.handleDemoTest(); });
+    server_.on("/api/message/test", HTTP_POST, []() { activePortal->configApi_.handleMessageTest(); });
+    server_.on("/api/mode", HTTP_POST, []() { activePortal->configApi_.handleSetMode(); });
+    server_.on("/api/brightness", HTTP_POST, []() { activePortal->configApi_.handleBrightness(); });
+    server_.on("/api/time", HTTP_GET, []() { activePortal->configApi_.handleTime(); });
+    server_.on("/api/time", HTTP_POST, []() { activePortal->configApi_.handleTimeSync(); });
+    server_.on("/api/formats", HTTP_GET, []() { activePortal->configApi_.handleFormats(); });
+    server_.on("/api/config", HTTP_GET, []() { activePortal->configApi_.handleGetConfig(); });
+    server_.on("/api/config", HTTP_POST, []() { activePortal->configApi_.handleSaveConfig(); });
+    server_.on("/api/sunset", HTTP_POST, []() { activePortal->configApi_.handleSunset(); });
     server_.on("/api/zipcode/lookup", HTTP_GET,
-               []() { portal.configApi_.handleZipcodeLookup(); });
+               []() { activePortal->configApi_.handleZipcodeLookup(); });
     server_.on("/api/field-mismatch", HTTP_POST,
-               []() { portal.configApi_.handleFieldMismatch(); });
+               []() { activePortal->configApi_.handleFieldMismatch(); });
 
-    server_.on("/api/files", HTTP_GET, []() { portal.fileApi_.handleListFiles(); });
-    server_.on("/api/file", HTTP_GET, []() { portal.fileApi_.handleReadFile(); });
-    server_.on("/api/file", HTTP_DELETE, []() { portal.fileApi_.handleDeleteFile(); });
+    server_.on("/api/files", HTTP_GET, []() { activePortal->fileApi_.handleListFiles(); });
+    server_.on("/api/file", HTTP_GET, []() { activePortal->fileApi_.handleReadFile(); });
+    server_.on("/api/file", HTTP_DELETE, []() { activePortal->fileApi_.handleDeleteFile(); });
     server_.on("/api/file/upload", HTTP_POST,
-               []() { portal.fileApi_.handleUpload(); },
-               []() { portal.fileApi_.handleUploadData(); });
+               []() { activePortal->fileApi_.handleUpload(); },
+               []() { activePortal->fileApi_.handleUploadData(); });
 
-    server_.on("/api/wifi/status", HTTP_GET, []() { portal.wifiApi_.handleStatus(); });
-    server_.on("/api/wifi/scan", HTTP_GET, []() { portal.wifiApi_.handleScan(); });
-    server_.on("/api/wifi/connect", HTTP_POST, []() { portal.wifiApi_.handleConnect(); });
+    server_.on("/api/wifi/status", HTTP_GET, []() { activePortal->wifiApi_.handleStatus(); });
+    server_.on("/api/wifi/scan", HTTP_GET, []() { activePortal->wifiApi_.handleScan(); });
+    server_.on("/api/wifi/connect", HTTP_POST, []() { activePortal->wifiApi_.handleConnect(); });
 
-    server_.onNotFound([]() { portal.handleCaptiveRedirect(); });
+    server_.onNotFound([]() { activePortal->handleCaptiveRedirect(); });
     server_.begin();
     LOG_PRINTLN("HTTP server started");
   }
@@ -115,7 +116,7 @@ class WebPortal {
     server_.send(302, "text/plain", "");
   }
 
-  static WebPortal portal;
+  static WebPortal* activePortal;
 
  private:
   ESP8266WebServer server_;        // HTTP server on port 80.
@@ -130,22 +131,24 @@ class WebPortal {
 
 };
 
-WebPortal WebPortal::portal;
+WebPortal* WebPortal::activePortal = nullptr;
 
 }  // namespace
 
-void webBegin() {
-  WebPortal::portal.begin();
+void webBegin(ClockController& clockController) {
+  static WebPortal portal(clockController);
+  WebPortal::activePortal = &portal;
+  portal.begin();
 }
 
 void webHandleClients() {
-  WebPortal::portal.handleClients();
+  WebPortal::activePortal->handleClients();
 }
 
 void networkGetInfo(String& ssid, String& ip) {
-  WebPortal::portal.getNetworkInfo(ssid, ip);
+  WebPortal::activePortal->getNetworkInfo(ssid, ip);
 }
 
 void webScheduleReboot(uint32_t delayMs) {
-  WebPortal::portal.scheduleReboot(delayMs);
+  WebPortal::activePortal->scheduleReboot(delayMs);
 }

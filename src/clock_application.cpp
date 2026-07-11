@@ -115,7 +115,7 @@ void ClockApplication::begin() {
 
   WifiConfig cfg = configManager.loadWifiConfig();
   wifiConnectionManager.begin(cfg);
-  webBegin();
+  webBegin(clockController_);
 
   buttonBegin();
 }

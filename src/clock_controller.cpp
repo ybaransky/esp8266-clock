@@ -21,3 +21,19 @@ void ClockController::setTime(const DateTime& now) {
   rtcSetNow(now);
   fridayModeResetSunsetCache();
 }
+
+void ClockController::setBrightness(uint8_t brightness) {
+  displayManager.setBrightness(brightness);
+}
+
+void ClockController::showDemo() {
+  displayManager.showDemo();
+}
+
+void ClockController::showInfo(const char* message, int32_t durationMs) {
+  displayManager.showInfo(message, durationMs);
+}
+
+void ClockController::showSplash(const char* message) {
+  displayManager.showSplash(message);
+}

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include <RTClib.h>
 
 struct ClockConfig;
@@ -12,4 +13,8 @@ class ClockController {
   void applyConfig(const ClockConfig& config);
   void onSecondBoundary(const DateTime& now);
   void setTime(const DateTime& now);
+  void setBrightness(uint8_t brightness);
+  void showDemo();
+  void showInfo(const char* message, int32_t durationMs);
+  void showSplash(const char* message);
 };

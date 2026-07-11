@@ -3,13 +3,11 @@
 #include <ArduinoJson.h>
 #include <math.h>
 
-#include "clock_state.h"
+#include "clock_controller.h"
 #include "config.h"
 #include "config_serializer.h"
 #include "config_validation.h"
-#include "display_manager.h"
 #include "format.h"
-#include "friday_mode.h"
 #include "log.h"
 #include "rtc_ds3231.h"
 #include "sunset_calculator.h"
@@ -95,11 +93,11 @@ void ConfigApi::handleDemoTest() {
       sanitizeDisplayMessage(finalMessage.as<const char*>(),
                              cfg.finalMessage,
                              sizeof(cfg.finalMessage));
-      clockApplySettings(cfg);
+      clockController_.applyConfig(cfg);
     }
   }
 
-  displayManager.showDemo();
+  clockController_.showDemo();
   responder_.sendJson(200, "{\"preview_ms\":10000}");
 }
 
@@ -112,9 +110,9 @@ void ConfigApi::handleMessageTest() {
   if (doc["blink"] | false) {
     // Preview with the same blinking treatment the message gets for real
     // (e.g. the Friday sunset message).
-    displayManager.showInfo(message, 5000);
+    clockController_.showInfo(message, 5000);
   } else {
-    displayManager.showSplash(message);
+    clockController_.showSplash(message);
   }
   responder_.sendJson(200, "{\"message\":\"Previewing message\",\"preview_ms\":5000}");
 }
@@ -134,7 +132,7 @@ void ConfigApi::handleSetMode() {
   ClockConfig cfg = configManager.loadClockConfig();
   cfg.activeMode = nextMode;
   configManager.saveClockConfig(cfg);
-  clockApplySettings(configManager.sanitizeClockConfig(cfg));
+  clockController_.applyConfig(configManager.sanitizeClockConfig(cfg));
   responder_.sendJson(200, "{\"message\":\"Mode changed\"}");
 }
 
@@ -147,7 +145,7 @@ void ConfigApi::handleBrightness() {
     return;
   }
 
-  displayManager.setBrightness(sanitizeBrightness(doc["brightness"].as<int>()));
+  clockController_.setBrightness(sanitizeBrightness(doc["brightness"].as<int>()));
   responder_.sendJson(200, "{\"message\":\"Brightness previewed\"}");
 }
 
@@ -182,8 +180,7 @@ void ConfigApi::handleTimeSync() {
 
   LOG_PRINTF("Browser time sync requested: %04d-%02d-%02d %02d:%02d:%02d\n",
              year, month, day, hour, minute, second);
-  rtcSetNow(DateTime(year, month, day, hour, minute, second));
-  fridayModeResetSunsetCache();
+  clockController_.setTime(DateTime(year, month, day, hour, minute, second));
   responder_.sendJson(200, "{\"message\":\"RTC synced\"}");
 }
 
@@ -222,7 +219,7 @@ void ConfigApi::handleSaveConfig() {
     return;
   }
   configManager.saveClockConfig(clockConfig);
-  clockApplySettings(configManager.sanitizeClockConfig(clockConfig));
+  clockController_.applyConfig(configManager.sanitizeClockConfig(clockConfig));
 
   WifiConfig wifiConfig = configManager.loadWifiConfig();
   if (applyJsonToWifiConfig(payload, wifiConfig)) {
