@@ -1,9 +1,7 @@
 #include "display_manager.h"
 
-#include "clock_state.h"
 #include "display.h"
 #include "display_renderer.h"
-#include "friday_mode.h"
 #include "log.h"
 #include "rtc_ds3231.h"
 
@@ -48,13 +46,13 @@ void DisplayManager::applySettings(const ClockConfig& config) {
 
   updateCountupOrigin(config);
   baseView_ = viewForMode(config.activeMode);
-  display_->setBrightness(config.display.brightness);
+  display_.setBrightness(config.display.brightness);
   installView(millis());
 }
 
 void DisplayManager::setBrightness(uint8_t brightness) {
   settings_.display.brightness = constrain(brightness, 0, 7);
-  display_->setBrightness(settings_.display.brightness);
+  display_.setBrightness(settings_.display.brightness);
 }
 
 void DisplayManager::tick(uint32_t nowMs) {
@@ -347,7 +345,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   const DisplayFrame frame = renderClockDisplayFrame(
       formatIndex, now, settings_.display.clockUse12Hour, tenths,
       !clockFormatBlinksColon(formatIndex) || scheduler_.colonVisible());
-  display_->showFrame(frame);
+  display_.showFrame(frame);
 }
 
 void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
@@ -376,7 +374,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
 
   const DisplayFrame frame =
       renderCountdownDisplayFrame(formatIndex, secs, tenths);
-  display_->showFrame(frame);
+  display_.showFrame(frame);
 }
 
 void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
@@ -393,7 +391,7 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   }
 
   const DisplayFrame frame = renderCountupDisplayFrame(formatIndex, secs, tenths);
-  display_->showFrame(frame);
+  display_.showFrame(frame);
 }
 
 void DisplayManager::renderDemo(uint32_t nowMs, bool force) {
@@ -403,7 +401,7 @@ void DisplayManager::renderDemo(uint32_t nowMs, bool force) {
   const uint8_t whole  = static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
   const uint8_t tenths = static_cast<uint8_t>(min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
   const DisplayFrame frame = renderDemoDisplayFrame(whole, tenths);
-  display_->showFrame(frame);
+  display_.showFrame(frame);
 }
 
 void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
@@ -415,7 +413,7 @@ void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
 
   const DisplayFrame frame = renderMessageDisplayFrame(
       overlay_.message, !overlay_.blink || scheduler_.blinkOn());
-  display_->showFrame(frame);
+  display_.showFrame(frame);
 }
 
 void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
@@ -452,12 +450,5 @@ void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
   const DisplayPage& page = paged.pages[paged.currentPage];
   const DisplayFrame frame = renderPageDisplayFrame(
       page.rows[0], page.rows[1], page.rows[2], scheduler_.blinkOn());
-  display_->showFrame(frame);
-}
-
-DisplayManager displayManager;
-
-void clockApplySettings(const ClockConfig& cfg) {
-  displayManager.applySettings(cfg);
-  fridayModeApplySettings(cfg);
+  display_.showFrame(frame);
 }

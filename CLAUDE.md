@@ -79,7 +79,7 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 - Initialize I2C early in `setup()` with explicit SDA/SCL pins before probing the RTC.
 - `rtc_ds3231.h` is the time module. It is a set of free functions; there is deliberately **no interface layer** (no TimeService/ClockSource) over it - call the `rtc*` functions directly.
   - `rtcBegin()`, `rtcGetStatus()` (returns `RtcStatus`: present, powerLost, lowBattery, sqwConfigured, error), `rtcGetNow()` (live I2C read - one-off/correctness-critical reads only), `rtcSetNow()` (also resyncs the cache).
-  - SQW 1Hz processing: call `rtcBeginSqwProcessing()` after `rtcBegin()`, then `rtcConsumeSqwPulse()` every loop - it returns `true` exactly once per real RTC second and advances the cached time in software. Gate time-sensitive per-second logic (e.g. Friday-mode transitions) on it. `main.cpp` also calls `displayManager.notifySecondBoundary()` on each accepted pulse so rendering re-phases to the real second boundary.
+  - SQW 1Hz processing: call `rtcBeginSqwProcessing()` after `rtcBegin()`, then `rtcConsumeSqwPulse()` every loop - it returns `true` exactly once per real RTC second and advances the cached time in software. Gate time-sensitive per-second logic (e.g. Friday-mode transitions) on it. `ClockController` also notifies the owned display manager on each accepted pulse so rendering re-phases to the real second boundary.
   - `rtcIsLogIntervalDue()` is only for pacing the periodic log line (:00/:30 boundaries); it also resyncs the cache. Never gate time-sensitive logic on it.
   - `rtcGetNowCached()`: second-resolution time at zero I2C cost (advanced by SQW pulses); falls back to a live read when unseeded or the pulse goes stale. **Use this on the display-render path** (it runs up to 10x/sec for tenths formats).
   - `rtcIsHealthy()`: RTC present and SQW pulse arriving on schedule. Drives the "no rtc" overlay in `main.cpp`.
@@ -124,7 +124,7 @@ The display system has four layers:
    - Tenths values come from `rtcMsIntoSecond(nowMs)` (phase-locked to the SQW edge), not `millis() % 1000`. `notifySecondBoundary()` - called from `main.cpp` on every accepted SQW pulse - invalidates the render throttle so each second's first redraw lands on the real boundary (this also keeps whole-second formats from lagging the boundary by up to their 1s interval). The demo overlay's tenths are deadline-derived and stay that way.
    - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
 
-4. **`clock_state.h`** - exactly one function: `clockApplySettings(cfg)`, which fans a new config out to `displayManager` **and** `fridayMode` (defined in `display_manager.cpp`). For single display actions (demo, brightness, splash, info), call `displayManager` directly - do not add wrapper functions.
+4. **`clock_controller.h/cpp`** - coordinates application actions. It applies configuration to the owned `DisplayManager` and Friday mode, handles second boundaries, and exposes display previews to web APIs.
 
 ### Friday Mode
 - **`friday_mode.h/cpp`**: `FridayModeController` (internal singleton). Public API: `fridayModeApplySettings(config)`, `fridayModeTick(now)`, `fridayModeResetSunsetCache()`.
@@ -133,15 +133,15 @@ The display system has four layers:
   - **Clock phase**: Saturday sunset through Thursday midnight; also the default.
   - **To Friday sunset**: Thursday midnight → Friday sunset.
   - **To Saturday sunset**: Friday sunset → Saturday sunset.
-- Each phase transition calls `displayManager.setView()` with a `ViewState` built from the format selections in `ClockConfig.friday`.
-- Crossing Friday sunset **live** (previous phase `kToFridaySunset` → `kToSaturdaySunset` while running) blinks `ClockConfig.messages.fridaySunset` for 5s via `displayManager.showInfo()`, after the Saturday-sunset countdown becomes the base view. The previous-phase check is deliberate: arriving at `kToSaturdaySunset` from `kNone` (boot, or a config save on a Friday evening) must **not** fire the message.
+- Each phase transition receives the application-owned `DisplayManager` explicitly and calls `setView()` with a `ViewState` built from `ClockConfig.friday`.
+- Crossing Friday sunset **live** (previous phase `kToFridaySunset` → `kToSaturdaySunset` while running) blinks `ClockConfig.messages.fridaySunset` for 5s via the supplied display manager, after the Saturday-sunset countdown becomes the base view. The previous-phase check is deliberate: arriving at `kToSaturdaySunset` from `kNone` must **not** fire the message.
 - Sunset targets are cached and recomputed at most once per week (when `fridayDateFor(now)` changes). `calculateSunset()` is **not** called on every tick.
 - `applySettings()` and `fridayModeResetSunsetCache()` (called after a browser time sync) invalidate the cache to force recomputation on the next tick.
 
 ### Input
 - **`button.h/cpp`**: `buttonBegin()`, `buttonTick()` (debounce), `buttonHasEvent()`, `buttonNextEvent()`.
   - `ButtonEvent` enum: `SHOW_SSID`, `SHOW_IP_ADDRESS`, `SHOW_RTC_STATUS`.
-- **`page_manager.h/cpp`**: `PageManager` singleton. `showSsid(ssid)`, `showIpAddress(ip)` - builds `DisplayPage` arrays and hands them to `displayManager.showPages()`.
+- **`page_manager.h/cpp`**: `ClockApplication` owns `PageManager` and injects its `DisplayManager` dependency. `showSsid(ssid)` and `showIpAddress(ip)` build `DisplayPage` arrays and hand them to `showPages()`.
 
 ### Geography
 - **`zipcode.h/cpp`**: `zipcodeLookupLocation(zipcode, &out, path)` - searches `/zipcodes.txt` on LittleFS; `isValidZipcode(zipcode)`.

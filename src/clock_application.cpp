@@ -73,6 +73,11 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager) {
 
 }  // namespace
 
+ClockApplication::ClockApplication()
+    : displayManager_(segmentDisplay_),
+      clockController_(displayManager_),
+      pageManager_(displayManager_) {}
+
 void ClockApplication::begin() {
   Serial.begin(74880);
   delay(500);
@@ -97,21 +102,20 @@ void ClockApplication::begin() {
 
   ClockConfig cs = configManager_.loadClockConfig();
   segmentDisplay_.begin(cs.display.brightness);
-  displayManager.attachDisplay(segmentDisplay_);
   LOG_PRINTF("Mode %u, brightness %u\n",
              (unsigned)cs.activeMode, cs.display.brightness);
 
   clockController_.applyConfig(cs);
   if (cs.messages.splash[0] != '\0') {
-    displayManager.showSplash(cs.messages.splash);
+    displayManager_.showSplash(cs.messages.splash);
   }
 
   const RtcStatus rtcStatus = rtcGetStatus();
   if (!rtcStatus.present) {
-    displayManager.showInfo(kMsgNoRtc);
+    displayManager_.showInfo(kMsgNoRtc);
     LOG_PRINTLN("RTC not found - showing no rtc");
   } else if (rtcStatus.lowBattery) {
-    displayManager.showInfo(kMsgLowBat);
+    displayManager_.showInfo(kMsgLowBat);
     LOG_PRINTLN("Low battery - showing info state");
   }
 
@@ -129,14 +133,14 @@ void ClockApplication::tick(uint32_t nowMs) {
     clockController_.onSecondBoundary(rtcGetNowCached());
     if (rtcIsLogIntervalDue()) {
       LOG_PRINTF("SQW: mode=%s view=%s\n",
-                 modeName(displayManager.activeMode()),
-                 viewName(displayManager.activeView()));
+                 modeName(displayManager_.activeMode()),
+                 viewName(displayManager_.activeView()));
     }
   }
 
   logModeOrViewTransition();
   checkRtcHealth(nowMs);
-  displayManager.tick(nowMs);
+  displayManager_.tick(nowMs);
   wifiConnectionManager.tick();
   webHandleClients();
 }
@@ -155,22 +159,22 @@ void ClockApplication::checkRtcHealth(uint32_t nowMs) {
   const bool healthy = rtcIsHealthy();
   if (!healthy) {
     if (wasHealthy) LOG_PRINTLN("RTC health lost");
-    displayManager.showInfo(kMsgNoRtc);
+    displayManager_.showInfo(kMsgNoRtc);
   } else if (!wasHealthy) {
     // A no-RTC overlay has no expiration, so clear it after recovery to reveal
     // the current base view (including any Friday-mode phase correction).
     LOG_PRINTLN("RTC health restored");
-    displayManager.clearOverlay();
+    displayManager_.clearOverlay();
   }
   wasHealthy = healthy;
 }
 
 void ClockApplication::logModeOrViewTransition() {
-  static Mode lastMode = displayManager.activeMode();
-  static View lastView = displayManager.activeView();
+  static Mode lastMode = displayManager_.activeMode();
+  static View lastView = displayManager_.activeView();
 
-  const Mode mode = displayManager.activeMode();
-  const View view = displayManager.activeView();
+  const Mode mode = displayManager_.activeMode();
+  const View view = displayManager_.activeView();
   if (mode == lastMode && view == lastView) return;
 
   LOG_PRINTF("mode/view: %s/%s -> %s/%s\n",

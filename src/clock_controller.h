@@ -4,12 +4,16 @@
 #include <RTClib.h>
 
 struct ClockConfig;
+class DisplayManager;
 
 // Coordinates application-level clock actions. Hardware and feature modules
 // remain unchanged for now; this boundary lets callers stop coordinating them
 // independently as the architecture is migrated incrementally.
 class ClockController {
  public:
+  explicit ClockController(DisplayManager& displayManager)
+      : displayManager_(displayManager) {}
+
   void applyConfig(const ClockConfig& config);
   void onSecondBoundary(const DateTime& now);
   void setTime(const DateTime& now);
@@ -17,4 +21,7 @@ class ClockController {
   void showDemo();
   void showInfo(const char* message, int32_t durationMs);
   void showSplash(const char* message);
+
+ private:
+  DisplayManager& displayManager_;
 };

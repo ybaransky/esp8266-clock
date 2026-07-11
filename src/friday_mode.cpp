@@ -21,7 +21,7 @@ class FridayModeController {
     cachedFridayDate_ = DateTime();
   }
 
-  void tick(const DateTime& now) {
+  void tick(const DateTime& now, DisplayManager& displayManager) {
     if (settings_.activeMode != kModeFriday) return;
 
     refreshSunsetCacheIfNeeded(now);
@@ -96,6 +96,6 @@ void fridayModeResetSunsetCache() {
   fridayModeController.resetSunsetCache();
 }
 
-void fridayModeTick(const DateTime& now) {
-  fridayModeController.tick(now);
+void fridayModeTick(const DateTime& now, DisplayManager& displayManager) {
+  fridayModeController.tick(now, displayManager);
 }

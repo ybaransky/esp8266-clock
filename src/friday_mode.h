@@ -3,7 +3,9 @@
 #include <RTClib.h>
 #include "config.h"
 
-// Called from clockApplySettings() whenever config changes.
+class DisplayManager;
+
+// Called by ClockController whenever the applied clock configuration changes.
 void fridayModeApplySettings(const ClockConfig& config);
 
 // Forces sunset targets to be recomputed on the next tick.
@@ -14,4 +16,4 @@ void fridayModeResetSunsetCache();
 // from the main loop. Self-gates: does nothing unless
 // activeMode == kModeFriday, and short-circuits when the phase hasn't
 // changed since the last call.
-void fridayModeTick(const DateTime& now);
+void fridayModeTick(const DateTime& now, DisplayManager& displayManager);

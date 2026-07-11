@@ -93,11 +93,11 @@ uint8_t appendIpPages(DisplayPage* pages, uint8_t pageCount, const String& ip) {
 void PageManager::showSsid(const String& ssid) {
   DisplayPage pages[kMaxDisplayPages];
   const uint8_t pageCount = appendSsidPages(pages, 0, ssid);
-  displayManager.showPages(pages, pageCount, kNetworkInfoPageMs);
+  displayManager_.showPages(pages, pageCount, kNetworkInfoPageMs);
 }
 
 void PageManager::showIpAddress(const String& ip) {
   DisplayPage pages[kMaxDisplayPages];
   const uint8_t pageCount = appendIpPages(pages, 0, ip);
-  displayManager.showPages(pages, pageCount, kNetworkInfoPageMs);
+  displayManager_.showPages(pages, pageCount, kNetworkInfoPageMs);
 }

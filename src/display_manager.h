@@ -80,7 +80,7 @@ struct OverlayState {
 
 class DisplayManager {
  public:
-  void attachDisplay(SegmentDisplay& display) { display_ = &display; }
+  explicit DisplayManager(SegmentDisplay& display) : display_(display) {}
   void begin(const ClockConfig& config);
   void applySettings(const ClockConfig& config);
   void setBrightness(uint8_t brightness);
@@ -150,7 +150,5 @@ class DisplayManager {
 
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
-  SegmentDisplay* display_ = nullptr;  // Attached during application startup.
+  SegmentDisplay& display_;
 };
-
-extern DisplayManager displayManager;

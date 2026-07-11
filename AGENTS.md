@@ -26,7 +26,7 @@ main.cpp
   │     format            – format-string tables + FormatMetadata
   │     clock_format      – plan-driven pure renderers → three 4-char buffers
   │     display           – ClockApplication-owned SegmentDisplay (TM1637 hardware)
-  │     display_manager   – DisplayManager singleton (state + transitions)
+  │     display_manager   – ClockApplication-owned DisplayManager (state + transitions)
   │     display_scheduler – blink/colon cadence + render throttling policy
   ├── friday_mode         – FridayMode controller; ticked on every real SQW second via
   │                         rtcConsumeSqwPulse(), NOT the throttled log-interval pulse
@@ -36,7 +36,7 @@ main.cpp
   │     config_validation – sanitization; owns modeName/modeFromName helpers
   ├── wifi_connection_manager – STA → AP fallback; captive DNS in AP mode
   ├── web_server          – ESP8266WebServer; HTML pages + REST API
-  │     clock_state.h     – thin shim decoupling web_server from DisplayManager
+  │     ClockController   – application actions shared by the loop and web APIs
   ├── button / page_manager – debounced input; scrolling page display
   └── zipcode / sunset_calculator – geography helpers (LittleFS lookup + math)
 ```
@@ -85,5 +85,5 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - **`setView()` vs `applySettings()`** — use `setView()` to update the base view without disturbing an active overlay (e.g. from `FridayModeController`). Use `applySettings()` only for full config reloads (it resets colon state and re-evaluates the full mode). Don't reintroduce a "previous state" snapshot to restore when an overlay clears — that pattern (the old `defaultState_`/`currentState_`/`previousState_` model) is what caused a real bug where a boot splash restored a stale pre-Friday-correction view instead of the live one. The current model has no snapshot: clearing an overlay just re-renders whatever `baseView_` currently is.
 - **`rtcGetNow()` vs `rtcGetNowCached()`** — `rtcGetNow()` is a live I2C read; `rtcGetNowCached()` is a second-resolution cache advanced by the SQW pulse in `rtcConsumeSqwPulse()`, with a live-read fallback if the pulse goes stale. `RtcClockSource` (used by `DisplayManager` for all rendering) uses the cached version — do not swap it back to `rtcGetNow()`, since tenths-of-a-second formats render every 100ms and would turn that into 10 I2C transactions/sec. Reserve `rtcGetNow()` for infrequent one-off reads.
 - **LOG macros require string literals** — `LOG_PRINTLN`/`LOG_PRINTF` keep their strings in flash (`PSTR` + `printf_P`) to hold static RAM under 50% for OTA. For a runtime string use `LOG_PRINTF("%s\n", value)`; a literal `%` in a `LOG_PRINTLN` message must be `%%` (it is pasted into the printf format).
-- **Tenths are phase-locked to the RTC second** — compute them from `rtcMsIntoSecond(nowMs)`, never `millis() % 1000` (unrelated phase). `main.cpp` calls `displayManager.notifySecondBoundary()` on each accepted SQW pulse so the first redraw of each second lands on the real boundary.
+- **Tenths are phase-locked to the RTC second** — compute them from `rtcMsIntoSecond(nowMs)`, never `millis() % 1000` (unrelated phase). `ClockController` calls the owned display manager's `notifySecondBoundary()` on each accepted SQW pulse so the first redraw of each second lands on the real boundary.
 - **`rtcConsumeSqwPulse()` vs `rtcIsLogIntervalDue()`** — `rtcConsumeSqwPulse()` fires every real RTC second; `rtcIsLogIntervalDue()` is only true on the `:00`/`:30` wall-clock second boundary (`kSqwLogIntervalSeconds` = 30) and exists only to pace the periodic log line. Anything that must react promptly to the RTC (e.g. `fridayModeTick()`) has to gate on `rtcConsumeSqwPulse()`. This was a real bug once — `fridayModeTick()` was piggybacked on the log-interval gate, so Friday-mode phase transitions (e.g. Thu→Fri midnight) lagged the real crossing by up to a minute.
