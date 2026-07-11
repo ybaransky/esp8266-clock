@@ -35,6 +35,11 @@ struct FridayConfig {
   uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
 };
 
+struct LocationConfig {
+  LocationInfo device;      // Physical clock location used by Friday mode.
+  LocationInfo sunsetTest;  // Independent Sunset Calculator test input.
+};
+
 // -- ClockConfig ---------------------------------------------------------------
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
@@ -49,8 +54,7 @@ struct ClockConfig {
   char finalMessage[64];        // Message shown when countdown reaches zero.
   char fridaySunsetMessage[64]; // Blinked for 5s when Friday mode crosses Friday sunset.
 
-  LocationInfo location;    // Physical device location.
-  LocationInfo sunsetTest;  // Sunset calculator test inputs (distinct from device location).
+  LocationConfig locations;
 
   char timezone[40];          // IANA timezone, e.g. "America/New_York".
   int16_t utcOffsetMinutes;   // Current browser offset fallback.

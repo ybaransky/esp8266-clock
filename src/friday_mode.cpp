@@ -68,8 +68,8 @@ class FridayModeController {
 
     cachedFridayDate_ = fridayDate;
     const DateTime saturdayDate(fridayDate.unixtime() + 86400UL);
-    const Location loc{settings_.location.latitude,
-                       settings_.location.longitude,
+    const Location loc{settings_.locations.device.latitude,
+                       settings_.locations.device.longitude,
                        settings_.utcOffsetMinutes};
     cachedFridaySunset_   = calculateSunset(fridayDate,   loc);
     cachedSaturdaySunset_ = calculateSunset(saturdayDate, loc);

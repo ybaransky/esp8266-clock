@@ -41,14 +41,14 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   doc["time"]["dst"]         = clock.dst;
 
   JsonObject location = doc["location"].to<JsonObject>();
-  location["zipcode"]   = String(clock.location.zipcode);
-  location["latitude"]  = clock.location.latitude;
-  location["longitude"] = clock.location.longitude;
+  location["zipcode"]   = String(clock.locations.device.zipcode);
+  location["latitude"]  = clock.locations.device.latitude;
+  location["longitude"] = clock.locations.device.longitude;
 
   JsonObject sunset = doc["sunset"].to<JsonObject>();
-  sunset["zipcode"]   = String(clock.sunsetTest.zipcode);
-  sunset["latitude"]  = clock.sunsetTest.latitude;
-  sunset["longitude"] = clock.sunsetTest.longitude;
+  sunset["zipcode"]   = String(clock.locations.sunsetTest.zipcode);
+  sunset["latitude"]  = clock.locations.sunsetTest.latitude;
+  sunset["longitude"] = clock.locations.sunsetTest.longitude;
 }
 
 void serializeWifiConfig(JsonDocument& doc, const WifiConfig& wifi) {
@@ -204,8 +204,10 @@ const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
   applyFormatFields(display, display["modes"], cfg);
   applyMessageFields(display["messages"], cfg);
 
-  const bool locationOk = applyLocationInfo(root["location"], cfg.location);
-  const bool sunsetOk   = applyLocationInfo(root["sunset"], cfg.sunsetTest);
+  const bool locationOk =
+      applyLocationInfo(root["location"], cfg.locations.device);
+  const bool sunsetOk =
+      applyLocationInfo(root["sunset"], cfg.locations.sunsetTest);
   if ((!locationOk || !sunsetOk) && error == nullptr) {
     error = "{\"error\":\"ZIP code must be 5 digits\"}";
   }

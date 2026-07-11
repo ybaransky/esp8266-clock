@@ -28,8 +28,7 @@ ClockConfig defaultClockConfig() {
     snprintf(s.splashMessage, sizeof(s.splashMessage), "%s", kDefaultSplashMessage);
     snprintf(s.finalMessage,  sizeof(s.finalMessage),  "%s", kDefaultFinalMessage);
     snprintf(s.fridaySunsetMessage, sizeof(s.fridaySunsetMessage), "%s", kDefaultFridaySunsetMessage);
-    s.location   = {};
-    s.sunsetTest = {};
+    s.locations = {};
     s.timezone[0] = '\0';
     s.utcOffsetMinutes = 0;
     s.dst = false;

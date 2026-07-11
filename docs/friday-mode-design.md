@@ -189,7 +189,7 @@ struct FridayResolvedState {
 };
 
 FridayResolvedState resolveFridayState(DateTime now, Location location) {
-  const FridayTarget target = fridayMode.targetFor(now, settings_.location);
+  const FridayTarget target = fridayMode.targetFor(now, settings_.locations.device);
 
   if (target.phase == FridayPhase::ShowClockUntilFriday) {
     return FridayResolvedState{
