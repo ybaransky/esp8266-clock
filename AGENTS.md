@@ -60,7 +60,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 
 ## 12-hour clock mode
 
-`ClockConfig.clockUse12Hour` (`display.clock12Hour` in JSON, default `false`) converts the hour to 1–12 scale in `DisplayManager::renderClock()` before passing fields to the pure renderer. Countdown and countup modes are unaffected — their `hours` field is elapsed time, not a time of day.
+`ClockConfig.display.clockUse12Hour` (`display.clock12Hour` in JSON, default `false`) converts the hour to 1–12 scale in the pure display renderer. Countdown and countup modes are unaffected — their `hours` field is elapsed time, not a time of day.
 
 ## Sunset Computation
 

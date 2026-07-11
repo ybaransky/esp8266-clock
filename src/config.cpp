@@ -128,13 +128,13 @@ ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
     const ClockConfig defaults = defaultClockConfig();
     ClockConfig clean = cfg;
     clean.activeMode   = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
-    clean.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.countdownFmt, defaults.countdownFmt);
-    clean.countupFmt   = sanitizeFormatIndex(kFmtGroupCountUp,   cfg.countupFmt,   defaults.countupFmt);
-    clean.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.clockFmt,     defaults.clockFmt);
+    clean.display.countdownFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.display.countdownFmt, defaults.display.countdownFmt);
+    clean.display.countupFmt   = sanitizeFormatIndex(kFmtGroupCountUp,   cfg.display.countupFmt,   defaults.display.countupFmt);
+    clean.display.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.display.clockFmt,     defaults.display.clockFmt);
     clean.fridayClockFmt          = sanitizeFormatIndex(kFmtGroupClock,     cfg.fridayClockFmt,          defaults.fridayClockFmt);
     clean.fridayToFridaySunsetFmt = sanitizeFormatIndex(kFmtGroupCountdown, cfg.fridayToFridaySunsetFmt, defaults.fridayToFridaySunsetFmt);
     clean.fridayToSatSunsetFmt    = sanitizeFormatIndex(kFmtGroupCountdown, cfg.fridayToSatSunsetFmt,    defaults.fridayToSatSunsetFmt);
-    clean.brightness   = sanitizeBrightness(cfg.brightness);
+    clean.display.brightness = sanitizeBrightness(cfg.display.brightness);
     clean.utcOffsetMinutes = sanitizeUtcOffsetMinutes(cfg.utcOffsetMinutes);
     sanitizeDisplayMessage(cfg.splashMessage, clean.splashMessage, sizeof(clean.splashMessage));
     sanitizeDisplayMessage(cfg.finalMessage,  clean.finalMessage,  sizeof(clean.finalMessage));

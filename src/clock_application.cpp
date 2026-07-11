@@ -96,8 +96,9 @@ void ClockApplication::begin() {
   i2cBusScanner.scan();
 
   ClockConfig cs = configManager.loadClockConfig();
-  segmentDisplay.begin(cs.brightness);
-  LOG_PRINTF("Mode %u, brightness %u\n", (unsigned)cs.activeMode, cs.brightness);
+  segmentDisplay.begin(cs.display.brightness);
+  LOG_PRINTF("Mode %u, brightness %u\n",
+             (unsigned)cs.activeMode, cs.display.brightness);
 
   clockController_.applyConfig(cs);
   if (cs.splashMessage[0] != '\0') {

@@ -48,13 +48,13 @@ void DisplayManager::applySettings(const ClockConfig& config) {
 
   updateCountupOrigin(config);
   baseView_ = viewForMode(config.activeMode);
-  segmentDisplay.setBrightness(config.brightness);
+  segmentDisplay.setBrightness(config.display.brightness);
   installView(millis());
 }
 
 void DisplayManager::setBrightness(uint8_t brightness) {
-  settings_.brightness = constrain(brightness, 0, 7);
-  segmentDisplay.setBrightness(settings_.brightness);
+  settings_.display.brightness = constrain(brightness, 0, 7);
+  segmentDisplay.setBrightness(settings_.display.brightness);
 }
 
 void DisplayManager::tick(uint32_t nowMs) {
@@ -162,16 +162,16 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
     case kModeCountup:
       state.view = View::kCountup;
       state.anchor = countupOrigin_;
-      state.formatIndex = settings_.countupFmt;
+      state.formatIndex = settings_.display.countupFmt;
       break;
     case kModeClock:
       state.view = View::kClock;
-      state.formatIndex = settings_.clockFmt;
+      state.formatIndex = settings_.display.clockFmt;
       break;
     case kModeCountdown:
       state.view = View::kCountdown;
       state.anchor = parseDateTime(settings_.countdownDatetime);
-      state.formatIndex = settings_.countdownFmt;
+      state.formatIndex = settings_.display.countdownFmt;
       break;
     case kModeFriday:
       // FridayModeController will call setView() on the next tick.
@@ -345,7 +345,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   }
 
   const DisplayFrame frame = renderClockDisplayFrame(
-      formatIndex, now, settings_.clockUse12Hour, tenths,
+      formatIndex, now, settings_.display.clockUse12Hour, tenths,
       !clockFormatBlinksColon(formatIndex) || scheduler_.colonVisible());
   segmentDisplay.showFrame(frame);
 }

@@ -9,8 +9,8 @@
 void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject display = doc["display"].to<JsonObject>();
   display["activeMode"]  = modeName(clock.activeMode);
-  display["brightness"]  = clock.brightness;
-  display["clock12Hour"] = clock.clockUse12Hour;
+  display["brightness"]  = clock.display.brightness;
+  display["clock12Hour"] = clock.display.clockUse12Hour;
 
   JsonObject messages = display["messages"].to<JsonObject>();
   messages["splash"]       = String(clock.splashMessage);
@@ -20,15 +20,15 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject modes = display["modes"].to<JsonObject>();
 
   JsonObject countdown = modes["countdown"].to<JsonObject>();
-  countdown["format"] = clock.countdownFmt;
+  countdown["format"] = clock.display.countdownFmt;
   countdown["end"]    = String(clock.countdownDatetime);
 
   JsonObject countup = modes["countup"].to<JsonObject>();
-  countup["format"] = clock.countupFmt;
+  countup["format"] = clock.display.countupFmt;
   countup["start"]  = String(clock.countupDatetime);
 
   JsonObject clockMode = modes["clock"].to<JsonObject>();
-  clockMode["format"] = clock.clockFmt;
+  clockMode["format"] = clock.display.clockFmt;
 
   JsonObject friday = modes["friday"].to<JsonObject>();
   friday["clockFormat"]            = clock.fridayClockFmt;
@@ -89,16 +89,16 @@ bool applyZipcode(const char* zipcode, char* destination, size_t destinationSize
 
 void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& cfg) {
   if (!modes["countdown"]["format"].isNull()) {
-    cfg.countdownFmt = sanitizeFormatIndex(
-        kFmtGroupCountdown, modes["countdown"]["format"].as<int>(), cfg.countdownFmt);
+    cfg.display.countdownFmt = sanitizeFormatIndex(
+        kFmtGroupCountdown, modes["countdown"]["format"].as<int>(), cfg.display.countdownFmt);
   }
   if (!modes["countup"]["format"].isNull()) {
-    cfg.countupFmt = sanitizeFormatIndex(
-        kFmtGroupCountUp, modes["countup"]["format"].as<int>(), cfg.countupFmt);
+    cfg.display.countupFmt = sanitizeFormatIndex(
+        kFmtGroupCountUp, modes["countup"]["format"].as<int>(), cfg.display.countupFmt);
   }
   if (!modes["clock"]["format"].isNull()) {
-    cfg.clockFmt = sanitizeFormatIndex(
-        kFmtGroupClock, modes["clock"]["format"].as<int>(), cfg.clockFmt);
+    cfg.display.clockFmt = sanitizeFormatIndex(
+        kFmtGroupClock, modes["clock"]["format"].as<int>(), cfg.display.clockFmt);
   }
   if (!modes["friday"]["clockFormat"].isNull()) {
     cfg.fridayClockFmt = sanitizeFormatIndex(
@@ -117,10 +117,10 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
         cfg.fridayToSatSunsetFmt);
   }
   if (!display["brightness"].isNull()) {
-    cfg.brightness = sanitizeBrightness(display["brightness"].as<int>());
+    cfg.display.brightness = sanitizeBrightness(display["brightness"].as<int>());
   }
   if (!display["clock12Hour"].isNull()) {
-    cfg.clockUse12Hour = display["clock12Hour"].as<bool>();
+    cfg.display.clockUse12Hour = display["clock12Hour"].as<bool>();
   }
   if (!modes["countdown"]["end"].isNull()) {
     snprintf(cfg.countdownDatetime, sizeof(cfg.countdownDatetime), "%s",

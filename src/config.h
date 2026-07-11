@@ -21,15 +21,18 @@ struct LocationInfo {
   char  zipcode[6] = {};
 };
 
+struct DisplayConfig {
+  uint8_t countdownFmt;
+  uint8_t countupFmt;
+  uint8_t clockFmt;
+  uint8_t brightness;
+  bool clockUse12Hour;
+};
+
 // -- ClockConfig ---------------------------------------------------------------
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
   Mode activeMode;  // Persistent mode restored after any temporary overlay.
-
-  uint8_t countdownFmt;  // index into kCountdownFormats
-  uint8_t countupFmt;    // index into kCountupFormats
-  uint8_t clockFmt;      // index into kClockFormats
-  uint8_t brightness;    // TM1637 brightness 0-7
 
   uint8_t fridayClockFmt;          // kFmtGroupClock index for clock phase (Sun midnight – Fri midnight)
   uint8_t fridayToFridaySunsetFmt; // kFmtGroupCountdown index for Fri midnight – Fri sunset
@@ -48,7 +51,7 @@ struct ClockConfig {
   char timezone[40];          // IANA timezone, e.g. "America/New_York".
   int16_t utcOffsetMinutes;   // Current browser offset fallback.
   bool dst;                    // True when daylight saving time is active.
-  bool clockUse12Hour;         // True for 12-hour display (1–12); false for 24-hour (0–23).
+  DisplayConfig display;
 };
 
 // -- ConfigManager -------------------------------------------------------------

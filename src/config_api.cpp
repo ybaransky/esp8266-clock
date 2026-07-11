@@ -359,7 +359,7 @@ void ConfigApi::populateConfigJson(JsonDocument& doc) {
   const WifiConfig  wifiConfig  = configManager.loadWifiConfig();
   LOG_PRINTF("/api/config response: mode=%s brightness=%u staSsid=\"%s\"\n",
              modeName(clockConfig.activeMode),
-             clockConfig.brightness,
+             clockConfig.display.brightness,
              wifiConfig.staSsid.c_str());
 
   serializeClockConfig(doc, clockConfig);

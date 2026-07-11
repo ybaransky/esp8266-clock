@@ -122,7 +122,7 @@ The display system has four layers:
    - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday is the only mode whose view changes over time.
    - Clock colon blink toggles once per second (2-second full cycle); message/page blinking uses its own 500ms cadence. Tenths formats refresh at 100ms, others at 1s (`formatHasTenths` drives this).
    - Tenths values come from `rtcMsIntoSecond(nowMs)` (phase-locked to the SQW edge), not `millis() % 1000`. `notifySecondBoundary()` - called from `main.cpp` on every accepted SQW pulse - invalidates the render throttle so each second's first redraw lands on the real boundary (this also keeps whole-second formats from lagging the boundary by up to their 1s interval). The demo overlay's tenths are deadline-derived and stay that way.
-   - When `ClockConfig.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in `renderClock()` only; countdown/countup are unaffected.
+   - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
 
 4. **`clock_state.h`** - exactly one function: `clockApplySettings(cfg)`, which fans a new config out to `displayManager` **and** `fridayMode` (defined in `display_manager.cpp`). For single display actions (demo, brightness, splash, info), call `displayManager` directly - do not add wrapper functions.
 
@@ -150,8 +150,8 @@ The display system has four layers:
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
 ### Storage / config
-- `ClockConfig` (in `config.h`) holds: `activeMode`, format indices (`countdownFmt`, `countupFmt`, `clockFmt`), friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`), `countdownDatetime[20]`, `countupDatetime[20]` (`"now"` allowed), `splashMessage[64]`, `finalMessage[64]`, `fridaySunsetMessage[64]` (blinked at the live Friday-sunset crossing), `brightness`, `location` (`LocationInfo`), `sunsetTest` (`LocationInfo`), `timezone[40]`, `utcOffsetMinutes`, `dst`, `clockUse12Hour`.
-- `clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
+- `ClockConfig` (in `config.h`) holds: `activeMode`; `display` (`DisplayConfig`) with the clock/counting format indices, brightness, and 12-hour setting; friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`); `countdownDatetime[20]`; `countupDatetime[20]` (`"now"` allowed); messages; locations; and timezone fields.
+- `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
 - The three display messages serialize under `display.messages` as `splash` / `final` / `fridaySunset`; all are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII chars, split across the three 4-char panel rows). Defaults live in `defaults.cpp` (`fridaySunsetMessage` defaults to `"     SUN SET"`).
 - `LocationInfo` struct (in `config.h`): `latitude`, `longitude`, `zipcode[6]`. Used for both `location` (physical device location) and `sunsetTest` (Sunset Calculator test inputs). `/config.json` has separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.
 - `WifiConfig` holds: `staSsid`, `staPassword`, `apSsid`, `apPassword`.
