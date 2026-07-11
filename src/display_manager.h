@@ -34,6 +34,7 @@ const char* viewName(View view);
 // next. There is no separate snapshot of "the view before the overlay" to
 // keep in sync or let go stale.
 enum class Overlay : uint8_t {
+  kNone,
   kDemo,  // Countdown driven by a transition deadline rather than a DateTime end time.
   kMessage,
   kPagedMessage,
@@ -66,7 +67,7 @@ struct OverlayTransition {
 };
 
 struct OverlayState {
-  Overlay overlay = Overlay::kMessage;
+  Overlay overlay = Overlay::kNone;
   bool blink = false;             // True when output alternates blank/on.
   bool chainFinalMessage = false; // On expiry, show the final message instead
                                   // of the base view (demo's second phase).
@@ -130,6 +131,7 @@ class DisplayManager {
   uint32_t refreshInterval() const;
   bool renderElapsed(uint32_t nowMs, bool force = false);
   bool overlayExpired(uint32_t nowMs) const;
+  bool hasOverlay() const { return overlay_.overlay != Overlay::kNone; }
 
   void render(uint32_t nowMs, bool force = false);
   void renderClock(uint32_t nowMs, bool force);
@@ -141,8 +143,7 @@ class DisplayManager {
 
   ClockConfig settings_ = defaultClockConfig();  // Persisted display settings currently applied.
   ViewState baseView_;                           // What to show when no overlay is active.
-  bool hasOverlay_ = false;                      // True while overlay_ is what's actually on screen.
-  OverlayState overlay_;                         // Only meaningful while hasOverlay_ is true.
+  OverlayState overlay_;                         // kNone unless an overlay is active.
 
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.

@@ -58,7 +58,7 @@ void DisplayManager::setBrightness(uint8_t brightness) {
 }
 
 void DisplayManager::tick(uint32_t nowMs) {
-  if (hasOverlay_ && overlayExpired(nowMs)) {
+  if (hasOverlay() && overlayExpired(nowMs)) {
     finishOverlay(nowMs);
   }
 
@@ -145,14 +145,14 @@ void DisplayManager::showPages(const DisplayPage* pages,
 }
 
 void DisplayManager::clearOverlay() {
-  if (hasOverlay_ &&
+  if (hasOverlay() &&
       (overlay_.overlay == Overlay::kMessage || overlay_.overlay == Overlay::kPagedMessage)) {
     finishOverlay(millis());
   }
 }
 
 const char* DisplayManager::renderedName() const {
-  return hasOverlay_ ? overlayName(overlay_.overlay) : viewName(baseView_.view);
+  return hasOverlay() ? overlayName(overlay_.overlay) : viewName(baseView_.view);
 }
 
 ViewState DisplayManager::viewForMode(Mode mode) const {
@@ -187,7 +187,7 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
 void DisplayManager::setView(const ViewState& state) {
   const char* oldName = renderedName();
   baseView_ = state;
-  if (hasOverlay_) {
+  if (hasOverlay()) {
     // Becomes visible once the active overlay clears - there's no separate
     // snapshot to keep in sync, since renderedName()/render() always read
     // baseView_ live at that point.
@@ -211,6 +211,7 @@ const char* viewName(View view) {
 
 const char* overlayName(Overlay overlay) {
   switch (overlay) {
+    case Overlay::kNone:         return "none";
     case Overlay::kDemo:         return "demo";
     case Overlay::kMessage:      return "message";
     case Overlay::kPagedMessage: return "pages";
@@ -225,7 +226,6 @@ void DisplayManager::logTransition(const char* from, const char* to, const char*
 void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
   const char* oldName = renderedName();
   overlay_ = state;
-  hasOverlay_ = true;
   scheduler_.invalidateRender();
   scheduler_.resetBlink(nowMs);
   logTransition(oldName, overlayName(overlay_.overlay), "overlay");
@@ -233,7 +233,7 @@ void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
 
 void DisplayManager::installView(uint32_t nowMs, bool forceRender) {
   const char* oldName = renderedName();
-  hasOverlay_ = false;
+  overlay_.overlay = Overlay::kNone;
   scheduler_.invalidateRender();
   scheduler_.resetBlink(nowMs);
   logTransition(oldName, viewName(baseView_.view), "view install");
@@ -253,7 +253,7 @@ void DisplayManager::finishOverlay(uint32_t nowMs) {
 
 void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
   const char* oldName = renderedName();
-  hasOverlay_ = false;
+  overlay_.overlay = Overlay::kNone;
   scheduler_.invalidateRender();
   logTransition(oldName, viewName(baseView_.view), "overlay cleared");
   render(nowMs, true);
@@ -277,8 +277,10 @@ void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
 }
 
 uint32_t DisplayManager::refreshInterval() const {
-  if (hasOverlay_) {
+  if (hasOverlay()) {
     switch (overlay_.overlay) {
+      case Overlay::kNone:
+        break;
       case Overlay::kDemo:
         return kTenthMs;
       case Overlay::kMessage:
@@ -310,8 +312,9 @@ bool DisplayManager::overlayExpired(uint32_t nowMs) const {
 }
 
 void DisplayManager::render(uint32_t nowMs, bool force) {
-  if (hasOverlay_) {
+  if (hasOverlay()) {
     switch (overlay_.overlay) {
+      case Overlay::kNone:         break;
       case Overlay::kDemo:         renderDemo(nowMs, force);         break;
       case Overlay::kMessage:      renderMessage(nowMs, force);      break;
       case Overlay::kPagedMessage: renderPagedMessage(nowMs, force); break;
