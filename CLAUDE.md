@@ -106,7 +106,7 @@ The display system has four layers:
    - `hhh:mm` combined on one row only works through 99:59; above 99 hours rendering auto-falls back to a compatible split `hhh | mm` variant via `resolveCountingOverflowIndex()` (semantic, based on row ops - no hardcoded indices).
    - Numeric-only rows are right-justified across the 4-character panel (`7` renders as `"   7"`). For colon formats, the value left of the colon is blank-padded, not zero-padded (` 9:05`). When a blinking colon is off, the time renders without a separator (` 905`) so all digits remain visible.
 
-2. **`display.h/cpp`** - `SegmentDisplay` singleton wrapping 3 `TM1637Display` objects.
+2. **`display.h/cpp`** - `ClockApplication` owns `SegmentDisplay`, which wraps 3 `TM1637Display` objects and is attached to `DisplayManager` during startup.
    - `begin(brightness)`, `setBrightness(0-7)`, `showPanels(r1, r2, r3)`, `blank()`.
    - Panel strings are 4 chars; `:` or `;` between positions 1-2 lights the colon; `.` lights the decimal on the preceding digit.
    - Caches last-written segments per panel; skips hardware write on identical content.

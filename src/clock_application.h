@@ -4,6 +4,7 @@
 
 #include "clock_controller.h"
 #include "config.h"
+#include "display.h"
 #include "page_manager.h"
 
 class ClockApplication {
@@ -18,5 +19,6 @@ class ClockApplication {
 
   ClockController clockController_;
   ConfigManager configManager_;
+  SegmentDisplay segmentDisplay_;
   PageManager pageManager_;
 };

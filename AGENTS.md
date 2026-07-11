@@ -25,7 +25,7 @@ main.cpp
   ├── display (4 layers)
   │     format            – format-string tables + FormatMetadata
   │     clock_format      – plan-driven pure renderers → three 4-char buffers
-  │     display           – SegmentDisplay singleton (TM1637 hardware)
+  │     display           – ClockApplication-owned SegmentDisplay (TM1637 hardware)
   │     display_manager   – DisplayManager singleton (state + transitions)
   │     display_scheduler – blink/colon cadence + render throttling policy
   ├── friday_mode         – FridayMode controller; ticked on every real SQW second via

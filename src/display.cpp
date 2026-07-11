@@ -219,5 +219,3 @@ void SegmentDisplay::blank() {
     cacheValid_[panel] = true;
   }
 }
-
-SegmentDisplay segmentDisplay;

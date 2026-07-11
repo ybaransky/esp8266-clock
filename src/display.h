@@ -20,5 +20,3 @@ private:
   uint8_t lastSegments_[3][4] = {};  // Last segment bytes written per panel.
   bool cacheValid_[3] = {};          // True once lastSegments_ is initialized.
 };
-
-extern SegmentDisplay segmentDisplay;

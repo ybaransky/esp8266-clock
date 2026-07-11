@@ -7,6 +7,8 @@
 #include "defaults.h"
 #include "display_scheduler.h"
 
+class SegmentDisplay;
+
 // What content is currently the "normal" thing to render - i.e. what the
 // active Mode resolves to right now. For Countdown/Countup/Clock modes this
 // never changes on its own. Friday mode is the one case where it varies
@@ -78,6 +80,7 @@ struct OverlayState {
 
 class DisplayManager {
  public:
+  void attachDisplay(SegmentDisplay& display) { display_ = &display; }
   void begin(const ClockConfig& config);
   void applySettings(const ClockConfig& config);
   void setBrightness(uint8_t brightness);
@@ -147,6 +150,7 @@ class DisplayManager {
 
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
+  SegmentDisplay* display_ = nullptr;  // Attached during application startup.
 };
 
 extern DisplayManager displayManager;
