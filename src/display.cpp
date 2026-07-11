@@ -177,12 +177,10 @@ void SegmentDisplay::setBrightness(uint8_t level) {
   }
 }
 
-void SegmentDisplay::showPanels(const char *r1, const char *r2, const char *r3) {
-  const char *panels[PANEL_COUNT] = {r1, r2, r3};
-
+void SegmentDisplay::showFrame(const DisplayFrame& frame) {
   for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
     uint8_t segments[PANEL_WIDTH];
-    renderPanelSegments(panels[panel], segments);
+    renderPanelSegments(frame.rows[panel], segments);
 
     if (!cacheValid_[panel]) {
       displays[panel].setSegments(segments);

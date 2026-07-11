@@ -52,17 +52,17 @@ void copyMessage(char destination[64], const char* source) {
   destination[63] = '\0';
 }
 
-void messageToBuffers(const char* msg, char r1[8], char r2[8], char r3[8]) {
+void messageToFrame(const char* msg, DisplayFrame& frame) {
   const int len = strlen(msg);
-  snprintf(r1, 8, "%-4.4s", len > 0 ? msg : "    ");
-  snprintf(r2, 8, "%-4.4s", len > 4 ? msg + 4 : "    ");
-  snprintf(r3, 8, "%-4.4s", len > 8 ? msg + 8 : "    ");
+  snprintf(frame.rows[0], kDisplayFrameRowSize, "%-4.4s", len > 0 ? msg : "    ");
+  snprintf(frame.rows[1], kDisplayFrameRowSize, "%-4.4s", len > 4 ? msg + 4 : "    ");
+  snprintf(frame.rows[2], kDisplayFrameRowSize, "%-4.4s", len > 8 ? msg + 8 : "    ");
 }
 
-void blankBuffers(char r1[8], char r2[8], char r3[8]) {
-  snprintf(r1, 8, "    ");
-  snprintf(r2, 8, "    ");
-  snprintf(r3, 8, "    ");
+void blankFrame(DisplayFrame& frame) {
+  for (size_t row = 0; row < kDisplayPanelCount; ++row) {
+    snprintf(frame.rows[row], kDisplayFrameRowSize, "    ");
+  }
 }
 
 void copyDisplayRow(char destination[kDisplayRowChars + 1], const char* source) {
@@ -381,10 +381,10 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
     fields.tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
   }
 
-  char r1[8], r2[8], r3[8];
-  ::renderClock(formatIndex, fields, r1, r2, r3,
+  DisplayFrame frame;
+  ::renderClock(formatIndex, fields, frame.rows[0], frame.rows[1], frame.rows[2],
                 !clockFormatBlinksColon(formatIndex) || scheduler_.colonVisible());
-  segmentDisplay.showPanels(r1, r2, r3);
+  segmentDisplay.showFrame(frame);
 }
 
 void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
@@ -411,9 +411,10 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
     fields.tenths = (secs > 0) ? (10 - rtcMsIntoSecond(nowMs) / kTenthMs) % 10 : 0;
   }
 
-  char r1[8], r2[8], r3[8];
-  ::renderCountdown(formatIndex, fields, r1, r2, r3);
-  segmentDisplay.showPanels(r1, r2, r3);
+  DisplayFrame frame;
+  ::renderCountdown(formatIndex, fields,
+                    frame.rows[0], frame.rows[1], frame.rows[2]);
+  segmentDisplay.showFrame(frame);
 }
 
 void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
@@ -429,9 +430,10 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
     fields.tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
   }
 
-  char r1[8], r2[8], r3[8];
-  ::renderCountup(formatIndex, fields, r1, r2, r3);
-  segmentDisplay.showPanels(r1, r2, r3);
+  DisplayFrame frame;
+  ::renderCountup(formatIndex, fields,
+                  frame.rows[0], frame.rows[1], frame.rows[2]);
+  segmentDisplay.showFrame(frame);
 }
 
 void DisplayManager::renderDemo(uint32_t nowMs, bool force) {
@@ -440,9 +442,10 @@ void DisplayManager::renderDemo(uint32_t nowMs, bool force) {
   const uint32_t remaining = overlay_.transition.expiresAtMs - nowMs;
   const uint8_t whole  = static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
   const uint8_t tenths = static_cast<uint8_t>(min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
-  char r3[8];
-  snprintf(r3, sizeof(r3), "%2u.%u", whole, tenths);
-  segmentDisplay.showPanels("    ", "    ", r3);
+  DisplayFrame frame;
+  blankFrame(frame);
+  snprintf(frame.rows[2], kDisplayFrameRowSize, "%2u.%u", whole, tenths);
+  segmentDisplay.showFrame(frame);
 }
 
 void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
@@ -452,13 +455,13 @@ void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
 
   if (!renderElapsed(nowMs, force)) return;
 
-  char r1[8], r2[8], r3[8];
+  DisplayFrame frame;
   if (overlay_.blink && !scheduler_.blinkOn()) {
-    blankBuffers(r1, r2, r3);
+    blankFrame(frame);
   } else {
-    messageToBuffers(overlay_.message, r1, r2, r3);
+    messageToFrame(overlay_.message, frame);
   }
-  segmentDisplay.showPanels(r1, r2, r3);
+  segmentDisplay.showFrame(frame);
 }
 
 void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
@@ -493,9 +496,12 @@ void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
   }
 
   const DisplayPage& page = paged.pages[paged.currentPage];
-  segmentDisplay.showPanels(scheduler_.blinkOn() ? page.rows[0] : "    ",
-                            page.rows[1],
-                            page.rows[2]);
+  DisplayFrame frame;
+  snprintf(frame.rows[0], kDisplayFrameRowSize, "%s",
+           scheduler_.blinkOn() ? page.rows[0] : "    ");
+  snprintf(frame.rows[1], kDisplayFrameRowSize, "%s", page.rows[1]);
+  snprintf(frame.rows[2], kDisplayFrameRowSize, "%s", page.rows[2]);
+  segmentDisplay.showFrame(frame);
 }
 
 DisplayManager displayManager;
