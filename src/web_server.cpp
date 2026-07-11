@@ -11,6 +11,7 @@
 #include "html.h"
 #include "http_responder.h"
 #include "log.h"
+#include "location_api.h"
 #include "page_api.h"
 #include "time_api.h"
 #include "wifi_api.h"
@@ -30,6 +31,7 @@ class WebPortal {
         configApi_(server_, responder_, clockController, configManager),
         timeApi_(server_, responder_, clockController, rtc),
         fileApi_(server_, responder_),
+        locationApi_(server_, responder_),
         wifiApi_(server_, responder_, configManager, wifiConnectionManager),
         wifiConnectionManager_(wifiConnectionManager) {}
 
@@ -66,7 +68,7 @@ class WebPortal {
     server_.on("/api/config", HTTP_POST, []() { activePortal->configApi_.handleSaveConfig(); });
     server_.on("/api/sunset", HTTP_POST, []() { activePortal->configApi_.handleSunset(); });
     server_.on("/api/zipcode/lookup", HTTP_GET,
-               []() { activePortal->configApi_.handleZipcodeLookup(); });
+               []() { activePortal->locationApi_.handleZipcodeLookup(); });
     server_.on("/api/field-mismatch", HTTP_POST,
                []() { activePortal->configApi_.handleFieldMismatch(); });
 
@@ -132,6 +134,7 @@ class WebPortal {
   ConfigApi configApi_;            // Display/configuration API endpoints.
   TimeApi timeApi_;                // RTC read and synchronization endpoints.
   FileApi fileApi_;                // LittleFS file-management endpoints.
+  LocationApi locationApi_;        // Location and ZIP-code endpoints.
   WifiApi wifiApi_;                // WiFi status/scan/connect endpoints.
   WifiConnectionManager& wifiConnectionManager_;
   DNSServer dnsServer_;            // Captive portal DNS responder.

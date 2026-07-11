@@ -29,7 +29,6 @@ class ConfigApi {
   void handleGetConfig();
   void handleSaveConfig();
   void handleSunset();
-  void handleZipcodeLookup();
   void handleFieldMismatch();
 
  private:

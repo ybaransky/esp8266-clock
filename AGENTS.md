@@ -33,6 +33,7 @@ main.cpp
   ├── config              – ClockApplication-owned ConfigManager (/config.json on LittleFS)
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
   │     time_api          – RTC read and browser-time synchronization endpoints
+  │     location_api      – ZIP lookup and sunset-calculator endpoints
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
   ├── wifi_connection_manager – ClockApplication-owned STA → AP fallback service
