@@ -25,9 +25,10 @@ ClockConfig defaultClockConfig() {
     s.display.brightness = 3;
     snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "%s", kDefaultCountdownDatetime);
     snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "%s", kDefaultCountupDatetime);
-    snprintf(s.splashMessage, sizeof(s.splashMessage), "%s", kDefaultSplashMessage);
-    snprintf(s.finalMessage,  sizeof(s.finalMessage),  "%s", kDefaultFinalMessage);
-    snprintf(s.fridaySunsetMessage, sizeof(s.fridaySunsetMessage), "%s", kDefaultFridaySunsetMessage);
+    snprintf(s.messages.splash, sizeof(s.messages.splash), "%s", kDefaultSplashMessage);
+    snprintf(s.messages.final, sizeof(s.messages.final), "%s", kDefaultFinalMessage);
+    snprintf(s.messages.fridaySunset, sizeof(s.messages.fridaySunset),
+             "%s", kDefaultFridaySunsetMessage);
     s.locations = {};
     s.timezone[0] = '\0';
     s.utcOffsetMinutes = 0;

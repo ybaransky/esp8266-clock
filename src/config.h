@@ -40,6 +40,12 @@ struct LocationConfig {
   LocationInfo sunsetTest;  // Independent Sunset Calculator test input.
 };
 
+struct MessageConfig {
+  char splash[64];        // Startup message shown on the displays.
+  char final[64];         // Message shown when countdown reaches zero.
+  char fridaySunset[64];  // Blinked when Friday sunset is crossed live.
+};
+
 // -- ClockConfig ---------------------------------------------------------------
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
@@ -50,9 +56,7 @@ struct ClockConfig {
   char countdownDatetime[20]; // "YYYY-MM-DD HH:MM:SS"
   char countupDatetime[20];   // "YYYY-MM-DD HH:MM:SS" or "now"
 
-  char splashMessage[64];       // Startup message shown on the displays.
-  char finalMessage[64];        // Message shown when countdown reaches zero.
-  char fridaySunsetMessage[64]; // Blinked for 5s when Friday mode crosses Friday sunset.
+  MessageConfig messages;
 
   LocationConfig locations;
 

@@ -101,8 +101,8 @@ void ClockApplication::begin() {
              (unsigned)cs.activeMode, cs.display.brightness);
 
   clockController_.applyConfig(cs);
-  if (cs.splashMessage[0] != '\0') {
-    displayManager.showSplash(cs.splashMessage);
+  if (cs.messages.splash[0] != '\0') {
+    displayManager.showSplash(cs.messages.splash);
   }
 
   const RtcStatus rtcStatus = rtcGetStatus();

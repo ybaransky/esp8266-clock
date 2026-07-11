@@ -44,7 +44,7 @@ class FridayModeController {
     if (crossedFridaySunset) {
       // The Saturday-sunset countdown is already the base view, so it is
       // revealed when this overlay expires.
-      displayManager.showInfo(settings_.fridaySunsetMessage, kSunsetMessageMs);
+      displayManager.showInfo(settings_.messages.fridaySunset, kSunsetMessageMs);
     }
   }
 

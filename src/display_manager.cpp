@@ -263,7 +263,7 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
   OverlayState state;
   state.overlay = Overlay::kMessage;
   state.blink = true;
-  copyMessage(state.message, settings_.finalMessage);
+  copyMessage(state.message, settings_.messages.final);
   state.transition = {true, nowMs + kDemoMessageMs};
 
   installOverlay(state, nowMs);
@@ -361,7 +361,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   if (secs <= 0) {
     OverlayState state;
     state.overlay = Overlay::kMessage;
-    copyMessage(state.message, settings_.finalMessage);
+    copyMessage(state.message, settings_.messages.final);
     // No expiration set: the countdown has finished, so this stays up until
     // the next mode/config change installs a new view.
     installOverlay(state, nowMs);

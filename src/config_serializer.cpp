@@ -13,9 +13,9 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   display["clock12Hour"] = clock.display.clockUse12Hour;
 
   JsonObject messages = display["messages"].to<JsonObject>();
-  messages["splash"]       = String(clock.splashMessage);
-  messages["final"]        = String(clock.finalMessage);
-  messages["fridaySunset"] = String(clock.fridaySunsetMessage);
+  messages["splash"]       = String(clock.messages.splash);
+  messages["final"]        = String(clock.messages.final);
+  messages["fridaySunset"] = String(clock.messages.fridaySunset);
 
   JsonObject modes = display["modes"].to<JsonObject>();
 
@@ -135,18 +135,18 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
 void applyMessageFields(JsonVariantConst messages, ClockConfig& cfg) {
   if (!messages["splash"].isNull()) {
     sanitizeDisplayMessage(messages["splash"].as<const char*>(),
-                           cfg.splashMessage,
-                           sizeof(cfg.splashMessage));
+                           cfg.messages.splash,
+                           sizeof(cfg.messages.splash));
   }
   if (!messages["final"].isNull()) {
     sanitizeDisplayMessage(messages["final"].as<const char*>(),
-                           cfg.finalMessage,
-                           sizeof(cfg.finalMessage));
+                           cfg.messages.final,
+                           sizeof(cfg.messages.final));
   }
   if (!messages["fridaySunset"].isNull()) {
     sanitizeDisplayMessage(messages["fridaySunset"].as<const char*>(),
-                           cfg.fridaySunsetMessage,
-                           sizeof(cfg.fridaySunsetMessage));
+                           cfg.messages.fridaySunset,
+                           sizeof(cfg.messages.fridaySunset));
   }
 }
 

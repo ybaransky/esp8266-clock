@@ -56,7 +56,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 | `kModeCountdown` | countdown | Counts down to a configured end datetime |
 | `kModeCountup`   | countup   | Counts up from a configured start datetime |
 | `kModeClock`     | clock     | Displays current time (24h or 12h per `clockUse12Hour`) |
-| `kModeFriday`    | friday    | Clock phase (Sun-Thu) → Fri midnight → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `fridaySunsetMessage` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. |
+| `kModeFriday`    | friday    | Clock phase (Sun-Thu) → Fri midnight → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `messages.fridaySunset` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. |
 
 ## 12-hour clock mode
 

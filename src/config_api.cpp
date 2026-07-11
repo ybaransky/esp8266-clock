@@ -91,8 +91,8 @@ void ConfigApi::handleDemoTest() {
     if (!finalMessage.isNull()) {
       ClockConfig cfg = configManager.loadClockConfig();
       sanitizeDisplayMessage(finalMessage.as<const char*>(),
-                             cfg.finalMessage,
-                             sizeof(cfg.finalMessage));
+                             cfg.messages.final,
+                             sizeof(cfg.messages.final));
       clockController_.applyConfig(cfg);
     }
   }

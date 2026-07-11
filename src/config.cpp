@@ -141,9 +141,10 @@ ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
         defaults.friday.toSaturdaySunsetFmt);
     clean.display.brightness = sanitizeBrightness(cfg.display.brightness);
     clean.utcOffsetMinutes = sanitizeUtcOffsetMinutes(cfg.utcOffsetMinutes);
-    sanitizeDisplayMessage(cfg.splashMessage, clean.splashMessage, sizeof(clean.splashMessage));
-    sanitizeDisplayMessage(cfg.finalMessage,  clean.finalMessage,  sizeof(clean.finalMessage));
-    sanitizeDisplayMessage(cfg.fridaySunsetMessage, clean.fridaySunsetMessage, sizeof(clean.fridaySunsetMessage));
+    sanitizeDisplayMessage(cfg.messages.splash, clean.messages.splash, sizeof(clean.messages.splash));
+    sanitizeDisplayMessage(cfg.messages.final, clean.messages.final, sizeof(clean.messages.final));
+    sanitizeDisplayMessage(cfg.messages.fridaySunset, clean.messages.fridaySunset,
+                           sizeof(clean.messages.fridaySunset));
     sanitizePrintableText(cfg.timezone, clean.timezone, sizeof(clean.timezone));
     return clean;
 }
