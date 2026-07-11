@@ -1,8 +1,8 @@
 #include "display_manager.h"
 
-#include "clock_format.h"
 #include "clock_state.h"
 #include "display.h"
+#include "display_renderer.h"
 #include "friday_mode.h"
 #include "log.h"
 #include "rtc_ds3231.h"
@@ -23,46 +23,9 @@ DateTime parseDateTime(const char* s) {
   return DateTime(y, mo, d, h, mi, sec);
 }
 
-TimeFields deltaToFields(long totalSecs) {
-  if (totalSecs < 0) totalSecs = 0;
-  TimeFields fields = {};
-  fields.days = totalSecs / 86400;
-  totalSecs %= 86400;
-  fields.hours = totalSecs / 3600;
-  totalSecs %= 3600;
-  fields.minutes = totalSecs / 60;
-  fields.seconds = totalSecs % 60;
-  return fields;
-}
-
-TimeFields rtcToFields(const DateTime& dt) {
-  TimeFields fields = {};
-  fields.year = dt.year();
-  fields.month = dt.month();
-  fields.dayOfMonth = dt.day();
-  fields.dayOfWeek = dt.dayOfTheWeek();
-  fields.hours = dt.hour();
-  fields.minutes = dt.minute();
-  fields.seconds = dt.second();
-  return fields;
-}
-
 void copyMessage(char destination[64], const char* source) {
   strncpy(destination, source, 63);
   destination[63] = '\0';
-}
-
-void messageToFrame(const char* msg, DisplayFrame& frame) {
-  const int len = strlen(msg);
-  snprintf(frame.rows[0], kDisplayFrameRowSize, "%-4.4s", len > 0 ? msg : "    ");
-  snprintf(frame.rows[1], kDisplayFrameRowSize, "%-4.4s", len > 4 ? msg + 4 : "    ");
-  snprintf(frame.rows[2], kDisplayFrameRowSize, "%-4.4s", len > 8 ? msg + 8 : "    ");
-}
-
-void blankFrame(DisplayFrame& frame) {
-  for (size_t row = 0; row < kDisplayPanelCount; ++row) {
-    snprintf(frame.rows[row], kDisplayFrameRowSize, "    ");
-  }
 }
 
 void copyDisplayRow(char destination[kDisplayRowChars + 1], const char* source) {
@@ -372,18 +335,15 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
 
   // Cached read: this runs up to 10x/sec for tenths formats, and the RTC's
   // registers only change once a second anyway.
-  TimeFields fields = rtcToFields(rtcGetNowCached());
-  if (settings_.clockUse12Hour) {
-    fields.hours = fields.hours % 12;
-    if (fields.hours == 0) fields.hours = 12;
-  }
+  const DateTime now = rtcGetNowCached();
+  uint8_t tenths = 0;
   if (formatHasTenths(kFmtGroupClock, formatIndex)) {
-    fields.tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
+    tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
   }
 
-  DisplayFrame frame;
-  ::renderClock(formatIndex, fields, frame.rows[0], frame.rows[1], frame.rows[2],
-                !clockFormatBlinksColon(formatIndex) || scheduler_.colonVisible());
+  const DisplayFrame frame = renderClockDisplayFrame(
+      formatIndex, now, settings_.clockUse12Hour, tenths,
+      !clockFormatBlinksColon(formatIndex) || scheduler_.colonVisible());
   segmentDisplay.showFrame(frame);
 }
 
@@ -406,14 +366,13 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
     return;
   }
 
-  TimeFields fields = deltaToFields(secs);
+  uint8_t tenths = 0;
   if (formatHasTenths(kFmtGroupCountdown, formatIndex)) {
-    fields.tenths = (secs > 0) ? (10 - rtcMsIntoSecond(nowMs) / kTenthMs) % 10 : 0;
+    tenths = (secs > 0) ? (10 - rtcMsIntoSecond(nowMs) / kTenthMs) % 10 : 0;
   }
 
-  DisplayFrame frame;
-  ::renderCountdown(formatIndex, fields,
-                    frame.rows[0], frame.rows[1], frame.rows[2]);
+  const DisplayFrame frame =
+      renderCountdownDisplayFrame(formatIndex, secs, tenths);
   segmentDisplay.showFrame(frame);
 }
 
@@ -425,14 +384,12 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   const long secs = static_cast<long>(now.unixtime()) -
                     static_cast<long>(baseView_.anchor.unixtime());
 
-  TimeFields fields = deltaToFields(secs);
+  uint8_t tenths = 0;
   if (formatHasTenths(kFmtGroupCountUp, formatIndex)) {
-    fields.tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
+    tenths = rtcMsIntoSecond(nowMs) / kTenthMs;
   }
 
-  DisplayFrame frame;
-  ::renderCountup(formatIndex, fields,
-                  frame.rows[0], frame.rows[1], frame.rows[2]);
+  const DisplayFrame frame = renderCountupDisplayFrame(formatIndex, secs, tenths);
   segmentDisplay.showFrame(frame);
 }
 
@@ -442,9 +399,7 @@ void DisplayManager::renderDemo(uint32_t nowMs, bool force) {
   const uint32_t remaining = overlay_.transition.expiresAtMs - nowMs;
   const uint8_t whole  = static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
   const uint8_t tenths = static_cast<uint8_t>(min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
-  DisplayFrame frame;
-  blankFrame(frame);
-  snprintf(frame.rows[2], kDisplayFrameRowSize, "%2u.%u", whole, tenths);
+  const DisplayFrame frame = renderDemoDisplayFrame(whole, tenths);
   segmentDisplay.showFrame(frame);
 }
 
@@ -455,12 +410,8 @@ void DisplayManager::renderMessage(uint32_t nowMs, bool force) {
 
   if (!renderElapsed(nowMs, force)) return;
 
-  DisplayFrame frame;
-  if (overlay_.blink && !scheduler_.blinkOn()) {
-    blankFrame(frame);
-  } else {
-    messageToFrame(overlay_.message, frame);
-  }
+  const DisplayFrame frame = renderMessageDisplayFrame(
+      overlay_.message, !overlay_.blink || scheduler_.blinkOn());
   segmentDisplay.showFrame(frame);
 }
 
@@ -496,11 +447,8 @@ void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
   }
 
   const DisplayPage& page = paged.pages[paged.currentPage];
-  DisplayFrame frame;
-  snprintf(frame.rows[0], kDisplayFrameRowSize, "%s",
-           scheduler_.blinkOn() ? page.rows[0] : "    ");
-  snprintf(frame.rows[1], kDisplayFrameRowSize, "%s", page.rows[1]);
-  snprintf(frame.rows[2], kDisplayFrameRowSize, "%s", page.rows[2]);
+  const DisplayFrame frame = renderPageDisplayFrame(
+      page.rows[0], page.rows[1], page.rows[2], scheduler_.blinkOn());
   segmentDisplay.showFrame(frame);
 }
 
