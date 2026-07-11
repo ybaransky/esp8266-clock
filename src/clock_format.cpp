@@ -1,6 +1,8 @@
 #include "clock_format.h"
+#include <Arduino.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 #ifndef CLOCK_FORMAT_DEBUG
 #define CLOCK_FORMAT_DEBUG 0
@@ -532,7 +534,7 @@ void renderClock(uint8_t idx, const TimeFields& f, char* r1, char* r2, char* r3,
   clockFormatDebugLog("clock idx=%u effective=%u rows='%s'/'%s'/'%s'", idx, safeIdx, r1, r2, r3);
 }
 
-// -- Format catalog accessors (declared in format.h) ----------------------------
+// -- Format catalog accessors (declared in clock_format.h) ----------------------
 
 uint8_t formatCount(FormatGroup group) {
   switch (group) {

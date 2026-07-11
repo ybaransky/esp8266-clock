@@ -1,5 +1,6 @@
 #include "display_manager.h"
 
+#include "clock_format.h"
 #include "display.h"
 #include "display_renderer.h"
 #include "log.h"

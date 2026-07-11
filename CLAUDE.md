@@ -99,8 +99,8 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 ### Display / mode architecture
 The display system has four layers:
 
-1. **`format.h` + `clock_format.h/cpp`** - the format catalog and the pure renderers (no I/O).
-   - `format.h` declares: `Mode` enum (`kModeCountdown/Countup/Clock/Friday` - the persisted mode), `FormatGroup` enum, and the catalog accessors `formatCount(group)`, `getFormat(group, index)` (UI label string), `formatHasTenths(group, index)`, `clockFormatBlinksColon(index)`, `resolveCountingOverflowIndex(index, totalHours)`.
+1. **`clock_format.h/cpp`** - the format catalog and the pure renderers (no I/O).
+   - `config.h` owns the persisted `Mode` enum. `clock_format.h` owns `FormatGroup` and the catalog accessors `formatCount(group)`, `getFormat(group, index)` (UI label string), `formatHasTenths(group, index)`, `clockFormatBlinksColon(index)`, and `resolveCountingOverflowIndex(index, totalHours)`.
    - The **single source of truth** is in `clock_format.cpp`: the `kCountingFormats[]` and `kClockFormats[]` tables. Each entry pairs the UI label with the three per-row render ops, so adding or reordering a format edits **exactly one table row**. There are no parallel tables and no stored metadata: `hasTenths` and `blinkColon` are *derived* from the row ops - never hardcode index lists or add metadata flags.
    - Countdown and CountUp share `kCountingFormats`; the two modes cannot drift apart.
    - `renderCountdown/renderCountup/renderClock(idx, fields, r1, r2, r3, ...)` each fill three 4-char row buffers, one per physical display. Row ops dispatch to fragment helpers (`fmtNumber`, `fmtColonAnchored`, `fmtDaysWithLabel`, ...) - reuse these; do not add bare `snprintf` duplicates.

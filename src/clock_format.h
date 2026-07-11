@@ -1,6 +1,19 @@
 #pragma once
 #include <stdint.h>
-#include "format.h"
+
+enum FormatGroup : uint8_t {
+  kFmtGroupCountdown = 0,
+  kFmtGroupCountUp   = 1,
+  kFmtGroupClock     = 2,
+  kFmtGroupCount     = 3
+};
+
+// Format catalog accessors. Countdown and CountUp share one table.
+uint8_t formatCount(FormatGroup group);
+const char* getFormat(FormatGroup group, uint8_t index);
+bool formatHasTenths(FormatGroup group, uint8_t index);
+bool clockFormatBlinksColon(uint8_t index);
+uint8_t resolveCountingOverflowIndex(uint8_t index, int totalHours);
 
 // -- Time value bundle ---------------------------------------------------------
 struct TimeFields {

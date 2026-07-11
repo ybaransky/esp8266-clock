@@ -46,7 +46,7 @@ main.cpp
 
 Three distinct concepts (`display_manager.h`), each answering a different question - do not conflate them:
 
-- **`Mode`** (`format.h`) - the persisted, user-selected setting, stored in `ClockConfig.activeMode` and restored after any temporary overlay. "What did the user configure the clock to do."
+- **`Mode`** (`config.h`) - the persisted, user-selected setting, stored in `ClockConfig.activeMode` and restored after any temporary overlay. "What did the user configure the clock to do."
 - **`View`** (`display_manager.h`) - what content is currently the normal thing to render (`kClock`/`kCountdown`/`kCountup`, with payload). Fixed by `Mode` for the three non-Friday modes; Friday mode is the *one* case where it changes on its own, as `FridayModeController` recomputes it per its phase and pushes updates via `setView()`.
 - **`Overlay`** (`display_manager.h`) - a temporary layer on top of the current `View` (`kDemo`/`kMessage`/`kPagedMessage`), pushed by `showSplash`/`showDemo`/`showInfo`/`showPages` and popped by `clearOverlay()` or its own expiration.
 

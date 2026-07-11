@@ -1,10 +1,18 @@
 #pragma once
 #include <Arduino.h>
-#include "format.h"
 
 #define STORAGE LittleFS
 
 static constexpr int32_t kForever = INT32_MAX;
+
+// Persistent setting selected by the user. This is distinct from the
+// currently rendered View and any temporary Overlay (see display_manager.h).
+enum Mode : uint8_t {
+  kModeCountdown = 0,
+  kModeCountup   = 1,
+  kModeClock     = 2,
+  kModeFriday    = 3,
+};
 
 // -- WifiConfig ----------------------------------------------------------------
 struct WifiConfig {
