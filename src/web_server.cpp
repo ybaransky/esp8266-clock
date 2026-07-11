@@ -7,12 +7,12 @@
 
 #include "clock_controller.h"
 #include "config_api.h"
+#include "config_validation.h"
 #include "file_api.h"
 #include "html.h"
 #include "http_responder.h"
 #include "log.h"
 #include "location_api.h"
-#include "page_api.h"
 #include "time_api.h"
 #include "wifi_api.h"
 #include "wifi_connection_manager.h"
@@ -27,12 +27,12 @@ class WebPortal {
             RtcService& rtc)
       : server_(80),
         responder_(server_),
-        pageApi_(server_, responder_, configManager),
         configApi_(server_, responder_, clockController, configManager),
         timeApi_(server_, responder_, clockController, rtc),
         fileApi_(server_, responder_),
         locationApi_(server_, responder_),
         wifiApi_(server_, responder_, configManager, wifiConnectionManager),
+        configManager_(configManager),
         wifiConnectionManager_(wifiConnectionManager) {}
 
   void begin() {
@@ -43,19 +43,16 @@ class WebPortal {
       }
     }
 
-    server_.on("/", HTTP_GET, []() {
-      activePortal->pageApi_.handleRoot(
-          activePortal->wifiConnectionManager_.status());
-    });
-    server_.on("/settings", HTTP_GET, []() { activePortal->pageApi_.sendHtml(SETTINGS_HTML); });
-    server_.on("/config", HTTP_GET, []() { activePortal->pageApi_.sendHtml(CONFIG_JSON_HTML); });
-    server_.on("/format", HTTP_GET, []() { activePortal->pageApi_.sendHtml(CONFIG_HTML); });
-    server_.on("/time", HTTP_GET, []() { activePortal->pageApi_.sendHtml(TIME_SYNC_HTML); });
-    server_.on("/sunset", HTTP_GET, []() { activePortal->pageApi_.sendHtml(SUNSET_HTML); });
-    server_.on("/messages", HTTP_GET, []() { activePortal->pageApi_.sendHtml(MESSAGE_HTML); });
-    server_.on("/location", HTTP_GET, []() { activePortal->pageApi_.sendHtml(LOCATION_HTML); });
-    server_.on("/wifi", HTTP_GET, []() { activePortal->pageApi_.sendHtml(WIFI_HTML); });
-    server_.on("/view", HTTP_GET, []() { activePortal->pageApi_.sendHtml(VIEW_FILE_HTML); });
+    server_.on("/", HTTP_GET, []() { activePortal->handleRoot(); });
+    server_.on("/settings", HTTP_GET, []() { activePortal->sendHtml(SETTINGS_HTML); });
+    server_.on("/config", HTTP_GET, []() { activePortal->sendHtml(CONFIG_JSON_HTML); });
+    server_.on("/format", HTTP_GET, []() { activePortal->sendHtml(CONFIG_HTML); });
+    server_.on("/time", HTTP_GET, []() { activePortal->sendHtml(TIME_SYNC_HTML); });
+    server_.on("/sunset", HTTP_GET, []() { activePortal->sendHtml(SUNSET_HTML); });
+    server_.on("/messages", HTTP_GET, []() { activePortal->sendHtml(MESSAGE_HTML); });
+    server_.on("/location", HTTP_GET, []() { activePortal->sendHtml(LOCATION_HTML); });
+    server_.on("/wifi", HTTP_GET, []() { activePortal->sendHtml(WIFI_HTML); });
+    server_.on("/view", HTTP_GET, []() { activePortal->sendHtml(VIEW_FILE_HTML); });
 
     server_.on("/api/demo/test", HTTP_POST, []() { activePortal->configApi_.handleDemoTest(); });
     server_.on("/api/message/test", HTTP_POST, []() { activePortal->configApi_.handleMessageTest(); });
@@ -129,14 +126,31 @@ class WebPortal {
   static WebPortal* activePortal;
 
  private:
+  void handleRoot() {
+    const ClockConfig config = configManager_.loadClockConfig();
+    String ssid;
+    String ip;
+    getNetworkInfo(ssid, ip);
+
+    String page(FPSTR(INDEX_HTML));
+    page.replace("__DEVICE_NAME__", ssid.isEmpty() ? "Clock" : ssid);
+    page.replace("__INITIAL_MODE__", modeName(config.activeMode));
+    responder_.logRequest(200, page.length());
+    server_.send(200, "text/html", page);
+  }
+
+  void sendHtml(PGM_P html) {
+    responder_.sendProgmem(200, "text/html", html);
+  }
+
   ESP8266WebServer server_;        // HTTP server on port 80.
   HttpResponder responder_;        // Shared response helper.
-  PageApi pageApi_;                // HTML page endpoints.
   ConfigApi configApi_;            // Display/configuration API endpoints.
   TimeApi timeApi_;                // RTC read and synchronization endpoints.
   FileApi fileApi_;                // LittleFS file-management endpoints.
   LocationApi locationApi_;        // Location and ZIP-code endpoints.
   WifiApi wifiApi_;                // WiFi status/scan/connect endpoints.
+  ConfigManager& configManager_;
   WifiConnectionManager& wifiConnectionManager_;
   DNSServer dnsServer_;            // Captive portal DNS responder.
   bool dnsRunning_ = false;        // True when captive DNS started successfully.

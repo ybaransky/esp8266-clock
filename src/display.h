@@ -1,8 +1,14 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
 
-#include "display_frame.h"
+constexpr size_t kDisplayPanelCount = 3;
+constexpr size_t kDisplayFrameRowSize = 8;
+
+struct DisplayFrame {
+  char rows[kDisplayPanelCount][kDisplayFrameRowSize] = {};
+};
 
 // Treats three TM1637 4-digit displays as independent 4-character panels.
 // Panel strings are rendered left-to-right. ':' or ';' between the second and

@@ -36,6 +36,45 @@ void copyDisplayTitle(char destination[kDisplayRowChars + 1], const char* source
 
 }  // namespace
 
+void DisplayScheduler::reset(uint32_t nowMs) {
+  blinkOn_ = true;
+  blinkMs_ = nowMs;
+  colonVisible_ = true;
+  colonMs_ = 0;
+  lastRenderMs_ = 0;
+}
+
+void DisplayScheduler::resetBlink(uint32_t nowMs) {
+  blinkOn_ = true;
+  blinkMs_ = nowMs;
+}
+
+void DisplayScheduler::invalidateRender() { lastRenderMs_ = 0; }
+
+bool DisplayScheduler::shouldRender(uint32_t nowMs, uint32_t intervalMs,
+                                    bool force) {
+  if (!force && static_cast<long>(nowMs - lastRenderMs_) <
+                    static_cast<long>(intervalMs)) return false;
+  lastRenderMs_ = nowMs;
+  return true;
+}
+
+bool DisplayScheduler::toggleBlinkIfDue(uint32_t nowMs, uint32_t intervalMs) {
+  if (static_cast<long>(nowMs - blinkMs_) < static_cast<long>(intervalMs))
+    return false;
+  blinkMs_ = nowMs;
+  blinkOn_ = !blinkOn_;
+  return true;
+}
+
+bool DisplayScheduler::toggleColonIfDue(uint32_t nowMs, uint32_t intervalMs) {
+  if (static_cast<long>(nowMs - colonMs_) < static_cast<long>(intervalMs))
+    return false;
+  colonMs_ = nowMs;
+  colonVisible_ = !colonVisible_;
+  return true;
+}
+
 void DisplayManager::applySettings(const ClockConfig& config) {
   settings_ = config;
   scheduler_.reset(millis());

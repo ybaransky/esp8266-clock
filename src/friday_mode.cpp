@@ -1,13 +1,49 @@
 #include "friday_mode.h"
 
 #include "display_manager.h"
-#include "friday_schedule.h"
 #include "log.h"
 #include "sunset_calculator.h"
 
 namespace {
 
 constexpr int32_t kSunsetMessageMs = 5000;
+
+enum class FridayPhase : uint8_t {
+  kNone, kClock, kToFridaySunset, kToSaturdaySunset,
+};
+
+struct FridayScheduleResult {
+  FridayPhase phase = FridayPhase::kClock;
+  ViewState view;
+};
+
+FridayScheduleResult evaluateFridaySchedule(
+    const DateTime& now, const DateTime& fridaySunset,
+    const DateTime& saturdaySunset, const ClockConfig& config) {
+  FridayScheduleResult result;
+  const uint32_t nowUnix = now.unixtime();
+  if (nowUnix < fridaySunset.unixtime()) {
+    result.phase = FridayPhase::kToFridaySunset;
+    result.view = {View::kCountdown, fridaySunset,
+                   config.friday.toFridaySunsetFmt};
+  } else if (nowUnix < saturdaySunset.unixtime()) {
+    result.phase = FridayPhase::kToSaturdaySunset;
+    result.view = {View::kCountdown, saturdaySunset,
+                   config.friday.toSaturdaySunsetFmt};
+  } else {
+    result.view.view = View::kClock;
+    result.view.formatIndex = config.friday.clockFmt;
+  }
+  return result;
+}
+
+const char* fridayPhaseName(FridayPhase phase) {
+  switch (phase) {
+    case FridayPhase::kToFridaySunset: return "to friday sunset";
+    case FridayPhase::kToSaturdaySunset: return "to saturday sunset";
+    default: return "clock";
+  }
+}
 
 class FridayModeController {
  public:

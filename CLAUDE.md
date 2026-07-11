@@ -172,7 +172,7 @@ The display system has four layers:
   - `status()` returns `WifiRuntimeStatus` (mode, connected, ssid, ip, apSsid, apIp).
   - `scanNetworks(doc)`, `connectAndSave(ssid, password)` for web-driven network switching.
 - **`web_server.h/cpp`**: `webBegin()`, `webHandleClients()` (must be called every loop), `networkGetInfo(ssid, ip)`, `webScheduleReboot(delayMs)` (deferred reboot, gives the HTTP response time to flush).
-  - `WebPortal` (internal) owns the `ESP8266WebServer`, `HttpResponder`, and the four API classes (`PageApi`, `ConfigApi`, `FileApi`, `WifiApi`), each constructed with `(server, responder)`.
+  - `WebPortal` (internal) owns the `ESP8266WebServer`, `HttpResponder`, HTML page routes, and the domain API handlers (`ConfigApi`, `TimeApi`, `LocationApi`, `FileApi`, `WifiApi`). Simple page serving stays in `web_server.cpp`; endpoint domains remain separate where they contain meaningful behavior.
   - Runs `DNSServer` for captive portal only when in AP mode.
   - UI pages: `GET /`, `/settings`, `/config`, `/format`, `/time`, `/sunset`, `/messages`, `/location`, `/wifi`.
   - REST API: `POST /api/config`, `GET /api/config`, `GET /api/formats`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `POST /api/field-mismatch`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.

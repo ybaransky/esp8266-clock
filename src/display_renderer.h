@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
-#include "display_frame.h"
+#include "display.h"
 
 // Pure rendering functions. Each converts explicit application data into a
 // hardware-independent frame and performs no I/O or scheduling.

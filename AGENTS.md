@@ -26,9 +26,8 @@ main.cpp
   │     format            – format-string tables + FormatMetadata
   │     clock_format      – plan-driven pure renderers → three 4-char buffers
   │     display           – ClockApplication-owned SegmentDisplay (TM1637 hardware)
-  │     display_manager   – ClockApplication-owned DisplayManager (state + transitions)
-  │     display_scheduler – blink/colon cadence + render throttling policy
-  ├── friday_mode         – FridayMode controller; ticked on every real SQW second via
+  │     display_manager   – owned state, transitions, blink/colon cadence, and render policy
+  ├── friday_mode         – FridayMode controller and schedule policy; ticked every real SQW second via
   │                         RtcService::consumeSqwPulse(), NOT the throttled log pulse
   ├── config              – ClockApplication-owned ConfigManager (/config.json on LittleFS)
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
