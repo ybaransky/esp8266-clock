@@ -83,7 +83,6 @@ class DisplayManager {
  public:
   DisplayManager(SegmentDisplay& display, RtcService& rtc)
       : display_(display), rtc_(rtc) {}
-  void begin(const ClockConfig& config);
   void applySettings(const ClockConfig& config);
   void setBrightness(uint8_t brightness);
   void tick(uint32_t nowMs);

@@ -116,7 +116,7 @@ The display system has four layers:
    - The model: the persisted **Mode** resolves to a base **View** (`View::kClock/kCountdown/kCountup` - what content is currently rendered), optionally covered by a temporary **Overlay** (`Overlay::kDemo/kMessage/kPagedMessage`).
    - `ViewState` is a plain struct: `{view, anchor, formatIndex}`. `anchor` is the countdown end time or countup start time; unused for clock. No unions.
    - `OverlayState` is a plain struct: `{overlay, blink, chainFinalMessage, message[64], paged, transition}`. `chainFinalMessage` makes an expiring overlay chain into the blinking final message (the demo's second phase) instead of restoring the base view.
-   - `begin(config)`, `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`, `setBrightness()`.
+   - `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`, and `setBrightness()`.
    - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `FridayModeController` to switch phases.
    - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = FOREVER)`, `showPages(pages, count, ...)`, `clearOverlay()`.
    - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday is the only mode whose view changes over time.
@@ -163,7 +163,7 @@ The display system has four layers:
 - **`config_validation.h/cpp`** - sanitizers and conversions. Canonical home of `modeName(mode)` / `modeFromName(name, out)` / `sanitizeMode`, `sanitizeFormatIndex`, `sanitizeBrightness`, `sanitizeUtcOffsetMinutes`, `sanitizePrintableText`, `sanitizeDisplayMessage`. Do not redeclare these elsewhere.
 
 ### Networking
-- **`wifi_connection_manager.h/cpp`**: `WifiConnectionManager` singleton.
+- **`wifi_connection_manager.h/cpp`**: application-owned `WifiConnectionManager`, injected into the web portal and `WifiApi`.
   - `begin(config)`: tries STA first (if `staSsid` is set, 15s timeout); falls back to AP.
   - `tick()`: handles deferred events (e.g. AP client connected logging).
   - `status()` returns `WifiRuntimeStatus` (mode, connected, ssid, ip, apSsid, apIp).

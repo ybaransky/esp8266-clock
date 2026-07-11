@@ -36,10 +36,6 @@ void copyDisplayTitle(char destination[kDisplayRowChars + 1], const char* source
 
 }  // namespace
 
-void DisplayManager::begin(const ClockConfig& config) {
-  applySettings(config);
-}
-
 void DisplayManager::applySettings(const ClockConfig& config) {
   settings_ = config;
   scheduler_.reset(millis());

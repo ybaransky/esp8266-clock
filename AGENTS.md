@@ -29,7 +29,7 @@ main.cpp
   │     display_manager   – ClockApplication-owned DisplayManager (state + transitions)
   │     display_scheduler – blink/colon cadence + render throttling policy
   ├── friday_mode         – FridayMode controller; ticked on every real SQW second via
-  │                         rtcConsumeSqwPulse(), NOT the throttled log-interval pulse
+  │                         RtcService::consumeSqwPulse(), NOT the throttled log pulse
   ├── config              – ClockApplication-owned ConfigManager (/config.json on LittleFS)
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
   │     time_api          – RTC read and browser-time synchronization endpoints
@@ -88,4 +88,4 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - **`RtcService::getNow()` vs `getNowCached()`** — `getNow()` is a live I2C read; `getNowCached()` is advanced by SQW pulses with a live-read fallback if pulses go stale. `DisplayManager` uses the cached version; do not replace it with live reads on the hot render path.
 - **LOG macros require string literals** — `LOG_PRINTLN`/`LOG_PRINTF` keep their strings in flash (`PSTR` + `printf_P`) to hold static RAM under 50% for OTA. For a runtime string use `LOG_PRINTF("%s\n", value)`; a literal `%` in a `LOG_PRINTLN` message must be `%%` (it is pasted into the printf format).
 - **Tenths are phase-locked to the RTC second** — compute them from `RtcService::msIntoSecond(nowMs)`, never `millis() % 1000`. `ClockController` notifies the display manager on each accepted SQW pulse.
-- **`rtcConsumeSqwPulse()` vs `rtcIsLogIntervalDue()`** — `rtcConsumeSqwPulse()` fires every real RTC second; `rtcIsLogIntervalDue()` is only true on the `:00`/`:30` wall-clock second boundary (`kSqwLogIntervalSeconds` = 30) and exists only to pace the periodic log line. Anything that must react promptly to the RTC (e.g. `fridayModeTick()`) has to gate on `rtcConsumeSqwPulse()`. This was a real bug once — `fridayModeTick()` was piggybacked on the log-interval gate, so Friday-mode phase transitions (e.g. Thu→Fri midnight) lagged the real crossing by up to a minute.
+- **`RtcService::consumeSqwPulse()` vs `isLogIntervalDue()`** — `consumeSqwPulse()` fires every real RTC second; `isLogIntervalDue()` is only true on `:00`/`:30` boundaries and only paces logging. Time-sensitive logic such as Friday phase transitions must gate on the real pulse.
