@@ -7,5 +7,3 @@ class PageManager {
   void showSsid(const String& ssid);
   void showIpAddress(const String& ip);
 };
-
-extern PageManager pageManager;

@@ -101,5 +101,3 @@ void PageManager::showIpAddress(const String& ip) {
   const uint8_t pageCount = appendIpPages(pages, 0, ip);
   displayManager.showPages(pages, pageCount, kNetworkInfoPageMs);
 }
-
-PageManager pageManager;

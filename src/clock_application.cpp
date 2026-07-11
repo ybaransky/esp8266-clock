@@ -33,7 +33,7 @@ void printRtcErrorBanner(const char* detail) {
   Serial.println();
 }
 
-void handleButtonEvent(ButtonEvent event) {
+void handleButtonEvent(ButtonEvent event, PageManager& pageManager) {
   switch (event) {
     case ButtonEvent::SHOW_SSID: {
       String ssid;
@@ -142,7 +142,7 @@ void ClockApplication::tick(uint32_t nowMs) {
 
 void ClockApplication::processButtonEvents() {
   while (buttonHasEvent()) {
-    handleButtonEvent(buttonNextEvent());
+    handleButtonEvent(buttonNextEvent(), pageManager_);
   }
 }
 
