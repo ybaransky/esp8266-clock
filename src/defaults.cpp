@@ -19,9 +19,9 @@ ClockConfig defaultClockConfig() {
     s.display.countdownFmt  = 0; // "dd D | hh:mm |  ss.u"
     s.display.countupFmt    = 0;
     s.display.clockFmt      = 7; // " YYYY | MM:DD | hh;mm" (blinking colon)
-    s.fridayClockFmt          = 7;
-    s.fridayToFridaySunsetFmt = 0;
-    s.fridayToSatSunsetFmt    = 0;
+    s.friday.clockFmt             = 7;
+    s.friday.toFridaySunsetFmt    = 0;
+    s.friday.toSaturdaySunsetFmt  = 0;
     s.display.brightness = 3;
     snprintf(s.countdownDatetime, sizeof(s.countdownDatetime), "%s", kDefaultCountdownDatetime);
     snprintf(s.countupDatetime,   sizeof(s.countupDatetime),   "%s", kDefaultCountupDatetime);

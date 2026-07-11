@@ -29,14 +29,18 @@ struct DisplayConfig {
   bool clockUse12Hour;
 };
 
+struct FridayConfig {
+  uint8_t clockFmt;             // Clock phase (Sun midnight through Fri midnight).
+  uint8_t toFridaySunsetFmt;    // Friday-midnight to Friday-sunset countdown.
+  uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
+};
+
 // -- ClockConfig ---------------------------------------------------------------
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
   Mode activeMode;  // Persistent mode restored after any temporary overlay.
 
-  uint8_t fridayClockFmt;          // kFmtGroupClock index for clock phase (Sun midnight – Fri midnight)
-  uint8_t fridayToFridaySunsetFmt; // kFmtGroupCountdown index for Fri midnight – Fri sunset
-  uint8_t fridayToSatSunsetFmt;    // kFmtGroupCountdown index for Fri sunset – Sat sunset
+  FridayConfig friday;
 
   char countdownDatetime[20]; // "YYYY-MM-DD HH:MM:SS"
   char countupDatetime[20];   // "YYYY-MM-DD HH:MM:SS" or "now"

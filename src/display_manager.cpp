@@ -177,7 +177,7 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
       // FridayModeController will call setView() on the next tick.
       // Use the friday clock format as a safe initial view.
       state.view = View::kClock;
-      state.formatIndex = settings_.fridayClockFmt;
+      state.formatIndex = settings_.friday.clockFmt;
       break;
   }
 

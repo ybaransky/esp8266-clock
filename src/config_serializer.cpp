@@ -31,9 +31,9 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   clockMode["format"] = clock.display.clockFmt;
 
   JsonObject friday = modes["friday"].to<JsonObject>();
-  friday["clockFormat"]            = clock.fridayClockFmt;
-  friday["toFridaySunsetFormat"]   = clock.fridayToFridaySunsetFmt;
-  friday["toSaturdaySunsetFormat"] = clock.fridayToSatSunsetFmt;
+  friday["clockFormat"]            = clock.friday.clockFmt;
+  friday["toFridaySunsetFormat"]   = clock.friday.toFridaySunsetFmt;
+  friday["toSaturdaySunsetFormat"] = clock.friday.toSaturdaySunsetFmt;
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
   timezone["name"]           = String(clock.timezone);
@@ -101,20 +101,20 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
         kFmtGroupClock, modes["clock"]["format"].as<int>(), cfg.display.clockFmt);
   }
   if (!modes["friday"]["clockFormat"].isNull()) {
-    cfg.fridayClockFmt = sanitizeFormatIndex(
-        kFmtGroupClock, modes["friday"]["clockFormat"].as<int>(), cfg.fridayClockFmt);
+    cfg.friday.clockFmt = sanitizeFormatIndex(
+        kFmtGroupClock, modes["friday"]["clockFormat"].as<int>(), cfg.friday.clockFmt);
   }
   if (!modes["friday"]["toFridaySunsetFormat"].isNull()) {
-    cfg.fridayToFridaySunsetFmt = sanitizeFormatIndex(
+    cfg.friday.toFridaySunsetFmt = sanitizeFormatIndex(
         kFmtGroupCountdown,
         modes["friday"]["toFridaySunsetFormat"].as<int>(),
-        cfg.fridayToFridaySunsetFmt);
+        cfg.friday.toFridaySunsetFmt);
   }
   if (!modes["friday"]["toSaturdaySunsetFormat"].isNull()) {
-    cfg.fridayToSatSunsetFmt = sanitizeFormatIndex(
+    cfg.friday.toSaturdaySunsetFmt = sanitizeFormatIndex(
         kFmtGroupCountdown,
         modes["friday"]["toSaturdaySunsetFormat"].as<int>(),
-        cfg.fridayToSatSunsetFmt);
+        cfg.friday.toSaturdaySunsetFmt);
   }
   if (!display["brightness"].isNull()) {
     cfg.display.brightness = sanitizeBrightness(display["brightness"].as<int>());

@@ -133,7 +133,7 @@ The display system has four layers:
   - **Clock phase**: Saturday sunset through Thursday midnight; also the default.
   - **To Friday sunset**: Thursday midnight → Friday sunset.
   - **To Saturday sunset**: Friday sunset → Saturday sunset.
-- Each phase transition calls `displayManager.setView()` with a `ViewState` built from `ClockConfig.fridayClockFmt` / `fridayToFridaySunsetFmt` / `fridayToSatSunsetFmt`.
+- Each phase transition calls `displayManager.setView()` with a `ViewState` built from the format selections in `ClockConfig.friday`.
 - Crossing Friday sunset **live** (previous phase `kToFridaySunset` → `kToSaturdaySunset` while running) blinks `ClockConfig.fridaySunsetMessage` for 5s via `displayManager.showInfo()`, called *after* `applyPhase()` so the Saturday-sunset countdown is the base view revealed when the overlay expires. The previous-phase check is deliberate: arriving at `kToSaturdaySunset` from `kNone` (boot, or a config save on a Friday evening - `applySettings()` resets the phase to `kNone`) must **not** fire the message.
 - Sunset targets are cached and recomputed at most once per week (when `fridayDateFor(now)` changes). `calculateSunset()` is **not** called on every tick.
 - `applySettings()` and `fridayModeResetSunsetCache()` (called after a browser time sync) invalidate the cache to force recomputation on the next tick.
@@ -150,7 +150,7 @@ The display system has four layers:
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
 ### Storage / config
-- `ClockConfig` (in `config.h`) holds: `activeMode`; `display` (`DisplayConfig`) with the clock/counting format indices, brightness, and 12-hour setting; friday format indices (`fridayClockFmt`, `fridayToFridaySunsetFmt`, `fridayToSatSunsetFmt`); `countdownDatetime[20]`; `countupDatetime[20]` (`"now"` allowed); messages; locations; and timezone fields.
+- `ClockConfig` (in `config.h`) holds: `activeMode`; `display` (`DisplayConfig`) with the clock/counting format indices, brightness, and 12-hour setting; `friday` (`FridayConfig`) with its phase format selections; `countdownDatetime[20]`; `countupDatetime[20]` (`"now"` allowed); messages; locations; and timezone fields.
 - `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
 - The three display messages serialize under `display.messages` as `splash` / `final` / `fridaySunset`; all are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII chars, split across the three 4-char panel rows). Defaults live in `defaults.cpp` (`fridaySunsetMessage` defaults to `"     SUN SET"`).
 - `LocationInfo` struct (in `config.h`): `latitude`, `longitude`, `zipcode[6]`. Used for both `location` (physical device location) and `sunsetTest` (Sunset Calculator test inputs). `/config.json` has separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.

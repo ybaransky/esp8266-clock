@@ -12,7 +12,7 @@ FridayScheduleResult evaluateFridaySchedule(
     result.phase = FridayPhase::kToFridaySunset;
     result.view.view = View::kCountdown;
     result.view.anchor = fridaySunset;
-    result.view.formatIndex = config.fridayToFridaySunsetFmt;
+    result.view.formatIndex = config.friday.toFridaySunsetFmt;
     return result;
   }
 
@@ -20,13 +20,13 @@ FridayScheduleResult evaluateFridaySchedule(
     result.phase = FridayPhase::kToSaturdaySunset;
     result.view.view = View::kCountdown;
     result.view.anchor = saturdaySunset;
-    result.view.formatIndex = config.fridayToSatSunsetFmt;
+    result.view.formatIndex = config.friday.toSaturdaySunsetFmt;
     return result;
   }
 
   result.phase = FridayPhase::kClock;
   result.view.view = View::kClock;
-  result.view.formatIndex = config.fridayClockFmt;
+  result.view.formatIndex = config.friday.clockFmt;
   return result;
 }
 
