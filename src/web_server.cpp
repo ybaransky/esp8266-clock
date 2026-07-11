@@ -12,6 +12,7 @@
 #include "http_responder.h"
 #include "log.h"
 #include "page_api.h"
+#include "time_api.h"
 #include "wifi_api.h"
 #include "wifi_connection_manager.h"
 
@@ -26,7 +27,8 @@ class WebPortal {
       : server_(80),
         responder_(server_),
         pageApi_(server_, responder_, configManager),
-        configApi_(server_, responder_, clockController, configManager, rtc),
+        configApi_(server_, responder_, clockController, configManager),
+        timeApi_(server_, responder_, clockController, rtc),
         fileApi_(server_, responder_),
         wifiApi_(server_, responder_, configManager, wifiConnectionManager),
         wifiConnectionManager_(wifiConnectionManager) {}
@@ -57,8 +59,8 @@ class WebPortal {
     server_.on("/api/message/test", HTTP_POST, []() { activePortal->configApi_.handleMessageTest(); });
     server_.on("/api/mode", HTTP_POST, []() { activePortal->configApi_.handleSetMode(); });
     server_.on("/api/brightness", HTTP_POST, []() { activePortal->configApi_.handleBrightness(); });
-    server_.on("/api/time", HTTP_GET, []() { activePortal->configApi_.handleTime(); });
-    server_.on("/api/time", HTTP_POST, []() { activePortal->configApi_.handleTimeSync(); });
+    server_.on("/api/time", HTTP_GET, []() { activePortal->timeApi_.handleGetTime(); });
+    server_.on("/api/time", HTTP_POST, []() { activePortal->timeApi_.handleTimeSync(); });
     server_.on("/api/formats", HTTP_GET, []() { activePortal->configApi_.handleFormats(); });
     server_.on("/api/config", HTTP_GET, []() { activePortal->configApi_.handleGetConfig(); });
     server_.on("/api/config", HTTP_POST, []() { activePortal->configApi_.handleSaveConfig(); });
@@ -127,7 +129,8 @@ class WebPortal {
   ESP8266WebServer server_;        // HTTP server on port 80.
   HttpResponder responder_;        // Shared response helper.
   PageApi pageApi_;                // HTML page endpoints.
-  ConfigApi configApi_;            // Display/time/location API endpoints.
+  ConfigApi configApi_;            // Display/configuration API endpoints.
+  TimeApi timeApi_;                // RTC read and synchronization endpoints.
   FileApi fileApi_;                // LittleFS file-management endpoints.
   WifiApi wifiApi_;                // WiFi status/scan/connect endpoints.
   WifiConnectionManager& wifiConnectionManager_;

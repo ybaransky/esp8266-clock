@@ -32,6 +32,7 @@ main.cpp
   │                         rtcConsumeSqwPulse(), NOT the throttled log-interval pulse
   ├── config              – ClockApplication-owned ConfigManager (/config.json on LittleFS)
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
+  │     time_api          – RTC read and browser-time synchronization endpoints
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
   ├── wifi_connection_manager – ClockApplication-owned STA → AP fallback service

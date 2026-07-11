@@ -112,7 +112,7 @@ The display system has four layers:
    - Caches last-written segments per panel; skips hardware write on identical content.
    - ASCII-to-segment glyph mapping lives in `display.cpp` as `ASCII_SEGMENTS`; adjust that table when a letter does not display well on 7-segment hardware.
 
-3. **`display_manager.h/cpp`** - `DisplayManager` singleton; the single entry point for all display state.
+3. **`display_manager.h/cpp`** - application-owned `DisplayManager`; the single entry point for all display state.
    - The model: the persisted **Mode** resolves to a base **View** (`View::kClock/kCountdown/kCountup` - what content is currently rendered), optionally covered by a temporary **Overlay** (`Overlay::kDemo/kMessage/kPagedMessage`).
    - `ViewState` is a plain struct: `{view, anchor, formatIndex}`. `anchor` is the countdown end time or countup start time; unused for clock. No unions.
    - `OverlayState` is a plain struct: `{overlay, blink, chainFinalMessage, message[64], paged, transition}`. `chainFinalMessage` makes an expiring overlay chain into the blinking final message (the demo's second phase) instead of restoring the base view.
@@ -121,10 +121,11 @@ The display system has four layers:
    - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = FOREVER)`, `showPages(pages, count, ...)`, `clearOverlay()`.
    - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday is the only mode whose view changes over time.
    - Clock colon blink toggles once per second (2-second full cycle); message/page blinking uses its own 500ms cadence. Tenths formats refresh at 100ms, others at 1s (`formatHasTenths` drives this).
-   - Tenths values come from `rtcMsIntoSecond(nowMs)` (phase-locked to the SQW edge), not `millis() % 1000`. `notifySecondBoundary()` - called from `main.cpp` on every accepted SQW pulse - invalidates the render throttle so each second's first redraw lands on the real boundary (this also keeps whole-second formats from lagging the boundary by up to their 1s interval). The demo overlay's tenths are deadline-derived and stay that way.
+   - Tenths values come from the injected RTC service's `msIntoSecond(nowMs)`, not `millis() % 1000`. `notifySecondBoundary()` invalidates the render throttle on each accepted SQW pulse. Demo tenths remain deadline-derived.
    - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
 
 4. **`clock_controller.h/cpp`** - coordinates application actions. It applies configuration to the owned `DisplayManager` and Friday mode, handles second boundaries, and exposes display previews to web APIs.
+5. **`time_api.h/cpp`** - owns `GET /api/time` and `POST /api/time`; reads through `RtcService` and synchronizes through `ClockController`.
 
 ### Friday Mode
 - **`friday_mode.h/cpp`**: `FridayModeController` (internal singleton). Public API: `fridayModeApplySettings(config)`, `fridayModeTick(now)`, `fridayModeResetSunsetCache()`.
