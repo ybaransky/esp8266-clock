@@ -36,8 +36,8 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   friday["toSaturdaySunsetFormat"] = clock.friday.toSaturdaySunsetFmt;
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
-  timezone["name"]           = String(clock.timezone);
-  timezone["utcOffsetMinutes"] = clock.utcOffsetMinutes;
+  timezone["name"] = String(clock.timezone.name);
+  timezone["utcOffsetMinutes"] = clock.timezone.utcOffsetMinutes;
   doc["time"]["dst"]         = clock.dst;
 
   JsonObject location = doc["location"].to<JsonObject>();
@@ -171,11 +171,12 @@ void applyTimezoneFields(JsonVariantConst time, ClockConfig& cfg) {
   JsonVariantConst timezone = time["timezone"];
   if (!timezone["name"].isNull()) {
     sanitizePrintableText(timezone["name"].as<const char*>(),
-                          cfg.timezone,
-                          sizeof(cfg.timezone));
+                          cfg.timezone.name,
+                          sizeof(cfg.timezone.name));
   }
   if (!timezone["utcOffsetMinutes"].isNull()) {
-    cfg.utcOffsetMinutes = sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
+    cfg.timezone.utcOffsetMinutes =
+        sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
   }
   if (!time["dst"].isNull()) {
     cfg.dst = time["dst"].as<bool>();

@@ -54,6 +54,11 @@ struct MessageConfig {
   char fridaySunset[64];  // Blinked when Friday sunset is crossed live.
 };
 
+struct TimezoneConfig {
+  char name[40];
+  int16_t utcOffsetMinutes;
+};
+
 // -- ClockConfig ---------------------------------------------------------------
 // Holds the user's display configuration. Persisted to / loaded from config.json.
 struct ClockConfig {
@@ -65,9 +70,8 @@ struct ClockConfig {
 
   LocationConfig locations;
 
-  char timezone[40];          // IANA timezone, e.g. "America/New_York".
-  int16_t utcOffsetMinutes;   // Current browser offset fallback.
-  bool dst;                    // True when daylight saving time is active.
+  TimezoneConfig timezone;
+  bool dst;  // Persisted browser DST flag; numeric offset drives sunset math.
   DisplayConfig display;
   CountdownConfig countdown;
   CountupConfig countup;

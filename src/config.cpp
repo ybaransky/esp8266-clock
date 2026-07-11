@@ -142,12 +142,14 @@ ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
         kFmtGroupCountdown, cfg.friday.toSaturdaySunsetFmt,
         defaults.friday.toSaturdaySunsetFmt);
     clean.display.brightness = sanitizeBrightness(cfg.display.brightness);
-    clean.utcOffsetMinutes = sanitizeUtcOffsetMinutes(cfg.utcOffsetMinutes);
+    clean.timezone.utcOffsetMinutes =
+        sanitizeUtcOffsetMinutes(cfg.timezone.utcOffsetMinutes);
     sanitizeDisplayMessage(cfg.messages.splash, clean.messages.splash, sizeof(clean.messages.splash));
     sanitizeDisplayMessage(cfg.messages.final, clean.messages.final, sizeof(clean.messages.final));
     sanitizeDisplayMessage(cfg.messages.fridaySunset, clean.messages.fridaySunset,
                            sizeof(clean.messages.fridaySunset));
-    sanitizePrintableText(cfg.timezone, clean.timezone, sizeof(clean.timezone));
+    sanitizePrintableText(cfg.timezone.name, clean.timezone.name,
+                          sizeof(clean.timezone.name));
     return clean;
 }
 
