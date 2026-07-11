@@ -92,7 +92,7 @@ void DisplayManager::showInfo(const char* message, int32_t durationMs) {
   state.blink = true;
   copyMessage(state.message, message);
 
-  const bool expires = durationMs != FOREVER;
+  const bool expires = durationMs != kForever;
   const uint32_t expiresAt = expires ? nowMs + static_cast<uint32_t>(durationMs) : 0;
   state.transition = {expires, expiresAt};
 

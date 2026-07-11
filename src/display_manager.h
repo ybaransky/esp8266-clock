@@ -95,7 +95,7 @@ class DisplayManager {
 
   void showSplash(const char* message);
   void showDemo();
-  void showInfo(const char* message, int32_t durationMs = FOREVER);
+  void showInfo(const char* message, int32_t durationMs = kForever);
   void showPages(const DisplayPage* pages, uint8_t pageCount,
                  uint16_t pageDurationMs = kDefaultPageDurationMs,
                  bool repeat = false);

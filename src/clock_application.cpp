@@ -36,7 +36,7 @@ void printRtcErrorBanner(const char* detail) {
 void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
                        RtcService& rtc) {
   switch (event) {
-    case ButtonEvent::SHOW_SSID: {
+    case ButtonEvent::kShowSsid: {
       String ssid;
       String ip;
       networkGetInfo(ssid, ip);
@@ -45,7 +45,7 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
       break;
     }
 
-    case ButtonEvent::SHOW_IP_ADDRESS: {
+    case ButtonEvent::kShowIpAddress: {
       String ssid;
       String ip;
       networkGetInfo(ssid, ip);
@@ -54,7 +54,7 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
       break;
     }
 
-    case ButtonEvent::SHOW_RTC_STATUS: {
+    case ButtonEvent::kShowRtcStatus: {
       const RtcStatus status = rtc.getStatus();
       LOG_PRINTF("present=%s powerLost=%s lowBattery=%s sqwConfigured=%s\n",
                  status.present ? "yes" : "no",

@@ -17,7 +17,7 @@ public:
     if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
       LOG_PRINTLN("WARNING: D3/GPIO0 is LOW at startup (button may be pressed). Avoid holding this button during boot.");
     }
-    startupRecheckAtMs_ = millis() + STARTUP_RECHECK_DELAY_MS;
+    startupRecheckAtMs_ = millis() + kStartupRecheckDelayMs;
     startupRecheckDone_ = false;
 
     // D3/GPIO0 uses pull-up logic; pressed state is LOW.
@@ -41,32 +41,32 @@ public:
   }
 
   ButtonEvent nextEvent() {
-    if (eventHead_ == eventTail_) return ButtonEvent::NONE;
+    if (eventHead_ == eventTail_) return ButtonEvent::kNone;
     const ButtonEvent event = eventQueue_[eventHead_];
-    eventHead_ = (eventHead_ + 1) % EVENT_QUEUE_CAPACITY;
+    eventHead_ = (eventHead_ + 1) % kEventQueueCapacity;
     return event;
   }
 
-  void handleAction(const char *message, ButtonEvent event = ButtonEvent::NONE) {
+  void handleAction(const char *message, ButtonEvent event = ButtonEvent::kNone) {
     LOG_PRINTF("%s\n", message);
-    if (event != ButtonEvent::NONE) {
+    if (event != ButtonEvent::kNone) {
       enqueueEvent(event);
     }
   }
 
 private:
-  static constexpr int EVENT_QUEUE_CAPACITY = 8;
-  static constexpr unsigned long STARTUP_RECHECK_DELAY_MS = 500;
+  static constexpr int kEventQueueCapacity = 8;
+  static constexpr unsigned long kStartupRecheckDelayMs = 500;
 
   void enqueueEvent(ButtonEvent event) {
-    const int nextTail = (eventTail_ + 1) % EVENT_QUEUE_CAPACITY;
+    const int nextTail = (eventTail_ + 1) % kEventQueueCapacity;
     if (nextTail == eventHead_) return;
     eventQueue_[eventTail_] = event;
     eventTail_ = nextTail;
   }
 
   OneButton btn_ = OneButton(Hardware::Pins::BUTTON, true, true);  // Debounced button driver.
-  volatile ButtonEvent eventQueue_[EVENT_QUEUE_CAPACITY] = {};     // Pending button events.
+  volatile ButtonEvent eventQueue_[kEventQueueCapacity] = {};     // Pending button events.
   volatile int eventHead_ = 0;                                     // Queue read index.
   volatile int eventTail_ = 0;                                     // Queue write index.
   bool startupRecheckDone_ = false;                                // True after boot-pin recheck.
@@ -76,15 +76,15 @@ private:
 static ButtonController btn;
 
 static void onBtnClick() {
-  btn.handleAction("Single press", ButtonEvent::SHOW_SSID);
+  btn.handleAction("Single press", ButtonEvent::kShowSsid);
 }
 
 static void onBtnDoubleClick() {
-  btn.handleAction("Double click", ButtonEvent::SHOW_IP_ADDRESS);
+  btn.handleAction("Double click", ButtonEvent::kShowIpAddress);
 }
 
 static void onBtnLongPressStart() {
-  btn.handleAction("Long press", ButtonEvent::SHOW_RTC_STATUS);
+  btn.handleAction("Long press", ButtonEvent::kShowRtcStatus);
 }
 
 void buttonBegin()                    { btn.begin(); }

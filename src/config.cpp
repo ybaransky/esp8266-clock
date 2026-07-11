@@ -7,8 +7,8 @@
 #include "log.h"
 #include "storage_manager.h"
 
-static constexpr const char* CONFIG_PATH = "/config.json";
-static constexpr const char* CONFIG_TMP_PATH = "/config.tmp";
+static constexpr const char* kConfigPath = "/config.json";
+static constexpr const char* kConfigTmpPath = "/config.tmp";
 
 static bool writeConfigDocument(JsonDocument& doc, const char* label);
 static bool openAndParse(JsonDocument& doc);
@@ -17,7 +17,7 @@ static void populateDefaultConfigDocument(JsonDocument& doc);
 // Opens and deserializes config.json into doc.  Returns false on any failure.
 static bool openAndParse(JsonDocument& doc) {
     if (!storageManager.ensureMounted("open config")) return false;
-    File f = STORAGE.open(CONFIG_PATH, "r");
+    File f = STORAGE.open(kConfigPath, "r");
     if (!f) {
         LOG_PRINTLN("config.json not found - creating defaults");
         populateDefaultConfigDocument(doc);
@@ -41,8 +41,8 @@ static bool openAndParse(JsonDocument& doc) {
 static bool writeConfigDocument(JsonDocument& doc, const char* label) {
     if (!storageManager.ensureMounted(label)) return false;
 
-    STORAGE.remove(CONFIG_TMP_PATH);
-    File fw = STORAGE.open(CONFIG_TMP_PATH, "w");
+    STORAGE.remove(kConfigTmpPath);
+    File fw = STORAGE.open(kConfigTmpPath, "w");
     if (!fw) {
         LOG_PRINTLN("Failed to open config.tmp for writing");
         return false;
@@ -52,15 +52,15 @@ static bool writeConfigDocument(JsonDocument& doc, const char* label) {
     fw.flush();
     fw.close();
     if (bytes == 0) {
-        STORAGE.remove(CONFIG_TMP_PATH);
+        STORAGE.remove(kConfigTmpPath);
         LOG_PRINTLN("Failed to serialize config document");
         return false;
     }
 
-    if (!STORAGE.rename(CONFIG_TMP_PATH, CONFIG_PATH)) {
-        STORAGE.remove(CONFIG_PATH);
-        if (!STORAGE.rename(CONFIG_TMP_PATH, CONFIG_PATH)) {
-            STORAGE.remove(CONFIG_TMP_PATH);
+    if (!STORAGE.rename(kConfigTmpPath, kConfigPath)) {
+        STORAGE.remove(kConfigPath);
+        if (!STORAGE.rename(kConfigTmpPath, kConfigPath)) {
+            STORAGE.remove(kConfigTmpPath);
             LOG_PRINTLN("Failed to replace config.json");
             return false;
         }
