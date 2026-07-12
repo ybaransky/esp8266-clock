@@ -3,6 +3,10 @@
 #include "log.h"
 #include "number_format.h"
 
+// -----------------------------------------------------------------------------
+// HttpResponder
+// -----------------------------------------------------------------------------
+
 void HttpResponder::send(int status, const char* contentType, const char* body) {
   const size_t length = body == nullptr ? 0 : strlen(body);
   logRequest(status, length);

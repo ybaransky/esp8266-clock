@@ -90,6 +90,10 @@ uint8_t appendIpPages(DisplayPage* pages, uint8_t pageCount, const String& ip) {
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// PageManager
+// -----------------------------------------------------------------------------
+
 void PageManager::showSsid(const String& ssid) {
   DisplayPage pages[kMaxDisplayPages];
   const uint8_t pageCount = appendSsidPages(pages, 0, ssid);

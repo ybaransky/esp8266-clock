@@ -28,4 +28,8 @@ class ClockApplication {
   ConfigManager configManager_;
   PageManager pageManager_;
   WifiConnectionManager wifiConnectionManager_;
+  uint32_t lastRtcHealthCheckMs_ = 0;
+  bool rtcWasHealthy_ = true;
+  Mode lastLoggedMode_ = kModeClock;
+  View lastLoggedView_ = View::kClock;
 };

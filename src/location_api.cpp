@@ -54,6 +54,10 @@ bool parseTimeOfDay(const char* text, int* hour, int* minute, int* second) {
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// LocationApi
+// -----------------------------------------------------------------------------
+
 bool LocationApi::parseJsonBody(JsonDocument& doc, const char* route) {
   const DeserializationError error = deserializeJson(doc, server_.arg("plain"));
   if (!error) return true;

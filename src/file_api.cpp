@@ -5,6 +5,10 @@
 #include "config.h"
 #include "storage_manager.h"
 
+// -----------------------------------------------------------------------------
+// FileApi
+// -----------------------------------------------------------------------------
+
 const char* FileApi::mimeTypeForPath(const String& path) {
   const int dot = path.lastIndexOf('.');
   if (dot < 0) return "application/octet-stream";

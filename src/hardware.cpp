@@ -129,6 +129,10 @@ const char* flashModeName(FlashMode_t mode) {
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// I2CBusScanner
+// -----------------------------------------------------------------------------
+
 const char *I2CBusScanner::deviceNameForAddress(uint8_t address) {
   for (const I2CDeviceAddressLabel &device : KNOWN_I2C_DEVICES) {
     if (device.address == address) {

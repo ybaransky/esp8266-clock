@@ -37,6 +37,10 @@ void copyDisplayTitle(char destination[kDisplayRowChars + 1], const char* source
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// DisplayScheduler
+// -----------------------------------------------------------------------------
+
 void DisplayScheduler::reset(uint32_t nowMs) {
   blinkOn_ = true;
   blinkMs_ = nowMs;
@@ -75,6 +79,10 @@ bool DisplayScheduler::toggleColonIfDue(uint32_t nowMs, uint32_t intervalMs) {
   colonVisible_ = !colonVisible_;
   return true;
 }
+
+// -----------------------------------------------------------------------------
+// DisplayManager
+// -----------------------------------------------------------------------------
 
 void DisplayManager::applySettings(const ClockConfig& config) {
   settings_ = config;

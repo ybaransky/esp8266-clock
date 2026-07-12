@@ -143,6 +143,10 @@ bool rtcLogTimeProvider(char* buffer, size_t bufferSize) {
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// RtcService
+// -----------------------------------------------------------------------------
+
 bool RtcService::begin()              { return rtc.begin(); }
 RtcStatus RtcService::getStatus() const { return rtc.getStatus(); }
 DateTime RtcService::getNow()         { return rtc.now(); }

@@ -26,6 +26,10 @@ void onApStationConnected(const WiFiEventSoftAPModeStationConnected& event) {
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// WifiConnectionManager
+// -----------------------------------------------------------------------------
+
 void WifiConnectionManager::begin(const WifiConfig& config) {
   gInstance = this;
   config_ = config;

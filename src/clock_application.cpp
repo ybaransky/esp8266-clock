@@ -74,6 +74,10 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// ClockApplication
+// -----------------------------------------------------------------------------
+
 ClockApplication::ClockApplication()
     : displayManager_(segmentDisplay_, rtc_),
       clockController_(displayManager_, rtc_),
@@ -107,6 +111,8 @@ void ClockApplication::begin() {
              (unsigned)cs.activeMode, cs.display.brightness);
 
   clockController_.applyConfig(cs);
+  lastLoggedMode_ = displayManager_.activeMode();
+  lastLoggedView_ = displayManager_.activeView();
   if (cs.messages.splash[0] != '\0') {
     displayManager_.showSplash(cs.messages.splash);
   }
@@ -153,34 +159,29 @@ void ClockApplication::processButtonEvents() {
 }
 
 void ClockApplication::checkRtcHealth(uint32_t nowMs) {
-  static uint32_t lastCheckMs = 0;
-  static bool wasHealthy = true;
-  if (static_cast<long>(nowMs - lastCheckMs) < 2000L) return;
-  lastCheckMs = nowMs;
+  if (static_cast<long>(nowMs - lastRtcHealthCheckMs_) < 2000L) return;
+  lastRtcHealthCheckMs_ = nowMs;
   const bool healthy = rtc_.isHealthy();
   if (!healthy) {
-    if (wasHealthy) LOG_PRINTLN("RTC health lost");
+    if (rtcWasHealthy_) LOG_PRINTLN("RTC health lost");
     displayManager_.showInfo(kMsgNoRtc);
-  } else if (!wasHealthy) {
+  } else if (!rtcWasHealthy_) {
     // A no-RTC overlay has no expiration, so clear it after recovery to reveal
     // the current base view (including any Friday-mode phase correction).
     LOG_PRINTLN("RTC health restored");
     displayManager_.clearOverlay();
   }
-  wasHealthy = healthy;
+  rtcWasHealthy_ = healthy;
 }
 
 void ClockApplication::logModeOrViewTransition() {
-  static Mode lastMode = displayManager_.activeMode();
-  static View lastView = displayManager_.activeView();
-
   const Mode mode = displayManager_.activeMode();
   const View view = displayManager_.activeView();
-  if (mode == lastMode && view == lastView) return;
+  if (mode == lastLoggedMode_ && view == lastLoggedView_) return;
 
   LOG_PRINTF("mode/view: %s/%s -> %s/%s\n",
-             modeName(lastMode), viewName(lastView),
+             modeName(lastLoggedMode_), viewName(lastLoggedView_),
              modeName(mode), viewName(view));
-  lastMode = mode;
-  lastView = view;
+  lastLoggedMode_ = mode;
+  lastLoggedView_ = view;
 }

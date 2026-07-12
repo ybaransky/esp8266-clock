@@ -4,6 +4,10 @@
 #include "log.h"
 #include "rtc_ds3231.h"
 
+// -----------------------------------------------------------------------------
+// TimeApi
+// -----------------------------------------------------------------------------
+
 bool TimeApi::parseJsonBody(JsonDocument& doc) {
   const DeserializationError error = deserializeJson(doc, server_.arg("plain"));
   if (!error) return true;

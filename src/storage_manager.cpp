@@ -2,6 +2,10 @@
 
 #include "log.h"
 
+// -----------------------------------------------------------------------------
+// StorageManager
+// -----------------------------------------------------------------------------
+
 bool StorageManager::ensureMounted(const char* context) {
   if (LittleFS.begin()) {
     return true;

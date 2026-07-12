@@ -9,6 +9,10 @@ constexpr uint32_t kRebootDelayMs = 1500;
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// WifiApi
+// -----------------------------------------------------------------------------
+
 void WifiApi::handleStatus() {
   const WifiRuntimeStatus status = wifiConnectionManager_.status();
   JsonDocument doc;

@@ -162,6 +162,10 @@ void copySegments(uint8_t destination[PANEL_WIDTH], const uint8_t source[PANEL_W
 
 }  // namespace
 
+// -----------------------------------------------------------------------------
+// SegmentDisplay
+// -----------------------------------------------------------------------------
+
 void SegmentDisplay::begin(uint8_t brightness) {
   setBrightness(brightness);
   blank();

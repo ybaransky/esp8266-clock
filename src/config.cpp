@@ -76,6 +76,10 @@ static void populateDefaultConfigDocument(JsonDocument& doc) {
     serializeWifiConfig(doc, wifi);
 }
 
+// -----------------------------------------------------------------------------
+// ConfigManager
+// -----------------------------------------------------------------------------
+
 // -- WiFi ----------------------------------------------------------------------
 WifiConfig ConfigManager::loadWifiConfig() {
     WifiConfig cfg = defaultWifiConfig();

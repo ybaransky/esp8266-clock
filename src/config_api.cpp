@@ -16,7 +16,9 @@ constexpr uint32_t kRebootDelayMs = 1500;
 
 }  // namespace
 
-// -- API handlers --------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// ConfigApi
+// -----------------------------------------------------------------------------
 
 bool ConfigApi::parseJsonBody(JsonDocument& doc, const char* route) {
   DeserializationError err = deserializeJson(doc, server_.arg("plain"));

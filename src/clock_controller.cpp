@@ -5,6 +5,10 @@
 #include "friday_mode.h"
 #include "rtc_ds3231.h"
 
+// -----------------------------------------------------------------------------
+// ClockController
+// -----------------------------------------------------------------------------
+
 void ClockController::applyConfig(const ClockConfig& config) {
   displayManager_.applySettings(config);
   fridayModeApplySettings(config);
