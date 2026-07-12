@@ -3,7 +3,7 @@
 #include <Arduino.h>
 
 #include "config.h"
-#include "clock_format.h"
+#include "display_format.h"
 
 const char* modeName(Mode mode);
 Mode sanitizeMode(int rawMode, Mode fallback);

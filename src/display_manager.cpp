@@ -1,6 +1,6 @@
 #include "display_manager.h"
 
-#include "clock_format.h"
+#include "display_format.h"
 #include "display.h"
 #include "display_renderer.h"
 #include "log.h"
@@ -27,12 +27,12 @@ void copyMessage(char destination[64], const char* source) {
   destination[63] = '\0';
 }
 
-void copyDisplayRow(char destination[kDisplayRowChars + 1], const char* source) {
-  snprintf(destination, kDisplayRowChars + 1, "%-4.4s", source);
+void copyDisplayPanel(char destination[kDisplayPanelChars + 1], const char* source) {
+  snprintf(destination, kDisplayPanelChars + 1, "%-4.4s", source);
 }
 
-void copyDisplayTitle(char destination[kDisplayRowChars + 1], const char* source) {
-  snprintf(destination, kDisplayRowChars + 1, "%4.4s", source);
+void copyDisplayTitle(char destination[kDisplayPanelChars + 1], const char* source) {
+  snprintf(destination, kDisplayPanelChars + 1, "%4.4s", source);
 }
 
 }  // namespace
@@ -167,13 +167,13 @@ void DisplayManager::showPages(const DisplayPage* pages,
   state.paged.repeat = repeat;
 
   for (uint8_t pageIndex = 0; pageIndex < state.paged.pageCount; ++pageIndex) {
-    for (uint8_t rowIndex = 0; rowIndex < kDisplayRowsPerPage; ++rowIndex) {
-      if (rowIndex == 0) {
-        copyDisplayTitle(state.paged.pages[pageIndex].rows[rowIndex],
-                         pages[pageIndex].rows[rowIndex]);
+    for (uint8_t panelIndex = 0; panelIndex < kDisplayPanelsPerPage; ++panelIndex) {
+      if (panelIndex == 0) {
+        copyDisplayTitle(state.paged.pages[pageIndex].panels[panelIndex],
+                         pages[pageIndex].panels[panelIndex]);
       } else {
-        copyDisplayRow(state.paged.pages[pageIndex].rows[rowIndex],
-                       pages[pageIndex].rows[rowIndex]);
+        copyDisplayPanel(state.paged.pages[pageIndex].panels[panelIndex],
+                         pages[pageIndex].panels[panelIndex]);
       }
     }
   }
@@ -335,11 +335,11 @@ uint32_t DisplayManager::refreshInterval() const {
 
   switch (baseView_.view) {
     case View::kCountdown:
-      return formatHasTenths(kFmtGroupCountdown, baseView_.formatIndex) ? kTenthMs : kSecondMs;
+      return displayFormatInfo(kFmtGroupCountdown, baseView_.formatIndex).hasTenths ? kTenthMs : kSecondMs;
     case View::kCountup:
-      return formatHasTenths(kFmtGroupCountUp, baseView_.formatIndex) ? kTenthMs : kSecondMs;
+      return displayFormatInfo(kFmtGroupCountUp, baseView_.formatIndex).hasTenths ? kTenthMs : kSecondMs;
     case View::kClock:
-      return formatHasTenths(kFmtGroupClock, baseView_.formatIndex) ? kTenthMs : kSecondMs;
+      return displayFormatInfo(kFmtGroupClock, baseView_.formatIndex).hasTenths ? kTenthMs : kSecondMs;
   }
   return kSecondMs;
 }
@@ -373,7 +373,9 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
 
 void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   const uint8_t formatIndex = baseView_.formatIndex;
-  if (clockFormatBlinksColon(formatIndex) && scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
+  const DisplayFormatInfo& format =
+      displayFormatInfo(kFmtGroupClock, formatIndex);
+  if (format.blinksColon && scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
     force = true;
   }
   if (!renderElapsed(nowMs, force)) return;
@@ -382,13 +384,13 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   // registers only change once a second anyway.
   const DateTime now = rtc_.getNowCached();
   uint8_t tenths = 0;
-  if (formatHasTenths(kFmtGroupClock, formatIndex)) {
+  if (format.hasTenths) {
     tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 
-  const DisplayFrame frame = renderClockDisplayFrame(
+  const DisplayFrame frame = renderClockFormat(
       formatIndex, now, settings_.display.clockUse12Hour, tenths,
-      !clockFormatBlinksColon(formatIndex) || scheduler_.colonVisible());
+      !format.blinksColon || scheduler_.colonVisible());
   display_.showFrame(frame);
 }
 
@@ -412,12 +414,12 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   }
 
   uint8_t tenths = 0;
-  if (formatHasTenths(kFmtGroupCountdown, formatIndex)) {
+  if (displayFormatInfo(kFmtGroupCountdown, formatIndex).hasTenths) {
     tenths = (secs > 0) ? (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10 : 0;
   }
 
   const DisplayFrame frame =
-      renderCountdownDisplayFrame(formatIndex, secs, tenths);
+      renderCountingFormat(formatIndex, secs, tenths);
   display_.showFrame(frame);
 }
 
@@ -430,11 +432,11 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
                     static_cast<long>(baseView_.anchor.unixtime());
 
   uint8_t tenths = 0;
-  if (formatHasTenths(kFmtGroupCountUp, formatIndex)) {
+  if (displayFormatInfo(kFmtGroupCountUp, formatIndex).hasTenths) {
     tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 
-  const DisplayFrame frame = renderCountupDisplayFrame(formatIndex, secs, tenths);
+  const DisplayFrame frame = renderCountingFormat(formatIndex, secs, tenths);
   display_.showFrame(frame);
 }
 
@@ -493,6 +495,6 @@ void DisplayManager::renderPagedMessage(uint32_t nowMs, bool force) {
 
   const DisplayPage& page = paged.pages[paged.currentPage];
   const DisplayFrame frame = renderPageDisplayFrame(
-      page.rows[0], page.rows[1], page.rows[2], scheduler_.blinkOn());
+      page.panels[0], page.panels[1], page.panels[2], scheduler_.blinkOn());
   display_.showFrame(frame);
 }

@@ -4,15 +4,16 @@
 #include <stddef.h>
 
 constexpr size_t kDisplayPanelCount = 3;
-constexpr size_t kDisplayFrameRowSize = 8;
+constexpr size_t kDisplayFramePanelSize = 8;
 
 struct DisplayFrame {
-  char rows[kDisplayPanelCount][kDisplayFrameRowSize] = {};
+  char panels[kDisplayPanelCount][kDisplayFramePanelSize] = {};
 };
 
 // Treats three TM1637 4-digit displays as independent 4-character panels.
 // Panel strings are rendered left-to-right. ':' or ';' between the second and
-// third visible slots lights the center colon, and '.' lights the previous slot.
+// third visible slots lights the panel's center colon without consuming a slot.
+// This hardware has no decimal points.
 //
 // showFrame() writes every requested panel update directly to the hardware.
 class SegmentDisplay {

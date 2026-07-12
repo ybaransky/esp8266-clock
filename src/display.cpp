@@ -7,7 +7,7 @@ namespace {
 
 constexpr uint8_t SEG_BLANK = 0x00;
 constexpr uint8_t SEG_MINUS = 0x40;
-constexpr uint8_t SEG_DOT = 0x80;
+constexpr uint8_t SEG_COLON = 0x80;
 constexpr uint8_t SEG_VALUE_MASK = 0x7F;
 constexpr size_t PANEL_COUNT = 3;
 constexpr size_t PANEL_WIDTH = 4;
@@ -25,8 +25,8 @@ constexpr uint8_t ASCII_SEGMENTS[96] = {
    *  e |    | c
    *      ---
    *       d
-   * TM1637Display encoding is 0bXGFEDCBA.
-   * X is the decimal point / colon bit and is controlled by renderPanel().
+   * TM1637Display encoding is 0bXGFEDCBA. On this hardware X controls the
+   * panel's center colon when set on the second digit; there are no decimals.
    */
 0b00000000, /* (space) this is 32 */
 0b10000110, /* ! */
@@ -42,7 +42,7 @@ constexpr uint8_t ASCII_SEGMENTS[96] = {
 0b01110000, /* + */
 0b00010000, /* , */
 0b01000000, /* - */
-0b10000000, /* . */
+0b00000000, /* . (not supported by this hardware) */
 0b01010010, /* / */
 0b00111111, /* 0 */
 0b00000110, /* 1 */
@@ -143,12 +143,7 @@ void renderPanelSegments(const char *text, uint8_t segments[PANEL_WIDTH]) {
     const char value = text[index];
 
     if ((value == ':' || value == ';') && slot == 2) {
-      segments[1] |= SEG_DOT;
-      continue;
-    }
-
-    if (value == '.' && slot > 0) {
-      segments[slot - 1] |= SEG_DOT;
+      segments[1] |= SEG_COLON;
       continue;
     }
 
@@ -184,7 +179,7 @@ void SegmentDisplay::setBrightness(uint8_t level) {
 void SegmentDisplay::showFrame(const DisplayFrame& frame) {
   for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
     uint8_t segments[PANEL_WIDTH];
-    renderPanelSegments(frame.rows[panel], segments);
+    renderPanelSegments(frame.panels[panel], segments);
 
     if (!cacheValid_[panel]) {
       displays[panel].setSegments(segments);

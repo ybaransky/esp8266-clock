@@ -64,13 +64,13 @@ enum class Overlay : uint8_t {
 // Short lowercase name for logging (e.g. "message", "pages").
 const char* overlayName(Overlay overlay);
 
-static constexpr uint8_t kDisplayRowsPerPage = 3;
-static constexpr uint8_t kDisplayRowChars = 4;
+static constexpr uint8_t kDisplayPanelsPerPage = 3;
+static constexpr uint8_t kDisplayPanelChars = 4;
 static constexpr uint8_t kMaxDisplayPages = 8;
 static constexpr uint16_t kDefaultPageDurationMs = 2000;
 
 struct DisplayPage {
-  char rows[kDisplayRowsPerPage][kDisplayRowChars + 1];  // Three 4-character panel rows.
+  char panels[kDisplayPanelsPerPage][kDisplayPanelChars + 1];
 };
 
 struct PagedDisplayPayload {

@@ -46,7 +46,7 @@ uint8_t sanitizeFormatIndex(FormatGroup group, int rawIndex, uint8_t fallback) {
     return fallback;
   }
   const uint8_t index = static_cast<uint8_t>(rawIndex);
-  return index < formatCount(group) ? index : fallback;
+  return index < displayFormatCount(group) ? index : fallback;
 }
 
 uint8_t sanitizeBrightness(int rawBrightness) {

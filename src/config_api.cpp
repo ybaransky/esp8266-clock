@@ -2,7 +2,7 @@
 
 #include <ArduinoJson.h>
 
-#include "clock_format.h"
+#include "display_format.h"
 #include "clock_controller.h"
 #include "config.h"
 #include "config_serializer.h"
@@ -99,16 +99,16 @@ void ConfigApi::handleBrightness() {
 void ConfigApi::handleFormats() {
   JsonDocument doc;
   JsonArray countdown = doc["countdown"].to<JsonArray>();
-  for (uint8_t i = 0; i < formatCount(kFmtGroupCountdown); ++i) {
-    countdown.add(getFormat(kFmtGroupCountdown, i));
+  for (uint8_t i = 0; i < displayFormatCount(kFmtGroupCountdown); ++i) {
+    countdown.add(displayFormatInfo(kFmtGroupCountdown, i).label);
   }
   JsonArray countup = doc["countup"].to<JsonArray>();
-  for (uint8_t i = 0; i < formatCount(kFmtGroupCountUp); ++i) {
-    countup.add(getFormat(kFmtGroupCountUp, i));
+  for (uint8_t i = 0; i < displayFormatCount(kFmtGroupCountUp); ++i) {
+    countup.add(displayFormatInfo(kFmtGroupCountUp, i).label);
   }
   JsonArray clock = doc["clock"].to<JsonArray>();
-  for (uint8_t i = 0; i < formatCount(kFmtGroupClock); ++i) {
-    clock.add(getFormat(kFmtGroupClock, i));
+  for (uint8_t i = 0; i < displayFormatCount(kFmtGroupClock); ++i) {
+    clock.add(displayFormatInfo(kFmtGroupClock, i).label);
   }
   responder_.sendJsonDocument(200, doc);
 }

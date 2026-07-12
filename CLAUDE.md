@@ -99,19 +99,19 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 ### Display / mode architecture
 The display system has four layers:
 
-1. **`clock_format.h/cpp`** - the format catalog and the pure renderers (no I/O).
-   - `config.h` owns the persisted `Mode` enum. `clock_format.h` owns `FormatGroup` and the catalog accessors `formatCount(group)`, `getFormat(group, index)` (UI label string), `formatHasTenths(group, index)`, `clockFormatBlinksColon(index)`, and `resolveCountingOverflowIndex(index, totalHours)`.
-   - The **single source of truth** is in `clock_format.cpp`: the `kCountingFormats[]` and `kClockFormats[]` tables. Each entry pairs the UI label with the three per-row render ops, so adding or reordering a format edits **exactly one table row**. There are no parallel tables and no stored metadata: `hasTenths` and `blinkColon` are *derived* from the row ops - never hardcode index lists or add metadata flags.
+1. **`display_format.h/cpp`** - the clock/counting format catalog and pure renderers (no I/O).
+   - `config.h` owns the persisted `Mode` enum. `display_format.h` owns `FormatGroup`, `DisplayFormatInfo`, `displayFormatCount()`, `displayFormatInfo()`, `renderCountingFormat()`, and `renderClockFormat()`.
+   - The **single source of truth** is in `display_format.cpp`: each `FormatSpec` pairs its UI label and scheduling metadata with three direct panel-renderer functions and an optional explicit overflow fallback. Keep `hasTenths` and `blinksColon` consistent with those renderers.
    - Countdown and CountUp share `kCountingFormats`; the two modes cannot drift apart.
-   - `renderCountdown/renderCountup/renderClock(idx, fields, r1, r2, r3, ...)` each fill three 4-char row buffers, one per physical display. Row ops dispatch to fragment helpers (`fmtNumber`, `fmtColonAnchored`, `fmtDaysWithLabel`, ...) - reuse these; do not add bare `snprintf` duplicates.
+   - `renderCountingFormat()` and `renderClockFormat()` return a complete `DisplayFrame`. Each catalog panel calls a small reusable `PanelRenderer` directly; there is no enum/switch interpreter.
    - Label tokens: counting uses `dd`/`hh`/`mm`/`ss`/`u` (tenths) and `hhh` (total hours = days*24+hours); clock uses `YYYY`/`MM`/`DD`/`DOW`/`hh`/`mm`/`ss`/`u`. `H` and `N` are labels rendered as lowercase `h`/`n`; `DOW` renders Sun/non/tu/uEd/thu/Fri/Sat (7-segment-safe forms).
-   - A semicolon in a clock label (`hh;mm`) marks a blinking colon (the `kHourMinBlink` op).
-   - `hhh:mm` combined on one row only works through 99:59; above 99 hours rendering auto-falls back to a compatible split `hhh | mm` variant via `resolveCountingOverflowIndex()` (semantic, based on row ops - no hardcoded indices).
-   - Numeric-only rows are right-justified across the 4-character panel (`7` renders as `"   7"`). For colon formats, the value left of the colon is blank-padded, not zero-padded (` 9:05`). When a blinking colon is off, the time renders without a separator (` 905`) so all digits remain visible.
+   - A semicolon in a clock label (`hh;mm`) marks a blinking colon; its `FormatSpec` uses `renderBlinkingHourMinute` and sets `blinksColon`.
+   - `hhh:mm` combined on one panel only works through 99:59; above 99 hours its `FormatSpec::overflowFallback` explicitly selects the matching split `hhh | mm` variant.
+   - Numeric-only panels are right-justified across the four characters (`7` renders as `"   7"`). For colon formats, the value left of the colon is blank-padded, not zero-padded (` 9:05`). When a blinking colon is off, the time renders without a separator (` 905`) so all digits remain visible.
 
 2. **`display.h/cpp`** - `ClockApplication` owns `SegmentDisplay`, which wraps 3 `TM1637Display` objects and is attached to `DisplayManager` during startup.
    - `begin(brightness)`, `setBrightness(0-7)`, `showPanels(r1, r2, r3)`, `blank()`.
-   - Panel strings are 4 chars; `:` or `;` between positions 1-2 lights the colon; `.` lights the decimal on the preceding digit.
+   - Panel strings use `:` or `;` between the second and third visible slots as non-consuming markup for the panel's center colon. This hardware has no decimal points; `.` has no special rendering behavior.
    - Caches last-written segments per panel; skips hardware write on identical content.
    - ASCII-to-segment glyph mapping lives in `display.cpp` as `ASCII_SEGMENTS`; adjust that table when a letter does not display well on 7-segment hardware.
 
@@ -123,7 +123,7 @@ The display system has four layers:
    - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `FridayModeController` to switch phases.
    - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = FOREVER)`, `showPages(pages, count, ...)`, `clearOverlay()`.
    - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday is the only mode whose view changes over time.
-   - Clock colon blink toggles once per second (2-second full cycle); message/page blinking uses its own 500ms cadence. Tenths formats refresh at 100ms, others at 1s (`formatHasTenths` drives this).
+   - Clock colon blink toggles once per second (2-second full cycle); message/page blinking uses its own 500ms cadence. Tenths formats refresh at 100ms, others at 1s (`DisplayFormatInfo::hasTenths` drives this).
    - Tenths values come from the injected RTC service's `msIntoSecond(nowMs)`, not `millis() % 1000`. `notifySecondBoundary()` invalidates the render throttle on each accepted SQW pulse. Demo tenths remain deadline-derived.
    - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
 

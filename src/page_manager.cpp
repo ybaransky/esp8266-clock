@@ -6,8 +6,8 @@ namespace {
 
 constexpr uint16_t kNetworkInfoPageMs = 3000;
 
-void copyPageRow(DisplayPage& page, uint8_t row, const char* text) {
-  snprintf(page.rows[row], sizeof(page.rows[row]), "%-4.4s", text);
+void copyPagePanel(DisplayPage& page, uint8_t panel, const char* text) {
+  snprintf(page.panels[panel], sizeof(page.panels[panel]), "%-4.4s", text);
 }
 
 char displaySafeChar(char value) {
@@ -31,9 +31,9 @@ uint8_t appendSsidPages(DisplayPage* pages, uint8_t pageCount, const String& ssi
   for (uint8_t offset = 0;
        offset < textLength && pageCount < kMaxDisplayPages;
        offset += 8) {
-    copyPageRow(pages[pageCount], 0, "SSid");
-    copyPageRow(pages[pageCount], 1, text + offset);
-    copyPageRow(pages[pageCount], 2, offset + 4 < textLength ? text + offset + 4 : "");
+    copyPagePanel(pages[pageCount], 0, "SSid");
+    copyPagePanel(pages[pageCount], 1, text + offset);
+    copyPagePanel(pages[pageCount], 2, offset + 4 < textLength ? text + offset + 4 : "");
     ++pageCount;
   }
 
@@ -56,8 +56,8 @@ bool parseIpOctets(const String& ip, uint8_t octets[4]) {
   return true;
 }
 
-void formatIpOctet(char row[kDisplayRowChars + 1], uint8_t octet) {
-  snprintf(row, kDisplayRowChars + 1, "%4u", octet);
+void formatIpOctet(char panel[kDisplayPanelChars + 1], uint8_t octet) {
+  snprintf(panel, kDisplayPanelChars + 1, "%4u", octet);
 }
 
 uint8_t appendIpPages(DisplayPage* pages, uint8_t pageCount, const String& ip) {
@@ -67,24 +67,24 @@ uint8_t appendIpPages(DisplayPage* pages, uint8_t pageCount, const String& ip) {
 
   uint8_t octets[4] = {};
   if (!parseIpOctets(ip, octets)) {
-    copyPageRow(pages[pageCount], 0, "IP");
-    copyPageRow(pages[pageCount], 1, "ERR");
-    copyPageRow(pages[pageCount], 2, "");
+    copyPagePanel(pages[pageCount], 0, "IP");
+    copyPagePanel(pages[pageCount], 1, "ERR");
+    copyPagePanel(pages[pageCount], 2, "");
     return pageCount + 1;
   }
 
-  copyPageRow(pages[pageCount], 0, "IP");
-  formatIpOctet(pages[pageCount].rows[1], octets[0]);
-  formatIpOctet(pages[pageCount].rows[2], octets[1]);
+  copyPagePanel(pages[pageCount], 0, "IP");
+  formatIpOctet(pages[pageCount].panels[1], octets[0]);
+  formatIpOctet(pages[pageCount].panels[2], octets[1]);
   ++pageCount;
 
   if (pageCount >= kMaxDisplayPages) {
     return pageCount;
   }
 
-  copyPageRow(pages[pageCount], 0, "IP");
-  formatIpOctet(pages[pageCount].rows[1], octets[2]);
-  formatIpOctet(pages[pageCount].rows[2], octets[3]);
+  copyPagePanel(pages[pageCount], 0, "IP");
+  formatIpOctet(pages[pageCount].panels[1], octets[2]);
+  formatIpOctet(pages[pageCount].panels[2], octets[3]);
   return pageCount + 1;
 }
 

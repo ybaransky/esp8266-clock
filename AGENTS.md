@@ -24,7 +24,7 @@ main.cpp
   │                         an ISR-timestamped phase reference for tenths
   ├── display (4 layers)
   │     format            – format-string tables + FormatMetadata
-  │     clock_format      – plan-driven pure renderers → three 4-char buffers
+  │     display_format    – format catalog + direct panel renderers → DisplayFrame
   │     display           – ClockApplication-owned SegmentDisplay (TM1637 hardware)
   │     display_manager   – owned state, transitions, blink/colon cadence, and render policy
   ├── friday_mode         – FridayMode controller and schedule policy; ticked every real SQW second via
@@ -77,8 +77,9 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 ## Critical invariants
 
 - **`ViewPayload`/`OverlayPayload` are unions** — only the member matching `ViewState::view` / `OverlayState::overlay` is valid. Never read a different union member.
-- **Format metadata and renderer plans must stay in sync** — whenever a format string is added or reordered in `format.cpp`, keep `FormatMetadata` aligned and update plan tables in `clock_format.cpp` (`kCountingPlans` and `kClockPlans`) to the same shape/order. `clockFormatValidateInvariants()` catches count mismatches at boot, but not semantic row mistakes.
-- **Intentional token/render differences are required** — format tokens in `format.cpp` are intentionally different from rendered labels in `clock_format.cpp`, and custom day abbreviations in `dowAbbrev()` are intentional. Do not normalize these unless explicitly requested.
+- **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` keeps its UI label, scheduling metadata, three direct panel renderers, and optional overflow fallback together. Countdown and countup intentionally share `kCountingFormats`. Keep `hasTenths`/`blinksColon` consistent with the selected panel renderers.
+- **Intentional token/render differences are required** — UI format tokens are intentionally different from rendered 7-segment labels, and the custom day abbreviations in `dayOfWeekAbbreviation()` are intentional. Do not normalize these unless explicitly requested.
+- **The TM1637 panels have a center colon but no decimals** — `:`/`;` in a panel string are non-consuming colon markup handled by `renderPanelSegments()`. Do not add decimal-point parsing or use `.` as a separator.
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.
 - **Device location vs `sunsetTest`** — `ClockConfig.locations.device` is the physical device location used by friday_mode; `ClockConfig.locations.sunsetTest` is the Sunset Calculator page's test input. Do not substitute one for the other.
 - **`webHandleClients()` must be called every `loop()` iteration** — skipping it stalls the web server and DNS.
