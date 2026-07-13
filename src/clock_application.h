@@ -28,6 +28,8 @@ class ClockApplication {
   ConfigManager configManager_;
   PageManager pageManager_;
   WifiConnectionManager wifiConnectionManager_;
+  uint32_t maxTickUs_ = 0;          // Longest tick() this report period.
+  uint32_t lastTickReportMs_ = 0;   // Last max-tick log time.
   uint32_t lastRtcHealthCheckMs_ = 0;
   bool rtcWasHealthy_ = true;
   Mode lastLoggedMode_ = kModeClock;

@@ -12,14 +12,26 @@ enum FormatGroup : uint8_t {
   kFmtGroupCount = 3,
 };
 
+enum class RefreshRate : uint8_t {
+  kOneSecond,
+  kOneTenth,
+};
+
+enum class ColonAnimation : uint8_t {
+  kNone,
+  kBlinking,
+};
+
+// refreshRate and colonAnimation are derived from the format's panel shapes
+// (tenths panel present / blinking colon panel present), never stored.
 struct DisplayFormatInfo {
   const char* label;
-  bool hasTenths;
-  bool blinksColon;
+  RefreshRate refreshRate;
+  ColonAnimation colonAnimation;
 };
 
 uint8_t displayFormatCount(FormatGroup group);
-const DisplayFormatInfo& displayFormatInfo(FormatGroup group, uint8_t index);
+DisplayFormatInfo displayFormatInfo(FormatGroup group, uint8_t index);
 
 DisplayFrame renderCountingFormat(uint8_t index,
                                   long totalSeconds,

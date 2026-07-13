@@ -77,7 +77,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 ## Critical invariants
 
 - **`ViewPayload`/`OverlayPayload` are unions** — only the member matching `ViewState::view` / `OverlayState::overlay` is valid. Never read a different union member.
-- **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` keeps its UI label, scheduling metadata, three direct panel renderers, and optional overflow fallback together. Countdown and countup intentionally share `kCountingFormats`. Keep `hasTenths`/`blinksColon` consistent with the selected panel renderers.
+- **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` keeps its UI label, `RefreshRate`, `ColonAnimation`, three direct panel renderers, and optional overflow fallback together. Countdown and countup intentionally share `kCountingFormats`. Keep the scheduling metadata consistent with the selected panel renderers.
 - **Intentional token/render differences are required** — UI format tokens are intentionally different from rendered 7-segment labels, and the custom day abbreviations in `dayOfWeekAbbreviation()` are intentional. Do not normalize these unless explicitly requested.
 - **The TM1637 panels have a center colon but no decimals** — `:`/`;` in a panel string are non-consuming colon markup handled by `renderPanelSegments()`. Do not add decimal-point parsing or use `.` as a separator.
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.

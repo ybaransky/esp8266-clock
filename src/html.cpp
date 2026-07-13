@@ -5,6 +5,8 @@
 const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script>
 <title>__DEVICE_NAME__</title><style>
 body{font-family:sans-serif;text-align:center;padding:20px;background:#111;color:#eee;max-width:520px;margin:0 auto}
 h1{font-size:2em;margin:0 0 8px}
@@ -22,10 +24,10 @@ hr{border:0;border-top:1px solid #333;margin:18px 0}
 <body>
 <h1 id="apn">__DEVICE_NAME__</h1>
 <hr>
-<button id="mode-countdown" class="mode" onclick="setMode('countdown')">Countdown</button>
-<button id="mode-clock" class="mode" onclick="setMode('clock')">Clock</button>
-<button id="mode-countup" class="mode" onclick="setMode('countup')">Countup</button>
-<button id="mode-friday" class="mode" onclick="setMode('friday')">Friday</button>
+<button id="mode-countdown" class="mode __MODE_COUNTDOWN__" onclick="setMode('countdown')">Countdown</button>
+<button id="mode-clock" class="mode __MODE_CLOCK__" onclick="setMode('clock')">Clock</button>
+<button id="mode-countup" class="mode __MODE_COUNTUP__" onclick="setMode('countup')">Countup</button>
+<button id="mode-friday" class="mode __MODE_FRIDAY__" onclick="setMode('friday')">Friday</button>
 <hr>
 <button id="mode-demo" class="mode" onclick="runDemo()">Demo</button>
 <hr>
@@ -73,6 +75,7 @@ function runDemo(){
 const char SETTINGS_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>Settings</title><style>
 body{font-family:sans-serif;text-align:center;padding:20px;background:#111;color:#eee;max-width:520px;margin:0 auto}
 h1{font-size:2em;margin:0 0 18px}
@@ -94,14 +97,48 @@ hr{border:0;border-top:1px solid #333;margin:14px auto;max-width:260px}
 <a class="btn" href="/config">Files</a>
 <a class="btn" href="/sunset">Sunset Calculator</a>
 <a class="home" href="/">&#8592; Home</a>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 
 // Formats page: loads format lists and saves display settings as JSON.
 
+const char COMPACT_FORMAT_HTML[] PROGMEM = R"rawliteral(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
+<title>Formats</title><style>
+body{font-family:sans-serif;padding:16px;background:#111;color:#eee;max-width:520px;margin:auto}h1{text-align:center;font-size:1.5em}label{display:block;margin:12px 0}select,input{width:100%;padding:9px;font-size:1em;box-sizing:border-box;background:#202020;color:#eee;border:1px solid #555;border-radius:5px}select{color-scheme:dark}input[type=radio],input[type=checkbox]{width:auto;accent-color:#3a9}input[type=range]{padding:0;accent-color:#3a9}button{padding:11px 22px;background:#357;color:white;border:0;border-radius:6px}hr{border:0;border-top:1px solid #333;margin:18px 0}#st{color:#f88;min-height:1.2em}.row{display:flex;gap:18px}.row label{width:auto}a{color:#8cf}
+</style></head><body><h1>Format Settings</h1>
+<label>Mode<select id="mode" onchange="sections()"><option value="0">Countdown</option><option value="1">Countup</option><option value="2">Clock</option><option value="3">Friday</option></select></label>
+<div id="cd"><hr><label>Format<select id="fcd"></select></label><label>End time<input type="datetime-local" step="1" id="end"></label></div>
+<div id="cu"><hr><label>Format<select id="fcu"></select></label><label>Start time<input type="datetime-local" step="1" id="start"></label></div>
+<div id="ck"><hr><label>Format<select id="fck"></select></label></div>
+<div id="fri"><hr><label>Clock phase<select id="ffck"></select></label><label>To Friday sunset<select id="ffri"></select></label><label>To Saturday sunset<select id="fsat"></select></label></div>
+<div id="hours" class="row"><label><input type="radio" name="hour" id="h24">24h</label><label><input type="radio" name="hour" id="h12">12h</label></div>
+<hr><label>Brightness: <span id="bv">4</span><input type="range" min="0" max="7" id="br" oninput="bv.textContent=this.value"></label>
+<button onclick="save()">Save</button><div id="st"></div><p><a href="/">Home</a> &nbsp; <a href="/settings">Settings</a></p>
+<script>
+function q(x){return document.getElementById(x)}
+function sections(){var m=+q('mode').value;q('cd').hidden=m!=0;q('cu').hidden=m!=1;q('ck').hidden=m!=2;q('fri').hidden=m!=3;q('hours').hidden=m<2}
+function options(id,a,n){var e=q(id);e.innerHTML='';(a||[]).forEach(function(x,i){var o=document.createElement('option');o.value=i;o.textContent=x;e.appendChild(o)});e.value=n==null?0:n}
+function local(s){return s&&s!='now'?s.replace(' ','T'):''}
+function stored(s){return s?s.replace('T',' '):'now'}
+function api(url,opt){return fetch(url,Object.assign({cache:'no-store'},opt||{})).then(function(r){if(!r.ok)throw Error(url+' HTTP '+r.status);return r.json()})}
+sections();
+var formats;
+api('/api/formats').then(function(f){formats=f;return api('/api/config')}).then(function(d){
+ formats=formats||{};var x=d.display||{},m=x.modes||{},a=m.countdown||{},b=m.countup||{},c=m.clock||{},f=m.friday||{};
+ options('fcd',formats.countdown,a.format);options('fcu',formats.countup,b.format);options('fck',formats.clock,c.format);options('ffck',formats.clock,f.clockFormat);options('ffri',formats.countdown,f.toFridaySunsetFormat);options('fsat',formats.countdown,f.toSaturdaySunsetFormat);
+ q('mode').value={countdown:0,countup:1,clock:2,friday:3}[x.activeMode]||0;q('end').value=local(a.end);q('start').value=local(b.start);q('br').value=x.brightness==null?4:x.brightness;q('bv').textContent=q('br').value;q('h12').checked=!!x.clock12Hour;q('h24').checked=!x.clock12Hour;sections();
+}).catch(function(e){q('st').textContent='API failed: '+e.message});
+function save(){var names=['countdown','countup','clock','friday'],body={display:{activeMode:names[+q('mode').value],brightness:+q('br').value,clock12Hour:q('h12').checked,modes:{countdown:{format:+q('fcd').value,end:stored(q('end').value)},countup:{format:+q('fcu').value,start:stored(q('start').value)},clock:{format:+q('fck').value},friday:{clockFormat:+q('ffck').value,toFridaySunsetFormat:+q('ffri').value,toSaturdaySunsetFormat:+q('fsat').value}}}};if(!q('end').value)delete body.display.modes.countdown.end;api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(d){q('st').textContent=d.message||d.error||'Saved'}).catch(function(e){q('st').textContent='API failed: '+e.message})}
+addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span');e.textContent=(performance.now()/1000).toFixed(2);e.style='float:right;color:#444';document.querySelector('p').appendChild(e)},0)})
+</script></body></html>
+)rawliteral";
+
 const char CONFIG_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>Format Settings</title><style>
 body{font-family:sans-serif;padding:18px;background:#111;color:#eee;max-width:640px;margin:0 auto}
 h1{font-size:2rem;margin:0 0 6px;text-align:center}
@@ -227,6 +264,9 @@ function fill(id,arr,sel,page,field){
   });
   if(!valid)reportFieldMismatch(page,field,sel,el.value,'select option not found');
 }
+function configuredIndex(value,fallback){
+  return value===undefined||value===null?fallback:Number(value);
+}
 function updateSections(){
   var m=parseInt($('mode').value);
   $('sec-countdown').style.display=m===0?'':'none';
@@ -238,6 +278,9 @@ function updateSections(){
   else if(m===3){var a=$('fri-hour-anchor');a.parentNode.insertBefore(hf,a.nextSibling);}
   hf.style.display=(m===2||m===3)?'':'none';
 }
+// Keep the raw page internally consistent even if an API request is slow or
+// fails. The saved mode is applied and this function runs again after load.
+updateSections();
 function modeNameFromValue(value){
   return ['countdown','countup','clock','friday'][parseInt(value)]||'countdown';
 }
@@ -259,19 +302,29 @@ function previewBrightness(value){
     }).catch(function(){});
   },120);
 }
-Promise.all([
-  fetch('/api/formats').then(function(r){return r.json();}),
-  fetch('/api/config').then(function(r){return r.json();})
-]).then(function(res){
-  var f=res[0],d=res[1];
+var loadedFormats=null;
+fetch('/api/formats',{cache:'no-store'}).then(function(r){
+  if(!r.ok)throw new Error('formats HTTP '+r.status);
+  return r.json();
+}).then(function(formats){
+  loadedFormats=formats;
+  return fetch('/api/config',{cache:'no-store'});
+}).then(function(r){
+  if(!r.ok)throw new Error('config HTTP '+r.status);
+  return r.json();
+}).then(function(d){
+  var f=loadedFormats;
+  if(!Array.isArray(f.countdown)||!Array.isArray(f.countup)||!Array.isArray(f.clock)){
+    throw new Error('invalid formats response');
+  }
   var display=d.display||{},modes=display.modes||{},countdown=modes.countdown||{},countup=modes.countup||{},clock=modes.clock||{};
-  fill('sel-cd',f.countdown,countdown.format||0,'format','display.modes.countdown.format');
-  fill('sel-cu',f.countup,countup.format||0,'format','display.modes.countup.format');
-  fill('sel-ck',f.clock,clock.format||1,'format','display.modes.clock.format');
+  fill('sel-cd',f.countdown,configuredIndex(countdown.format,0),'format','display.modes.countdown.format');
+  fill('sel-cu',f.countup,configuredIndex(countup.format,0),'format','display.modes.countup.format');
+  fill('sel-ck',f.clock,configuredIndex(clock.format,1),'format','display.modes.clock.format');
   var friday=modes.friday||{};
-  fill('sel-fri-ck',f.clock,friday.clockFormat||0,'format','display.modes.friday.clockFormat');
-  fill('sel-fri-cd',f.countdown,friday.toFridaySunsetFormat||0,'format','display.modes.friday.toFridaySunsetFormat');
-  fill('sel-fri-hv',f.countdown,friday.toSaturdaySunsetFormat||0,'format','display.modes.friday.toSaturdaySunsetFormat');
+  fill('sel-fri-ck',f.clock,configuredIndex(friday.clockFormat,0),'format','display.modes.friday.clockFormat');
+  fill('sel-fri-cd',f.countdown,configuredIndex(friday.toFridaySunsetFormat,0),'format','display.modes.friday.toFridaySunsetFormat');
+  fill('sel-fri-hv',f.countdown,configuredIndex(friday.toSaturdaySunsetFormat,0),'format','display.modes.friday.toSaturdaySunsetFormat');
   setFieldFromConfig('format','mode','display.activeMode',display.activeMode,modeValueFromName(display.activeMode));
   setFieldFromConfig('format','target','display.modes.countdown.end',countdown.end,dtl(countdown.end));
   if(countup.start&&countup.start!=='now'){
@@ -284,7 +337,7 @@ Promise.all([
   setFieldFromConfig('format','brite','display.brightness',display.brightness,b);
   $('briteVal').textContent=b;
   updateSections();
-}).catch(function(){$('st').textContent='Load failed';});
+}).catch(function(e){$('st').textContent='Load failed: '+e.message;});
 
 function save(){
   var body={
@@ -311,7 +364,7 @@ function save(){
   }).catch(function(){$('st').textContent='Save failed';});
 }
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 
 // WiFi
@@ -320,6 +373,7 @@ function save(){
 const char WIFI_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>WiFi Settings</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:500px;margin:0 auto}
 h1{font-size:1.5em;text-align:center}
@@ -461,7 +515,7 @@ function saveAp(){
 }
 loadConfig();scan();
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 
 // Directory viewer
@@ -469,6 +523,7 @@ loadConfig();scan();
 const char CONFIG_JSON_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>Directory</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:640px;margin:0 auto}
 h1{font-size:1.5em;text-align:center}h2{font-size:1em;color:#8af;margin:18px 0 6px}
@@ -594,12 +649,32 @@ fetch('/api/files').then(function(r){return r.json();}).then(function(d){
 }
 loadDirectory();
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
+)rawliteral";
+
+const char COMPACT_TIME_HTML[] PROGMEM = R"rawliteral(
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script><title>Time Settings</title><style>
+body{font-family:sans-serif;padding:16px;background:#111;color:#eee;max-width:520px;margin:auto;color-scheme:dark}h1{text-align:center;font-size:1.5em}.box{background:#1b1b1b;border:1px solid #333;border-radius:8px;padding:12px;margin:14px 0}.grid{display:grid;grid-template-columns:35% 65%;gap:9px;align-items:center}.label{text-align:right;color:#aaa}.value{text-align:center;font-family:monospace}input{width:100%;box-sizing:border-box;padding:8px;background:#202020;color:#eee;border:1px solid #555;border-radius:5px}input[type=checkbox]{width:auto;accent-color:#3a9}button{display:block;margin:14px auto 0;padding:11px 20px;background:#397;color:white;border:0;border-radius:6px}#st{color:#f88;min-height:1.2em}a{color:#8cf}
+</style></head><body><h1>Time Settings</h1>
+<div class="box"><div class="grid"><span class="label">Browser time</span><span class="value" id="bt">--</span><span class="label">Browser date</span><span class="value" id="bd">--</span><span class="label">Timezone</span><span class="value" id="bz">--</span><span class="label">UTC offset / DST</span><span class="value" id="bo">--</span></div><button onclick="fromBrowser()">Set Time from Browser</button></div>
+<div class="box"><div class="grid"><span class="label">Device time</span><input type="time" step="1" id="time"><span class="label">Device date</span><input type="date" id="date"><span class="label">Timezone</span><input id="zone" maxlength="39"><span class="label">UTC offset</span><input type="number" min="-840" max="840" id="offset"><span class="label">DST</span><input type="checkbox" id="dst"></div><button onclick="explicitTime()">Set Time Explicitly</button></div>
+<div id="st"></div><p><a href="/">Home</a> &nbsp; <a href="/settings">Settings</a></p>
+<script>
+function q(x){return document.getElementById(x)}function pad(x){return(x<10?'0':'')+x}function zone(){try{return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'}catch(e){return'UTC'}}function offset(){return-new Date().getTimezoneOffset()}function isDst(n){var y=n.getFullYear(),a=new Date(y,0,1).getTimezoneOffset(),b=new Date(y,6,1).getTimezoneOffset();return n.getTimezoneOffset()<Math.max(a,b)}
+function show(){var n=new Date();q('bt').textContent=pad(n.getHours())+':'+pad(n.getMinutes())+':'+pad(n.getSeconds());q('bd').textContent=n.toLocaleDateString();q('bz').textContent=zone();q('bo').textContent=offset()+' / '+(isDst(n)?'true':'false')}
+function api(u,o){return fetch(u,Object.assign({cache:'no-store'},o||{})).then(function(r){if(!r.ok)throw Error(u+' HTTP '+r.status);return r.json()})}
+show();setInterval(show,1000);
+api('/api/time').then(function(t){q('date').value=t.date||'';q('time').value=t.time||'';return api('/api/config')}).then(function(c){var t=c.time||{},z=t.timezone||{};q('zone').value=z.name||zone();q('offset').value=z.utcOffsetMinutes==null?offset():z.utcOffsetMinutes;q('dst').checked=!!t.dst}).catch(function(e){q('st').textContent='API failed: '+e.message});
+function sync(d,t,z,o,s){o=+o;if(!d||!t||o<-840||o>840){q('st').textContent='Date, time, and valid offset are required';return}var a=d.split('-'),b=t.split(':');api('/api/time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({year:+a[0],month:+a[1],day:+a[2],hour:+b[0],minute:+b[1],second:+(b[2]||0)})}).then(function(){return api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({time:{timezone:{name:z,utcOffsetMinutes:o},dst:!!s}})})}).then(function(x){q('st').textContent=x.message||'Saved'}).catch(function(e){q('st').textContent='API failed: '+e.message})}
+function fromBrowser(){var n=new Date();sync(n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate()),pad(n.getHours())+':'+pad(n.getMinutes())+':'+pad(n.getSeconds()),zone(),offset(),isDst(n))}function explicitTime(){sync(q('date').value,q('time').value,q('zone').value,q('offset').value,q('dst').checked)}
+addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span');e.textContent=(performance.now()/1000).toFixed(2);e.style='float:right;color:#444';document.querySelector('p').appendChild(e)},0)})
+</script></body></html>
 )rawliteral";
 
 const char TIME_SYNC_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>Time Settings</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:2rem;margin:0 0 6px;text-align:center}
@@ -760,7 +835,7 @@ function setValuesExplicitly(){
   syncDevice($('deviceDate').value,$('deviceTime').value,$('deviceTimezone').value,$('deviceOffset').value,$('deviceDst').checked);
 }
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 
 // Sunset
@@ -768,6 +843,7 @@ function setValuesExplicitly(){
 const char SUNSET_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>Sunset Calculator</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:2rem;margin:0 0 6px;text-align:center}
@@ -911,7 +987,7 @@ function computeSunset(){
 }
 loadInitialValues();
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 
 // Messages
@@ -919,6 +995,7 @@ loadInitialValues();
 const char MESSAGE_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>Message Settings</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:1.7em;margin-bottom:4px;text-align:center}
@@ -1033,7 +1110,7 @@ function save(){
   }).catch(function(){setStatus('Save failed');});
 }
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 
 // View file
@@ -1041,6 +1118,7 @@ function save(){
 const char VIEW_FILE_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>View File</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:720px;margin:0 auto}
 h1{font-size:1.3em;text-align:center;word-break:break-all}
@@ -1049,11 +1127,15 @@ iframe{width:100%;height:80vh;border:none;border-radius:6px}
 img{max-width:100%;border-radius:6px;display:block;margin:0 auto}
 #st{margin-top:10px;font-size:.9em;color:#f88;min-height:1.2em;text-align:center}
 a{color:#6af;font-size:.9em}
+#log{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px}
+#log th,#log td{padding:3px 8px;text-align:right;border-bottom:1px solid #2a2a2a;color:#aaa}
+#log th{color:#8af}
 </style></head>
 <body>
 <h1 id="title">&#8230;</h1>
 <div id="viewer"></div>
 <div id="st"></div>
+<table id="log" hidden><thead><tr><th>#</th><th>offset</th><th>bytes</th><th>time (s)</th><th>KB/s</th></tr></thead><tbody></tbody></table>
 <p><a href="/config">&#8592; Directory</a></p>
 <script>
 function $(id){return document.getElementById(id);}
@@ -1084,16 +1166,20 @@ if(!name){
   var pre=document.createElement('pre');
   pre.textContent='Loading...';
   viewer.appendChild(pre);
-  fetch(url).then(function(r){
-    if(!r.ok)throw new Error(r.status);
-    return r.text();
-  }).then(function(text){
-    if(ext==='json'){try{text=JSON.stringify(sorted(JSON.parse(text)),null,2);}catch(e){}}
-    pre.textContent=text;
-  }).catch(function(e){pre.textContent='';$('st').textContent='Load failed: '+e.message;});
+  var size=8*1024,offset=0,parts=[],seq=0,total=0,prevBytes=0;
+  function logRow(cells,color){var t=$('log');t.hidden=false;var r=t.tBodies[0].insertRow(0);if(color)r.style.color=color;cells.forEach(function(v){r.insertCell(-1).textContent=v})}
+  function expected(){return total?' of '+total.toLocaleString():''}
+  fetch('/api/files').then(function(r){return r.json()}).then(function(d){(d.files||[]).forEach(function(f){if(f.name===name||f.name==='/'+name)total=f.size});if(total&&!offset)$('st').textContent='Loading 0'+expected()+' bytes'}).catch(function(){});
+  function next(){var requested=size,began=performance.now(),u=url+'&offset='+offset+'&limit='+requested;fetch(u).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);if(!total)total=+r.headers.get('X-File-Size')||0;return r.text()}).then(function(t){
+    var elapsed=performance.now()-began;if(offset===0)pre.textContent='';
+    logRow([++seq,offset.toLocaleString(),t.length.toLocaleString(),(elapsed/1000).toFixed(2),(t.length/1.024/elapsed).toFixed(1)],prevBytes&&t.length>prevBytes?'#7d7':prevBytes&&t.length<prevBytes?'#f77':'');
+    prevBytes=t.length;
+    parts.push(t);offset+=t.length;if(t.length===requested&&elapsed<2000)size=Math.min(512*1024,size*2);$('st').textContent='Loading '+offset.toLocaleString()+expected()+' bytes';
+    if(t.length===requested){next();return}var all=parts.join('');if(ext==='json'){try{all=JSON.stringify(sorted(JSON.parse(all)),null,2)}catch(e){}}pre.textContent=all;$('st').textContent='Loaded '+offset.toLocaleString()+' bytes';
+  }).catch(function(e){if(size>8192){size=Math.max(8192,size/2);logRow([++seq,offset.toLocaleString(),'retry → '+size.toLocaleString(),'',''],'#f77');$('st').textContent='Retrying byte '+offset+' with '+size.toLocaleString()+' byte chunks';setTimeout(next,100);return}$('st').textContent='Load failed at byte '+offset+': '+e.message})}next();
 }
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 
 // Location
@@ -1101,6 +1187,7 @@ if(!name){
 const char LOCATION_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html><html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};(function(){var f=window.fetch;function fail(u,r){if(u!=='/api/client-log')clog({fetch:u,err:String(r).slice(0,80)});setTimeout(function(){var s=document.getElementById('st');if(s)s.textContent='API failed: '+u+' ('+r+')'},0)}window.fetch=function(i,o){var u=typeof i==='string'?i:i.url;return f.call(this,i,o).then(function(r){if(u.indexOf('/api/')===0&&!r.ok)fail(u,'HTTP '+r.status);return r},function(e){if(u.indexOf('/api/')===0)fail(u,e&&e.message?e.message:'network error');throw e})}})();addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script>
 <title>Location Settings</title><style>
 body{font-family:sans-serif;padding:20px;background:#111;color:#eee;max-width:560px;margin:0 auto}
 h1{font-size:2em;margin-bottom:14px;text-align:center}
@@ -1224,6 +1311,6 @@ function save(){
   }).catch(function(e){setStatus('Save failed: '+e.message);});
 }
 </script>
-</body></html>
+<script>addEventListener('load',function(){setTimeout(function(){var e=document.createElement('span'),a=document.querySelectorAll('a'),p;e.textContent=(performance.now()/1000).toFixed(2);e.style.cssText='float:right;color:#444;font:inherit';p=location.pathname!=='/'&&a.length?a[a.length-1].parentElement:document.body.appendChild(document.createElement('div'));p.appendChild(e)},0)})</script></body></html>
 )rawliteral";
 

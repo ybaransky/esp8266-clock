@@ -14,7 +14,12 @@
       "Bash(python -c ' *)",
       "Bash(grep -n \"printf_P\" ~/.platformio/packages/framework-arduinoespressif8266/cores/esp8266/Print.h; echo ---; cd \"/c/Users/ybara/Documents/Projects/esp8266-clock/src\" && grep -nE 'LOG_PRINTF\\\\\\([^\"]' *.cpp *.h; echo ---; grep -cE 'LOG_PRINTLN\\\\\\([^\"]' *.cpp *.h | grep -v ':0')",
       "Read(//c/Users/ybara/.platformio/packages/framework-arduinoespressif8266/cores/esp8266/**)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(g++ --version)",
+      "Bash(gcc --version)",
+      "Bash(python \"C:\\\\Users\\\\YBARAN~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-ybaransky-Documents-Projects-esp8266-clock\\\\c62b328d-a331-4173-824e-458d14acac6e\\\\scratchpad\\\\diff_formats.py\")",
+      "Bash(ls ~/.platformio/penv/Scripts/ | grep -iE '^\\(pio|platformio|python\\)')",
+      "Read(//c/Users/ybaransky/.platformio/penv/Scripts/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\ybara\\AppData\\Local\\Temp\\claude\\c--Users-ybara-Documents-Projects-esp8266-clock\\9f188f3c-4575-42f0-9bf4-89132e05a130\\scratchpad"

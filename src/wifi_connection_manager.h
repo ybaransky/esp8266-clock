@@ -34,10 +34,12 @@ class WifiConnectionManager {
  private:
   bool tryStationConnect(const String& ssid, const String& password);
   void startAccessPoint();
+  uint8_t pickLeastCongestedChannel();
 
   WifiConfig config_;  // Last loaded WiFi configuration.
   WifiMode mode_ = WifiMode::kAccessPoint;  // Current runtime WiFi mode.
 
   volatile bool apClientConnectedPending_ = false;  // Deferred AP-client log flag.
-  uint8_t apClientMac_[6] = {};                     // MAC for deferred AP-client log.
+  uint8_t apClientMac_[6] = {}; // Used internally to find the DHCP-assigned IP.
+  uint32_t apClientLookupStartedMs_ = 0;
 };

@@ -9,123 +9,148 @@
 
 static constexpr const char* kConfigPath = "/config.json";
 static constexpr const char* kConfigTmpPath = "/config.tmp";
-
-static bool writeConfigDocument(JsonDocument& doc, const char* label);
-static bool openAndParse(JsonDocument& doc);
-static void populateDefaultConfigDocument(JsonDocument& doc);
-
-// Opens and deserializes config.json into doc.  Returns false on any failure.
-static bool openAndParse(JsonDocument& doc) {
-    if (!storageManager.ensureMounted("open config")) return false;
-    File f = STORAGE.open(kConfigPath, "r");
-    if (!f) {
-        LOG_PRINTLN("config.json not found - creating defaults");
-        populateDefaultConfigDocument(doc);
-        if (!writeConfigDocument(doc, "create default config")) {
-            LOG_PRINTLN("Default config.json create failed - using in-memory defaults");
-            return false;
-        }
-        LOG_PRINTLN("Default config.json created");
-        return true;
-    }
-
-    DeserializationError err = deserializeJson(doc, f);
-    f.close();
-    if (err) {
-        LOG_PRINTF("config.json parse error: %s\n", err.c_str());
-        return false;
-    }
-    return true;
-}
-
-static bool writeConfigDocument(JsonDocument& doc, const char* label) {
-    if (!storageManager.ensureMounted(label)) return false;
-
-    STORAGE.remove(kConfigTmpPath);
-    File fw = STORAGE.open(kConfigTmpPath, "w");
-    if (!fw) {
-        LOG_PRINTLN("Failed to open config.tmp for writing");
-        return false;
-    }
-
-    const size_t bytes = serializeJson(doc, fw);
-    fw.flush();
-    fw.close();
-    if (bytes == 0) {
-        STORAGE.remove(kConfigTmpPath);
-        LOG_PRINTLN("Failed to serialize config document");
-        return false;
-    }
-
-    if (!STORAGE.rename(kConfigTmpPath, kConfigPath)) {
-        STORAGE.remove(kConfigPath);
-        if (!STORAGE.rename(kConfigTmpPath, kConfigPath)) {
-            STORAGE.remove(kConfigTmpPath);
-            LOG_PRINTLN("Failed to replace config.json");
-            return false;
-        }
-    }
-    return true;
-}
-
-static void populateDefaultConfigDocument(JsonDocument& doc) {
-    const ClockConfig clock = defaultClockConfig();
-    const WifiConfig wifi = defaultWifiConfig();
-    doc.clear();
-    serializeClockConfig(doc, clock);
-    serializeWifiConfig(doc, wifi);
-}
+static constexpr const char* kConfigBackupPath = "/config.bak";
 
 // -----------------------------------------------------------------------------
 // ConfigManager
 // -----------------------------------------------------------------------------
 
 // -- WiFi ----------------------------------------------------------------------
+bool ConfigManager::ensureLoaded() {
+    if (loaded_) return true;
+
+    DeviceConfig next{defaultClockConfig(), defaultWifiConfig()};
+    if (!readAll(next)) {
+        current_ = next;
+        loaded_ = true;
+        return false;
+    }
+    current_ = next;
+    loaded_ = true;
+    return true;
+}
+
+bool ConfigManager::readAll(DeviceConfig& config) {
+    const uint32_t startedUs = micros();
+    if (!storageManager.ensureMounted("read complete config")) return false;
+    File file = STORAGE.open(kConfigPath, "r");
+    if (!file) {
+        LOG_PRINTLN("config.json not found - creating complete default document");
+        const bool saved = writeAll(config, "create default config");
+        if (!saved) LOG_PRINTLN("Default config creation failed - using memory defaults");
+        return saved;
+    }
+    const size_t bytes = file.size();
+    JsonDocument doc;
+    const DeserializationError error = deserializeJson(doc, file);
+    file.close();
+    if (error) {
+        LOG_PRINTF("Complete config read failed: %s bytes=%u time=%.2f ms\n",
+                   error.c_str(), static_cast<unsigned>(bytes),
+                   (micros() - startedUs) / 1000.0f);
+        return false;
+    }
+    const char* validationError =
+        applyJsonToClockConfig(doc.as<JsonVariantConst>(), config.clock);
+    applyJsonToWifiConfig(doc.as<JsonVariantConst>(), config.wifi);
+    if (validationError != nullptr) {
+        LOG_PRINTF("Complete config has invalid values: %s\n", validationError);
+    }
+    config.clock = sanitizeClockConfig(config.clock);
+    LOG_PRINTF("Complete config read: bytes=%u time=%.2f ms\n",
+               static_cast<unsigned>(bytes),
+               (micros() - startedUs) / 1000.0f);
+    return true;
+}
+
+bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
+    const uint32_t startedUs = micros();
+    if (!storageManager.ensureMounted(context)) return false;
+    JsonDocument doc;
+    serializeClockConfig(doc, sanitizeClockConfig(config.clock));
+    serializeWifiConfig(doc, config.wifi);
+
+    STORAGE.remove(kConfigTmpPath);
+    File file = STORAGE.open(kConfigTmpPath, "w");
+    if (!file) {
+        LOG_PRINTF("Complete config write failed: cannot open temp file context=%s\n", context);
+        return false;
+    }
+    const size_t bytes = serializeJson(doc, file);
+    file.flush();
+    file.close();
+    if (bytes == 0) {
+        STORAGE.remove(kConfigTmpPath);
+        LOG_PRINTF("Complete config write failed: serialization context=%s\n", context);
+        return false;
+    }
+
+    File verifyFile = STORAGE.open(kConfigTmpPath, "r");
+    JsonDocument verifyDoc;
+    const DeserializationError verifyError = deserializeJson(verifyDoc, verifyFile);
+    verifyFile.close();
+    if (verifyError) {
+        STORAGE.remove(kConfigTmpPath);
+        LOG_PRINTF("Complete config verification failed: %s context=%s\n",
+                   verifyError.c_str(), context);
+        return false;
+    }
+
+    STORAGE.remove(kConfigBackupPath);
+    const bool hadOriginal = STORAGE.exists(kConfigPath);
+    if (hadOriginal && !STORAGE.rename(kConfigPath, kConfigBackupPath)) {
+        STORAGE.remove(kConfigTmpPath);
+        LOG_PRINTF("Complete config write failed: cannot create backup context=%s\n", context);
+        return false;
+    }
+    if (!STORAGE.rename(kConfigTmpPath, kConfigPath)) {
+        if (hadOriginal) STORAGE.rename(kConfigBackupPath, kConfigPath);
+        STORAGE.remove(kConfigTmpPath);
+        LOG_PRINTF("Complete config write failed: cannot install temp file context=%s\n", context);
+        return false;
+    }
+    STORAGE.remove(kConfigBackupPath);
+    const uint32_t elapsedMs = (micros() - startedUs + 500U) / 1000U;
+    LOG_PRINTF("Complete config write: bytes=%u time=%lu ms context=%s\n",
+               static_cast<unsigned>(bytes),
+               static_cast<unsigned long>(elapsedMs), context);
+    return true;
+}
+
 WifiConfig ConfigManager::loadWifiConfig() {
-    WifiConfig cfg = defaultWifiConfig();
-
-    JsonDocument doc;
-    if (!openAndParse(doc)) return cfg;
-
-    applyJsonToWifiConfig(doc.as<JsonVariantConst>(), cfg);
-    return cfg;
+    ensureLoaded();
+    return current_.wifi;
 }
 
-void ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
-    if (!storageManager.ensureMounted("save WiFi config")) return;
-
-    JsonDocument doc;
-    openAndParse(doc);          // loads existing doc; clock section stays intact
-    serializeWifiConfig(doc, cfg);
-    if (writeConfigDocument(doc, "save WiFi config")) {
-        LOG_PRINTLN("WiFi config saved");
-    }
+bool ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
+    ensureLoaded();
+    DeviceConfig next = current_;
+    next.wifi = cfg;
+    if (!writeAll(next, "save WiFi config")) return false;
+    current_ = next;
+    return true;
 }
 
-// -- Clock config --------------------------------------------------------------
 ClockConfig ConfigManager::loadClockConfig() {
-    ClockConfig cfg = defaultClockConfig();
-
-    JsonDocument doc;
-    if (!openAndParse(doc)) return cfg;
-
-    // Invalid values are skipped; the field keeps its default.
-    const char* error = applyJsonToClockConfig(doc.as<JsonVariantConst>(), cfg);
-    if (error != nullptr) {
-        LOG_PRINTF("config.json has invalid values: %s\n", error);
-    }
-    return sanitizeClockConfig(cfg);
+    ensureLoaded();
+    return current_.clock;
 }
 
-void ConfigManager::saveClockConfig(const ClockConfig& s) {
-    if (!storageManager.ensureMounted("save clock config")) return;
+bool ConfigManager::saveClockConfig(const ClockConfig& cfg) {
+    ensureLoaded();
+    DeviceConfig next = current_;
+    next.clock = sanitizeClockConfig(cfg);
+    if (!writeAll(next, "save clock config")) return false;
+    current_ = next;
+    return true;
+}
 
-    JsonDocument doc;
-    openAndParse(doc);          // loads existing doc; wifi section stays intact
-    serializeClockConfig(doc, sanitizeClockConfig(s));
-    if (writeConfigDocument(doc, "save clock config")) {
-        LOG_PRINTLN("Clock config saved");
-    }
+bool ConfigManager::saveConfig(const ClockConfig& clock, const WifiConfig& wifi) {
+    ensureLoaded();
+    DeviceConfig next{sanitizeClockConfig(clock), wifi};
+    if (!writeAll(next, "save complete config")) return false;
+    current_ = next;
+    return true;
 }
 
 ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {

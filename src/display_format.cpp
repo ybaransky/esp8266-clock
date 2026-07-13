@@ -5,10 +5,93 @@
 
 namespace {
 
-constexpr char kDayLabel = 'd';
-constexpr char kHourLabel = 'h';
-constexpr char kMinuteLabel = 'n';
-constexpr uint8_t kNoFallback = UINT8_MAX;
+// Which RenderValues field a panel reads.
+enum class Field : uint8_t {
+  kNone = 0,
+  kDays,
+  kHours,
+  kTotalHours,
+  kMinutes,
+  kSeconds,
+  kTenths,
+  kYear,
+  kMonth,
+  kDay,
+  kDow,
+};
+
+// The handful of 4-character panel layouts every format is built from.
+enum class Shape : uint8_t {
+  kBlank,           // "    "
+  kNumber,          // "  47" - right-justified
+  kNumberBlankZero, // like kNumber, but blank when the value is 0
+  kLabel,           // value + unit letter, right-packed: " 5 d", "45 d", "456d"
+  kLabelBlankZero,  // like kLabel, but the value is blanked when 0: "   h"
+  kColon,           // " 9:05" - left blank-padded, right zero-padded
+  kColonBlink,      // like kColon; colon follows colonVisible (" 905" when off)
+  kColonTenths,     // "59:4" - value plus a single tenths digit
+  kDow,             // day-of-week text, right-justified
+};
+
+struct PanelSpec {
+  Shape shape;
+  Field a;  // main / left-of-colon value
+  Field b;  // right-of-colon value; kNone otherwise
+};
+
+struct FormatSpec {
+  const char* label;
+  PanelSpec panels[kDisplayPanelCount];
+};
+
+using S = Shape;
+using F = Field;
+
+// RefreshRate and ColonAnimation are derived from the panel shapes
+// (kColonTenths / kColonBlink), so a row's metadata can never drift from what
+// it renders. The hhh:mm overflow fallback is resolved semantically in
+// resolveCountingOverflow(); no hardcoded indices.
+const FormatSpec kCountingFormats[] = {
+  {"dd D |  hh:mm |  ss:u", {{S::kLabel, F::kDays},           {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"dd D |  hh:mm |    ss", {{S::kLabel, F::kDays},           {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+  {"dd D |  hh  H | mm:ss", {{S::kLabel, F::kDays},           {S::kLabelBlankZero, F::kHours},          {S::kColon, F::kMinutes, F::kSeconds}}},
+  {"dd D |  hh  H |  mm N", {{S::kLabel, F::kDays},           {S::kLabelBlankZero, F::kHours},          {S::kLabel, F::kMinutes}}},
+  {"  dd |  hh:mm |  ss:u", {{S::kNumber, F::kDays},          {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"  dd |  hh:mm |    ss", {{S::kNumber, F::kDays},          {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+  {"  dd |     hh | mm:ss", {{S::kNumber, F::kDays},          {S::kNumberBlankZero, F::kHours},         {S::kColon, F::kMinutes, F::kSeconds}}},
+  {"  dd |     hh |    mm", {{S::kNumber, F::kDays},          {S::kNumberBlankZero, F::kHours},         {S::kNumber, F::kMinutes}}},
+  {"hh H |   mm N |  ss:u", {{S::kLabelBlankZero, F::kHours}, {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"hh H |   mm N |    ss", {{S::kLabelBlankZero, F::kHours}, {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
+  {" hhh |     mm |  ss:u", {{S::kNumber, F::kTotalHours},    {S::kNumber, F::kMinutes},                {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {" hhh |     mm |    ss", {{S::kNumber, F::kTotalHours},    {S::kNumber, F::kMinutes},                {S::kNumber, F::kSeconds}}},
+  {"     | hhh:mm |  ss:u", {{S::kBlank},                     {S::kColon, F::kTotalHours, F::kMinutes}, {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"     | hhh:mm |    ss", {{S::kBlank},                     {S::kColon, F::kTotalHours, F::kMinutes}, {S::kNumber, F::kSeconds}}},
+};
+
+const FormatSpec kClockFormats[] = {
+  {" DOW  | MM:DD | hh;mm", {{S::kDow, F::kDow},              {S::kColon, F::kMonth, F::kDay},          {S::kColonBlink, F::kHours, F::kMinutes}}},
+  {" DOW  |       | hh;mm", {{S::kDow, F::kDow},              {S::kBlank},                              {S::kColonBlink, F::kHours, F::kMinutes}}},
+  {"      |   DOW | hh;mm", {{S::kBlank},                     {S::kDow, F::kDow},                       {S::kColonBlink, F::kHours, F::kMinutes}}},
+  {" DOW  |    MM |    DD", {{S::kDow, F::kDow},              {S::kNumber, F::kMonth},                  {S::kNumber, F::kDay}}},
+  {" DOW  | hh:mm |  ss:u", {{S::kDow, F::kDow},              {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {" DOW  | hh:mm |    ss", {{S::kDow, F::kDow},              {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+  {" DOW  | hh  H | mm:ss", {{S::kDow, F::kDow},              {S::kLabelBlankZero, F::kHours},          {S::kColon, F::kMinutes, F::kSeconds}}},
+  {" DOW  | hh  H |  mm N", {{S::kDow, F::kDow},              {S::kLabelBlankZero, F::kHours},          {S::kLabel, F::kMinutes}}},
+  {" YYYY | MM:DD | hh;mm", {{S::kNumber, F::kYear},          {S::kColon, F::kMonth, F::kDay},          {S::kColonBlink, F::kHours, F::kMinutes}}},
+  {" YYYY |    MM |    DD", {{S::kNumber, F::kYear},          {S::kNumber, F::kMonth},                  {S::kNumber, F::kDay}}},
+  {"   MM |    DD | hh;mm", {{S::kNumber, F::kMonth},         {S::kNumber, F::kDay},                    {S::kColonBlink, F::kHours, F::kMinutes}}},
+  {"MM:DD | hh:mm |  ss:u", {{S::kColon, F::kMonth, F::kDay}, {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"MM:DD | hh:mm |    ss", {{S::kColon, F::kMonth, F::kDay}, {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+  {"MM:DD |    hh | mm:ss", {{S::kColon, F::kMonth, F::kDay}, {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
+  {"MM:DD |    hh |    mm", {{S::kColon, F::kMonth, F::kDay}, {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
+  {"   DD | hh:mm |  ss:u", {{S::kNumber, F::kDay},           {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"   DD | hh:mm |    ss", {{S::kNumber, F::kDay},           {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+  {"   DD |    hh | mm:ss", {{S::kNumber, F::kDay},           {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
+  {"   DD |    hh |    mm", {{S::kNumber, F::kDay},           {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
+};
+
+constexpr uint8_t kCountingFormatCount = sizeof(kCountingFormats) / sizeof(kCountingFormats[0]);
+constexpr uint8_t kClockFormatCount = sizeof(kClockFormats) / sizeof(kClockFormats[0]);
 
 struct RenderValues {
   int year = 0;
@@ -24,120 +107,29 @@ struct RenderValues {
   bool colonVisible = true;
 };
 
-using PanelRenderer = void (*)(const RenderValues&, char*);
-
-struct FormatSpec {
-  DisplayFormatInfo info;
-  PanelRenderer panels[kDisplayPanelCount];
-  uint8_t overflowFallback = kNoFallback;
-};
-
-void normalizeSpaces(const char* input, char* output, size_t outputSize) {
-  if (outputSize == 0) return;
-  output[0] = '\0';
-  if (input == nullptr) return;
-
-  size_t in = 0;
-  while (input[in] == ' ') ++in;
-
-  size_t out = 0;
-  bool justWroteSpace = false;
-  while (input[in] != '\0' && out + 1 < outputSize) {
-    const char c = input[in++];
-    if (c == ' ') {
-      if (out == 0 || justWroteSpace) continue;
-      output[out++] = ' ';
-      justWroteSpace = true;
-    } else {
-      output[out++] = c;
-      justWroteSpace = false;
-    }
+int fieldValue(Field field, const RenderValues& v) {
+  switch (field) {
+    case Field::kDays: return v.days;
+    case Field::kHours: return v.hours;
+    case Field::kTotalHours: return v.totalHours;
+    case Field::kMinutes: return v.minutes;
+    case Field::kSeconds: return v.seconds;
+    case Field::kTenths: return v.tenths;
+    case Field::kYear: return v.year;
+    case Field::kMonth: return v.month;
+    case Field::kDay: return v.day;
+    case Field::kDow: return v.dayOfWeek;
+    default: return 0;
   }
-  while (out > 0 && output[out - 1] == ' ') --out;
-  output[out] = '\0';
 }
 
-void rightmostSlice(const char* input, size_t width,
-                    char* output, size_t outputSize) {
-  if (outputSize == 0) return;
-  output[0] = '\0';
-  if (input == nullptr) return;
-  const size_t length = strlen(input);
-  snprintf(output, outputSize, "%s",
-           length > width ? input + length - width : input);
-}
-
-void formatRight(char* out, const char* raw) {
-  char normalized[16];
-  char sliced[8];
-  normalizeSpaces(raw, normalized, sizeof(normalized));
-  rightmostSlice(normalized, 4, sliced, sizeof(sliced));
-  snprintf(out, kDisplayFramePanelSize, "%4s", sliced);
-}
-
-void formatColon(char* out, const char* leftRaw, const char* rightRaw,
-                 uint8_t rightWidth, bool colonVisible) {
-  char leftNormalized[16];
-  char rightNormalized[16];
-  char left[8];
-  char right[8];
-  normalizeSpaces(leftRaw, leftNormalized, sizeof(leftNormalized));
-  normalizeSpaces(rightRaw, rightNormalized, sizeof(rightNormalized));
-  rightmostSlice(leftNormalized, 2, left, sizeof(left));
-  rightmostSlice(rightNormalized, rightWidth, right, sizeof(right));
-
-  char composed[8];
-  size_t position = 0;
-  const size_t leftLength = strlen(left);
-  composed[position++] = leftLength >= 2 ? left[leftLength - 2] : ' ';
-  composed[position++] = leftLength >= 1 ? left[leftLength - 1] : ' ';
-  if (colonVisible) composed[position++] = ':';
-  const size_t rightLength = strlen(right);
-  for (uint8_t i = 0; i < rightWidth; ++i) {
-    composed[position++] = i < rightLength ? right[i] : ' ';
+char labelFor(Field field) {
+  switch (field) {
+    case Field::kDays: return 'd';
+    case Field::kHours: return 'h';
+    case Field::kMinutes: return 'n';
+    default: return ' ';
   }
-  composed[position] = '\0';
-  snprintf(out, kDisplayFramePanelSize, "%s", composed);
-}
-
-void formatNumber(char* out, int value) {
-  snprintf(out, kDisplayFramePanelSize, "%4d", value);
-}
-
-void formatValueWithLabel(char* out, const char* value, char label) {
-  char raw[12];
-  snprintf(raw, sizeof(raw), "%s %c", value == nullptr ? "" : value, label);
-  formatRight(out, raw);
-}
-
-void formatIntWithLabel(char* out, int value, char label) {
-  char text[8];
-  snprintf(text, sizeof(text), "%d", value);
-  formatValueWithLabel(out, text, label);
-}
-
-void formatHourMinute(char* out, int hours, int minutes, bool colonVisible) {
-  char left[8];
-  char right[8];
-  snprintf(left, sizeof(left), "%d", hours);
-  snprintf(right, sizeof(right), "%02d", minutes);
-  formatColon(out, left, right, 2, colonVisible);
-}
-
-void formatMinuteSecond(char* out, int minutes, int seconds) {
-  char left[8];
-  char right[8];
-  snprintf(left, sizeof(left), "%d", minutes);
-  snprintf(right, sizeof(right), "%02d", seconds);
-  formatColon(out, left, right, 2, true);
-}
-
-void formatSecondTenths(char* out, int seconds, int tenths) {
-  char left[8];
-  char right[8];
-  snprintf(left, sizeof(left), "%d", seconds);
-  snprintf(right, sizeof(right), "%d", tenths);
-  formatColon(out, left, right, 1, true);
 }
 
 const char* dayOfWeekAbbreviation(int dayOfWeek) {
@@ -146,116 +138,58 @@ const char* dayOfWeekAbbreviation(int dayOfWeek) {
   return dayOfWeek >= 0 && dayOfWeek < 7 ? kNames[dayOfWeek] : "   ";
 }
 
-void renderBlank(const RenderValues&, char* out) { formatRight(out, ""); }
-void renderDaysRight(const RenderValues& v, char* out) {
-  formatNumber(out, constrain(v.days, 0, 9999));
+// Right-packed value + unit letter. The label hugs the value and is dropped
+// entirely when the value needs all four digits: " 5 d", "45 d", "456d", "4567".
+void formatLabeled(char* out, int value, char label, bool blankIfZero) {
+  value = constrain(value, 0, 9999);
+  if (blankIfZero && value == 0) {
+    snprintf(out, kDisplayFramePanelSize, "   %c", label);
+  } else if (value < 10) {
+    snprintf(out, kDisplayFramePanelSize, " %d %c", value, label);
+  } else if (value < 100) {
+    snprintf(out, kDisplayFramePanelSize, "%2d %c", value, label);
+  } else if (value < 1000) {
+    snprintf(out, kDisplayFramePanelSize, "%3d%c", value, label);
+  } else {
+    snprintf(out, kDisplayFramePanelSize, "%4d", value);
+  }
 }
-void renderDaysWithLabel(const RenderValues& v, char* out) {
-  const int days = constrain(v.days, 0, 9999);
-  if (days < 10) snprintf(out, kDisplayFramePanelSize, " %d %c", days, kDayLabel);
-  else if (days < 100) snprintf(out, kDisplayFramePanelSize, "%2d %c", days, kDayLabel);
-  else if (days < 1000) snprintf(out, kDisplayFramePanelSize, "%3d%c", days, kDayLabel);
-  else snprintf(out, kDisplayFramePanelSize, "%4d", days);
-}
-void renderHoursLabel(const RenderValues& v, char* out) {
-  char hours[4];
-  if (v.hours == 0) snprintf(hours, sizeof(hours), "  ");
-  else snprintf(hours, sizeof(hours), "%2d", v.hours);
-  formatValueWithLabel(out, hours, kHourLabel);
-}
-void renderMinutesLabel(const RenderValues& v, char* out) {
-  formatIntWithLabel(out, v.minutes, kMinuteLabel);
-}
-void renderTotalHours(const RenderValues& v, char* out) {
-  formatNumber(out, v.totalHours);
-}
-void renderHourMinute(const RenderValues& v, char* out) {
-  char hours[4];
-  snprintf(hours, sizeof(hours), "%2d", v.hours);
-  snprintf(out, kDisplayFramePanelSize, "%s:%02d", hours, v.minutes);
-}
-void renderTotalHourMinute(const RenderValues& v, char* out) {
-  formatHourMinute(out, v.totalHours, v.minutes, true);
-}
-void renderHoursNumberBlankZero(const RenderValues& v, char* out) {
-  char hours[4];
-  if (v.hours == 0) snprintf(hours, sizeof(hours), "  ");
-  else snprintf(hours, sizeof(hours), "%2d", v.hours);
-  formatRight(out, hours);
-}
-void renderMinuteSecond(const RenderValues& v, char* out) {
-  formatMinuteSecond(out, v.minutes, v.seconds);
-}
-void renderSecondTenths(const RenderValues& v, char* out) {
-  formatSecondTenths(out, v.seconds, v.tenths);
-}
-void renderSecondTenthsCompact(const RenderValues& v, char* out) {
-  snprintf(out, kDisplayFramePanelSize, "%2d:%d", v.seconds, v.tenths);
-}
-void renderSeconds(const RenderValues& v, char* out) { formatNumber(out, v.seconds); }
-void renderMinutes(const RenderValues& v, char* out) { formatNumber(out, v.minutes); }
-void renderDayOfWeek(const RenderValues& v, char* out) {
-  formatRight(out, dayOfWeekAbbreviation(v.dayOfWeek));
-}
-void renderMonthDay(const RenderValues& v, char* out) {
-  char month[8];
-  char day[8];
-  snprintf(month, sizeof(month), "%d", v.month);
-  snprintf(day, sizeof(day), "%02d", v.day);
-  formatColon(out, month, day, 2, true);
-}
-void renderBlinkingHourMinute(const RenderValues& v, char* out) {
-  formatHourMinute(out, v.hours, v.minutes, v.colonVisible);
-}
-void renderFixedHourMinute(const RenderValues& v, char* out) {
-  formatHourMinute(out, v.hours, v.minutes, true);
-}
-void renderMonth(const RenderValues& v, char* out) { formatNumber(out, v.month); }
-void renderDay(const RenderValues& v, char* out) { formatNumber(out, v.day); }
-void renderYear(const RenderValues& v, char* out) { formatNumber(out, v.year); }
-void renderHours(const RenderValues& v, char* out) { formatNumber(out, v.hours); }
 
-const FormatSpec kCountingFormats[] = {
-  {{"dd D |  hh:mm |  ss:u", true, false}, {renderDaysWithLabel, renderHourMinute, renderSecondTenths}, kNoFallback},
-  {{"dd D |  hh:mm |    ss", false, false}, {renderDaysWithLabel, renderHourMinute, renderSeconds}, kNoFallback},
-  {{"dd D |  hh  H | mm:ss", false, false}, {renderDaysWithLabel, renderHoursLabel, renderMinuteSecond}, kNoFallback},
-  {{"dd D |  hh  H |  mm N", false, false}, {renderDaysWithLabel, renderHoursLabel, renderMinutesLabel}, kNoFallback},
-  {{"  dd |  hh:mm |  ss:u", true, false}, {renderDaysRight, renderHourMinute, renderSecondTenths}, kNoFallback},
-  {{"  dd |  hh:mm |    ss", false, false}, {renderDaysRight, renderHourMinute, renderSeconds}, kNoFallback},
-  {{"  dd |     hh | mm:ss", false, false}, {renderDaysRight, renderHoursNumberBlankZero, renderMinuteSecond}, kNoFallback},
-  {{"  dd |     hh |    mm", false, false}, {renderDaysRight, renderHoursNumberBlankZero, renderMinutes}, kNoFallback},
-  {{"hh H |   mm N |  ss:u", true, false}, {renderHoursLabel, renderMinutesLabel, renderSecondTenths}, kNoFallback},
-  {{"hh H |   mm N |    ss", false, false}, {renderHoursLabel, renderMinutesLabel, renderSeconds}, kNoFallback},
-  {{" hhh |     mm |  ss:u", true, false}, {renderTotalHours, renderMinutes, renderSecondTenths}, kNoFallback},
-  {{" hhh |     mm |    ss", false, false}, {renderTotalHours, renderMinutes, renderSeconds}, kNoFallback},
-  {{"     | hhh:mm |  ss:u", true, false}, {renderBlank, renderTotalHourMinute, renderSecondTenths}, 10},
-  {{"     | hhh:mm |    ss", false, false}, {renderBlank, renderTotalHourMinute, renderSeconds}, 11},
-};
-
-const FormatSpec kClockFormats[] = {
-  {{" DOW  | MM:DD | hh;mm", false, true}, {renderDayOfWeek, renderMonthDay, renderBlinkingHourMinute}, kNoFallback},
-  {{" DOW  |       | hh;mm", false, true}, {renderDayOfWeek, renderBlank, renderBlinkingHourMinute}, kNoFallback},
-  {{"      |   DOW | hh;mm", false, true}, {renderBlank, renderDayOfWeek, renderBlinkingHourMinute}, kNoFallback},
-  {{" DOW  |    MM |    DD", false, false}, {renderDayOfWeek, renderMonth, renderDay}, kNoFallback},
-  {{" DOW  | hh:mm |  ss:u", true, false}, {renderDayOfWeek, renderFixedHourMinute, renderSecondTenthsCompact}, kNoFallback},
-  {{" DOW  | hh:mm |    ss", false, false}, {renderDayOfWeek, renderFixedHourMinute, renderSeconds}, kNoFallback},
-  {{" DOW  | hh  H | mm:ss", false, false}, {renderDayOfWeek, renderHoursLabel, renderMinuteSecond}, kNoFallback},
-  {{" DOW  | hh  H |  mm N", false, false}, {renderDayOfWeek, renderHoursLabel, renderMinutesLabel}, kNoFallback},
-  {{" YYYY | MM:DD | hh;mm", false, true}, {renderYear, renderMonthDay, renderBlinkingHourMinute}, kNoFallback},
-  {{" YYYY |    MM |    DD", false, false}, {renderYear, renderMonth, renderDay}, kNoFallback},
-  {{"   MM |    DD | hh;mm", false, true}, {renderMonth, renderDay, renderBlinkingHourMinute}, kNoFallback},
-  {{"MM:DD | hh:mm |  ss:u", true, false}, {renderMonthDay, renderFixedHourMinute, renderSecondTenths}, kNoFallback},
-  {{"MM:DD | hh:mm |    ss", false, false}, {renderMonthDay, renderFixedHourMinute, renderSeconds}, kNoFallback},
-  {{"MM:DD |    hh | mm:ss", false, false}, {renderMonthDay, renderHours, renderMinuteSecond}, kNoFallback},
-  {{"MM:DD |    hh |    mm", false, false}, {renderMonthDay, renderHours, renderMinutes}, kNoFallback},
-  {{"   DD | hh:mm |  ss:u", true, false}, {renderDay, renderFixedHourMinute, renderSecondTenths}, kNoFallback},
-  {{"   DD | hh:mm |    ss", false, false}, {renderDay, renderFixedHourMinute, renderSeconds}, kNoFallback},
-  {{"   DD |    hh | mm:ss", false, false}, {renderDay, renderHours, renderMinuteSecond}, kNoFallback},
-  {{"   DD |    hh |    mm", false, false}, {renderDay, renderHours, renderMinutes}, kNoFallback},
-};
-
-constexpr uint8_t kCountingFormatCount = sizeof(kCountingFormats) / sizeof(kCountingFormats[0]);
-constexpr uint8_t kClockFormatCount = sizeof(kClockFormats) / sizeof(kClockFormats[0]);
+void renderPanel(const PanelSpec& spec, const RenderValues& v, char* out) {
+  const int a = fieldValue(spec.a, v);
+  const int b = fieldValue(spec.b, v);
+  switch (spec.shape) {
+    case Shape::kBlank:
+      snprintf(out, kDisplayFramePanelSize, "    ");
+      break;
+    case Shape::kNumber:
+      snprintf(out, kDisplayFramePanelSize, "%4d", a);
+      break;
+    case Shape::kNumberBlankZero:
+      if (a == 0) snprintf(out, kDisplayFramePanelSize, "    ");
+      else snprintf(out, kDisplayFramePanelSize, "%4d", a);
+      break;
+    case Shape::kLabel:
+      formatLabeled(out, a, labelFor(spec.a), false);
+      break;
+    case Shape::kLabelBlankZero:
+      formatLabeled(out, a, labelFor(spec.a), true);
+      break;
+    case Shape::kColon:
+      snprintf(out, kDisplayFramePanelSize, "%2d:%02d", a, b);
+      break;
+    case Shape::kColonBlink:
+      if (v.colonVisible) snprintf(out, kDisplayFramePanelSize, "%2d:%02d", a, b);
+      else snprintf(out, kDisplayFramePanelSize, "%2d%02d", a, b);
+      break;
+    case Shape::kColonTenths:
+      snprintf(out, kDisplayFramePanelSize, "%2d:%d", a, b);
+      break;
+    case Shape::kDow:
+      snprintf(out, kDisplayFramePanelSize, "%4s", dayOfWeekAbbreviation(a));
+      break;
+  }
+}
 
 const FormatSpec& safeFormat(FormatGroup group, uint8_t index) {
   if (group == kFmtGroupClock) {
@@ -264,10 +198,39 @@ const FormatSpec& safeFormat(FormatGroup group, uint8_t index) {
   return kCountingFormats[index < kCountingFormatCount ? index : 0];
 }
 
+bool samePanel(const PanelSpec& a, const PanelSpec& b) {
+  return a.shape == b.shape && a.a == b.a && a.b == b.b;
+}
+
+bool rendersCombinedTotalHours(const FormatSpec& format) {
+  for (const PanelSpec& panel : format.panels) {
+    if (panel.shape == Shape::kColon && panel.a == Field::kTotalHours) return true;
+  }
+  return false;
+}
+
+// A combined hhh:mm panel only fits through 99:59. Above that, fall back to
+// the split format that shows the same content: total hours and minutes on
+// their own panels, with an identical seconds panel.
+const FormatSpec& resolveCountingOverflow(const FormatSpec& format,
+                                          int totalHours) {
+  if (totalHours <= 99 || !rendersCombinedTotalHours(format)) return format;
+  for (const FormatSpec& candidate : kCountingFormats) {
+    if (candidate.panels[0].shape == Shape::kNumber &&
+        candidate.panels[0].a == Field::kTotalHours &&
+        candidate.panels[1].shape == Shape::kNumber &&
+        candidate.panels[1].a == Field::kMinutes &&
+        samePanel(candidate.panels[2], format.panels[2])) {
+      return candidate;
+    }
+  }
+  return format;
+}
+
 DisplayFrame renderPanels(const FormatSpec& format, const RenderValues& values) {
   DisplayFrame frame;
   for (uint8_t panel = 0; panel < kDisplayPanelCount; ++panel) {
-    format.panels[panel](values, frame.panels[panel]);
+    renderPanel(format.panels[panel], values, frame.panels[panel]);
   }
   return frame;
 }
@@ -282,6 +245,8 @@ RenderValues valuesFromDuration(long totalSeconds, uint8_t tenths) {
   values.minutes = totalSeconds / 60;
   values.seconds = totalSeconds % 60;
   values.totalHours = values.days * 24 + values.hours;
+  // The 4-digit day panels saturate at 9999; totalHours keeps the true value.
+  if (values.days > 9999) values.days = 9999;
   values.tenths = tenths;
   return values;
 }
@@ -319,23 +284,32 @@ uint8_t displayFormatCount(FormatGroup group) {
   }
 }
 
-const DisplayFormatInfo& displayFormatInfo(FormatGroup group, uint8_t index) {
-  return safeFormat(group, index).info;
+DisplayFormatInfo displayFormatInfo(FormatGroup group, uint8_t index) {
+  const FormatSpec& format = safeFormat(group, index);
+  DisplayFormatInfo info{format.label, RefreshRate::kOneSecond,
+                         ColonAnimation::kNone};
+  for (const PanelSpec& panel : format.panels) {
+    if (panel.shape == Shape::kColonTenths) {
+      info.refreshRate = RefreshRate::kOneTenth;
+    }
+    if (panel.shape == Shape::kColonBlink) {
+      info.colonAnimation = ColonAnimation::kBlinking;
+    }
+  }
+  return info;
 }
 
 DisplayFrame renderCountingFormat(uint8_t index, long totalSeconds,
                                   uint8_t tenths) {
   const RenderValues values = valuesFromDuration(totalSeconds, tenths);
-  const FormatSpec* format = &safeFormat(kFmtGroupCountdown, index);
-  if (values.totalHours > 99 && format->overflowFallback != kNoFallback) {
-    format = &kCountingFormats[format->overflowFallback];
-  }
-  return renderPanels(*format, values);
+  const FormatSpec& format = resolveCountingOverflow(
+      safeFormat(kFmtGroupCountdown, index), values.totalHours);
+  return renderPanels(format, values);
 }
 
 DisplayFrame renderClockFormat(uint8_t index, const DateTime& now,
                                bool use12Hour, uint8_t tenths,
                                bool colonVisible) {
   return renderPanels(safeFormat(kFmtGroupClock, index),
-                    valuesFromClock(now, use12Hour, tenths, colonVisible));
+                      valuesFromClock(now, use12Hour, tenths, colonVisible));
 }

@@ -1,5 +1,6 @@
 #include "wifi_api.h"
 
+#include "log.h"
 #include "web_server.h"
 #include "wifi_connection_manager.h"
 
@@ -35,6 +36,7 @@ void WifiApi::handleConnect() {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, server_.arg("plain"));
   if (err) {
+    LOG_PRINTF("/api/wifi/connect failed: invalid JSON: %s\n", err.c_str());
     responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
     return;
   }
@@ -42,6 +44,7 @@ void WifiApi::handleConnect() {
   const String ssid = doc["ssid"] | "";
   const String password = doc["password"] | "";
   if (!wifiConnectionManager_.connectAndSave(configManager_, ssid, password)) {
+    LOG_PRINTLN("/api/wifi/connect failed: SSID required");
     responder_.sendJson(400, "{\"error\":\"SSID required\"}");
     return;
   }

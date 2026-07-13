@@ -78,7 +78,11 @@ void ConfigApi::handleSetMode() {
 
   ClockConfig cfg = configManager_.loadClockConfig();
   cfg.activeMode = nextMode;
-  configManager_.saveClockConfig(cfg);
+  if (!configManager_.saveClockConfig(cfg)) {
+    LOG_PRINTLN("/api/mode failed: complete config write failed");
+    responder_.sendJson(500, "{\"error\":\"Configuration write failed\"}");
+    return;
+  }
   clockController_.applyConfig(configManager_.sanitizeClockConfig(cfg));
   responder_.sendJson(200, "{\"message\":\"Mode changed\"}");
 }
@@ -127,15 +131,20 @@ void ConfigApi::handleSaveConfig() {
   ClockConfig clockConfig = configManager_.loadClockConfig();
   const char* error = applyJsonToClockConfig(payload, clockConfig);
   if (error != nullptr) {
+    LOG_PRINTF("/api/config rejected clock settings: %s\n", error);
     responder_.sendJson(400, error);
     return;
   }
-  configManager_.saveClockConfig(clockConfig);
+  WifiConfig wifiConfig = configManager_.loadWifiConfig();
+  const bool wifiChanged = applyJsonToWifiConfig(payload, wifiConfig);
+  if (!configManager_.saveConfig(clockConfig, wifiConfig)) {
+    LOG_PRINTLN("/api/config failed: complete config write failed");
+    responder_.sendJson(500, "{\"error\":\"Configuration write failed\"}");
+    return;
+  }
   clockController_.applyConfig(configManager_.sanitizeClockConfig(clockConfig));
 
-  WifiConfig wifiConfig = configManager_.loadWifiConfig();
-  if (applyJsonToWifiConfig(payload, wifiConfig)) {
-    configManager_.saveWifiConfig(wifiConfig);
+  if (wifiChanged) {
     responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
     webScheduleReboot(kRebootDelayMs);
   } else {

@@ -41,3 +41,7 @@ void ClockController::showInfo(const char* message, int32_t durationMs) {
 void ClockController::showSplash(const char* message) {
   displayManager_.showSplash(message);
 }
+
+Mode ClockController::activeMode() const {
+  return displayManager_.activeMode();
+}

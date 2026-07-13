@@ -335,11 +335,20 @@ uint32_t DisplayManager::refreshInterval() const {
 
   switch (baseView_.view) {
     case View::kCountdown:
-      return displayFormatInfo(kFmtGroupCountdown, baseView_.formatIndex).hasTenths ? kTenthMs : kSecondMs;
+      return displayFormatInfo(kFmtGroupCountdown, baseView_.formatIndex).refreshRate ==
+                     RefreshRate::kOneTenth
+                 ? kTenthMs
+                 : kSecondMs;
     case View::kCountup:
-      return displayFormatInfo(kFmtGroupCountUp, baseView_.formatIndex).hasTenths ? kTenthMs : kSecondMs;
+      return displayFormatInfo(kFmtGroupCountUp, baseView_.formatIndex).refreshRate ==
+                     RefreshRate::kOneTenth
+                 ? kTenthMs
+                 : kSecondMs;
     case View::kClock:
-      return displayFormatInfo(kFmtGroupClock, baseView_.formatIndex).hasTenths ? kTenthMs : kSecondMs;
+      return displayFormatInfo(kFmtGroupClock, baseView_.formatIndex).refreshRate ==
+                     RefreshRate::kOneTenth
+                 ? kTenthMs
+                 : kSecondMs;
   }
   return kSecondMs;
 }
@@ -375,7 +384,8 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   const uint8_t formatIndex = baseView_.formatIndex;
   const DisplayFormatInfo& format =
       displayFormatInfo(kFmtGroupClock, formatIndex);
-  if (format.blinksColon && scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
+  if (format.colonAnimation == ColonAnimation::kBlinking &&
+      scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
     force = true;
   }
   if (!renderElapsed(nowMs, force)) return;
@@ -384,13 +394,13 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   // registers only change once a second anyway.
   const DateTime now = rtc_.getNowCached();
   uint8_t tenths = 0;
-  if (format.hasTenths) {
+  if (format.refreshRate == RefreshRate::kOneTenth) {
     tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 
   const DisplayFrame frame = renderClockFormat(
       formatIndex, now, settings_.display.clockUse12Hour, tenths,
-      !format.blinksColon || scheduler_.colonVisible());
+      format.colonAnimation != ColonAnimation::kBlinking || scheduler_.colonVisible());
   display_.showFrame(frame);
 }
 
@@ -414,7 +424,8 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   }
 
   uint8_t tenths = 0;
-  if (displayFormatInfo(kFmtGroupCountdown, formatIndex).hasTenths) {
+  if (displayFormatInfo(kFmtGroupCountdown, formatIndex).refreshRate ==
+      RefreshRate::kOneTenth) {
     tenths = (secs > 0) ? (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10 : 0;
   }
 
@@ -432,7 +443,8 @@ void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
                     static_cast<long>(baseView_.anchor.unixtime());
 
   uint8_t tenths = 0;
-  if (displayFormatInfo(kFmtGroupCountUp, formatIndex).hasTenths) {
+  if (displayFormatInfo(kFmtGroupCountUp, formatIndex).refreshRate ==
+      RefreshRate::kOneTenth) {
     tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 

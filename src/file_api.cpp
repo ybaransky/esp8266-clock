@@ -1,5 +1,7 @@
 #include "file_api.h"
 
+#include "log.h"
+
 #include <ArduinoJson.h>
 
 #include "config.h"
@@ -160,6 +162,26 @@ void FileApi::handleReadFile() {
     file.seek(0, SeekSet);
   }
 
+  if (server_.hasArg("offset") && server_.hasArg("limit")) {
+    constexpr size_t kMaxViewerChunk = 512U * 1024U;
+    const size_t fileSize = file.size();
+    const size_t offset = static_cast<size_t>(server_.arg("offset").toInt());
+    size_t length = static_cast<size_t>(server_.arg("limit").toInt());
+    if (length == 0 || length > kMaxViewerChunk) length = kMaxViewerChunk;
+    if (offset >= fileSize) length = 0;
+    else length = min(length, fileSize - offset);
+
+    file.seek(offset, SeekSet);
+    responder_.logRequest(200, length);
+    // Lets the /view chunk loader show total progress ("x of y bytes").
+    char totalSize[16];
+    snprintf(totalSize, sizeof(totalSize), "%u", static_cast<unsigned>(fileSize));
+    server_.sendHeader("X-File-Size", totalSize);
+    server_.send(200, mimeTypeForPath(path), &file, length);
+    file.close();
+    return;
+  }
+
   responder_.logRequest(200, file.size());
   server_.streamFile(file, mimeTypeForPath(path));
   file.close();
@@ -192,15 +214,18 @@ void FileApi::handleUploadData() {
     uploadError_ = false;
     const String path = uploadFilePath(upload.filename);
     if (path.isEmpty()) {
+      LOG_PRINTF("File upload failed: invalid name=\"%s\"\n", upload.filename.c_str());
       uploadError_ = true;
       return;
     }
     if (!storageManager.ensureMounted("upload file")) {
+      LOG_PRINTLN("File upload failed: storage mount failed");
       uploadError_ = true;
       return;
     }
     uploadFile_ = STORAGE.open(path, "w");
     if (!uploadFile_) {
+      LOG_PRINTF("File upload failed: could not open %s for writing\n", path.c_str());
       uploadError_ = true;
       return;
     }
@@ -210,6 +235,7 @@ void FileApi::handleUploadData() {
   if (upload.status == UPLOAD_FILE_WRITE) {
     if (!uploadFile_ ||
         uploadFile_.write(upload.buf, upload.currentSize) != upload.currentSize) {
+      if (!uploadError_) LOG_PRINTLN("File upload failed while writing data");
       uploadError_ = true;
     }
     return;
@@ -222,6 +248,7 @@ void FileApi::handleUploadData() {
 
   if (upload.status == UPLOAD_FILE_ABORTED) {
     closeUploadFile();
+    LOG_PRINTLN("File upload aborted by client");
     uploadError_ = true;
   }
 }
@@ -239,7 +266,7 @@ void FileApi::printConfigFileToSerial(File& file) {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, file);
   if (err) {
-    Serial.printf("config.json parse error=%s\n", err.c_str());
+    LOG_PRINTF("config.json parse error while viewing file: %s\n", err.c_str());
     return;
   }
   serializeJsonPretty(doc, Serial);

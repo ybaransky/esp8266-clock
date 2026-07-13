@@ -4,6 +4,7 @@
 #include <RTClib.h>
 
 struct ClockConfig;
+enum Mode : uint8_t;
 class DisplayManager;
 class RtcService;
 
@@ -22,6 +23,7 @@ class ClockController {
   void showDemo();
   void showInfo(const char* message, int32_t durationMs);
   void showSplash(const char* message);
+  Mode activeMode() const;
 
  private:
   DisplayManager& displayManager_;

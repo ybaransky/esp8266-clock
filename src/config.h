@@ -85,14 +85,27 @@ struct ClockConfig {
   CountupConfig countup;
 };
 
+struct DeviceConfig {
+  ClockConfig clock;
+  WifiConfig wifi;
+};
+
 // -- ConfigManager -------------------------------------------------------------
 class ConfigManager {
 public:
     WifiConfig  loadWifiConfig();
-    void        saveWifiConfig(const WifiConfig& cfg);
+    bool        saveWifiConfig(const WifiConfig& cfg);
 
     ClockConfig loadClockConfig();
-    void        saveClockConfig(const ClockConfig& cfg);
+    bool        saveClockConfig(const ClockConfig& cfg);
+    bool        saveConfig(const ClockConfig& clock, const WifiConfig& wifi);
     ClockConfig sanitizeClockConfig(const ClockConfig& cfg) const;
 
+private:
+    bool ensureLoaded();
+    bool readAll(DeviceConfig& config);
+    bool writeAll(const DeviceConfig& config, const char* context);
+
+    DeviceConfig current_;
+    bool loaded_ = false;
 };
