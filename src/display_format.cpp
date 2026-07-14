@@ -33,15 +33,17 @@ enum class Shape : uint8_t {
   kDow,             // day-of-week text, right-justified
 };
 
+// Identifies the layout and source fields used to render one physical panel.
 struct PanelSpec {
-  Shape shape;
-  Field a;  // main / left-of-colon value
-  Field b;  // right-of-colon value; kNone otherwise
+  Shape shape;  // Panel layout renderer.
+  Field a;  // Main or left-of-colon value.
+  Field b;  // Right-of-colon value; kNone otherwise.
 };
 
+// Keeps a UI label and all three panel render specifications together.
 struct FormatSpec {
-  const char* label;
-  PanelSpec panels[kDisplayPanelCount];
+  const char* label;  // Human-readable format token layout.
+  PanelSpec panels[kDisplayPanelCount];  // Direct render specification per panel.
 };
 
 using S = Shape;
@@ -93,18 +95,19 @@ const FormatSpec kClockFormats[] = {
 constexpr uint8_t kCountingFormatCount = sizeof(kCountingFormats) / sizeof(kCountingFormats[0]);
 constexpr uint8_t kClockFormatCount = sizeof(kClockFormats) / sizeof(kClockFormats[0]);
 
+// Collects normalized renderer inputs so panel logic can read fields uniformly.
 struct RenderValues {
-  int year = 0;
-  int month = 0;
-  int day = 0;
-  int dayOfWeek = 0;
-  int days = 0;
-  int hours = 0;
-  int totalHours = 0;
-  int minutes = 0;
-  int seconds = 0;
-  int tenths = 0;
-  bool colonVisible = true;
+  int year = 0;  // Four-digit calendar year.
+  int month = 0;  // Calendar month from 1 through 12.
+  int day = 0;  // Calendar day of month.
+  int dayOfWeek = 0;  // RTClib weekday index from Sunday.
+  int days = 0;  // Whole elapsed days.
+  int hours = 0;  // Clock hour or within-day elapsed hours.
+  int totalHours = 0;  // Unbounded elapsed hours.
+  int minutes = 0;  // Minute component.
+  int seconds = 0;  // Second component.
+  int tenths = 0;  // Tenths-of-a-second digit.
+  bool colonVisible = true;  // Current phase for blinking-colon formats.
 };
 
 int fieldValue(Field field, const RenderValues& v) {
@@ -142,7 +145,7 @@ const char* dayOfWeekAbbreviation(int dayOfWeek) {
 // entirely when the value needs all four digits: " 5 d", "45 d", "456d", "4567".
 void formatLabeled(char* out, int value, char label, bool blankIfZero) {
   value = constrain(value, 0, 9999);
-  if (blankIfZero && value == 0) {
+  if (blankIfZero && (value == 0)) {
     snprintf(out, kDisplayFramePanelSize, "   %c", label);
   } else if (value < 10) {
     snprintf(out, kDisplayFramePanelSize, " %d %c", value, label);
@@ -204,7 +207,7 @@ bool samePanel(const PanelSpec& a, const PanelSpec& b) {
 
 bool rendersCombinedTotalHours(const FormatSpec& format) {
   for (const PanelSpec& panel : format.panels) {
-    if (panel.shape == Shape::kColon && panel.a == Field::kTotalHours) return true;
+    if ((panel.shape == Shape::kColon) && (panel.a == Field::kTotalHours)) return true;
   }
   return false;
 }
@@ -214,12 +217,12 @@ bool rendersCombinedTotalHours(const FormatSpec& format) {
 // their own panels, with an identical seconds panel.
 const FormatSpec& resolveCountingOverflow(const FormatSpec& format,
                                           int totalHours) {
-  if (totalHours <= 99 || !rendersCombinedTotalHours(format)) return format;
+  if ((totalHours <= 99) || !rendersCombinedTotalHours(format)) return format;
   for (const FormatSpec& candidate : kCountingFormats) {
-    if (candidate.panels[0].shape == Shape::kNumber &&
-        candidate.panels[0].a == Field::kTotalHours &&
-        candidate.panels[1].shape == Shape::kNumber &&
-        candidate.panels[1].a == Field::kMinutes &&
+    if ((candidate.panels[0].shape == Shape::kNumber) &&
+        (candidate.panels[0].a == Field::kTotalHours) &&
+        (candidate.panels[1].shape == Shape::kNumber) &&
+        (candidate.panels[1].a == Field::kMinutes) &&
         samePanel(candidate.panels[2], format.panels[2])) {
       return candidate;
     }

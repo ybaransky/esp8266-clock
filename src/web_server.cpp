@@ -19,6 +19,7 @@
 
 namespace {
 
+// Owns the HTTP/DNS servers, registers routes, and dispatches requests to domain APIs.
 class WebPortal {
  public:
   WebPortal(ClockController& clockController,
@@ -137,7 +138,7 @@ class WebPortal {
     if (responder_.responseSequence() != responseBefore) {
       responder_.logCompletion(micros() - startedUs);
     }
-    if (pendingRebootMs_ != 0 && static_cast<long>(millis() - pendingRebootMs_) >= 0) {
+    if ((pendingRebootMs_ != 0) && (static_cast<long>(millis() - pendingRebootMs_) >= 0)) {
       LOG_PRINTLN("Rebooting...");
       ESP.restart();
     }
@@ -153,7 +154,7 @@ class WebPortal {
       return;
     }
     const uint32_t total = responder_.responseSequence();
-    if (total != lastTrafficTotal_ || maxLoopGapMs_ > 50) {
+    if ((total != lastTrafficTotal_) || (maxLoopGapMs_ > 50)) {
       LOG_PRINTF("web traffic: %lu responses (%lu probes, %lu redirects), "
                  "max loop gap %lu ms in last 10s\n",
                  static_cast<unsigned long>(total - lastTrafficTotal_),
@@ -188,7 +189,7 @@ class WebPortal {
     }
     for (size_t i = 0; i < body.length(); ++i) {
       const char c = body[i];
-      if (c < 32 || c > 126) {
+      if ((c < 32) || (c > 126)) {
         body.setCharAt(i, '.');
       }
     }
@@ -199,7 +200,7 @@ class WebPortal {
 
   void getNetworkInfo(String& ssid, String& ip) {
     const WifiRuntimeStatus status = wifiConnectionManager_.status();
-    if (status.mode == WifiMode::kStation && status.connected) {
+    if ((status.mode == WifiMode::kStation) && status.connected) {
       ssid = status.ssid;
       ip = status.ip;
       return;
@@ -224,7 +225,7 @@ class WebPortal {
     server_.send(302, "text/plain", "");
   }
 
-  static WebPortal* activePortal;
+  static WebPortal* activePortal;  // Singleton bridge used by route callbacks.
 
  private:
   // Dynamic values for the static home page: device name and configured mode.
@@ -245,8 +246,8 @@ class WebPortal {
   LocationApi locationApi_;        // Location and ZIP-code endpoints.
   WifiApi wifiApi_;                // WiFi status/scan/connect endpoints.
   ClockController& clockController_; // Live state; avoids a LittleFS read on `/`.
-  ConfigManager& configManager_;
-  WifiConnectionManager& wifiConnectionManager_;
+  ConfigManager& configManager_;  // Persistent configuration used by portal actions.
+  WifiConnectionManager& wifiConnectionManager_;  // Network status and connection operations.
   DNSServer dnsServer_;            // Captive portal DNS responder.
   bool dnsRunning_ = false;        // True when captive DNS started successfully.
   uint32_t pendingRebootMs_ = 0;   // millis() deadline for deferred reboot.

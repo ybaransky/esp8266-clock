@@ -4,6 +4,7 @@
 #include <ArduinoJson.h>
 #include <ESP8266WebServer.h>
 
+// Centralizes HTTP response sending and records request/transfer diagnostics.
 class HttpResponder {
  public:
   explicit HttpResponder(ESP8266WebServer& server) : server_(server) {}
@@ -26,14 +27,14 @@ class HttpResponder {
   void captureClientState();
 
   ESP8266WebServer& server_;  // Server used to send HTTP responses.
-  uint32_t responseSequence_ = 0;
-  int lastStatus_ = 0;
+  uint32_t responseSequence_ = 0;  // Count of responses started since boot.
+  int lastStatus_ = 0;  // HTTP status of the most recent response.
   size_t lastTxBytes_ = 0;       // Bytes the response promised (Content-Length).
   size_t lastActualTxBytes_ = 0; // Body bytes confirmed written to the socket.
   bool actualTxKnown_ = false;   // True when the send path counted real writes.
   bool clientGoneAfterSend_ = false;  // Client dropped before/while sending.
-  size_t lastRxBytes_ = 0;
-  HTTPMethod lastMethod_ = HTTP_ANY;
-  char lastUri_[48] = {};
-  char lastClientIp_[16] = {};
+  size_t lastRxBytes_ = 0;  // Request-body bytes received for the last request.
+  HTTPMethod lastMethod_ = HTTP_ANY;  // Method of the last request.
+  char lastUri_[48] = {};  // Truncated URI of the last request.
+  char lastClientIp_[16] = {};  // Remote IPv4 text for the last request.
 };

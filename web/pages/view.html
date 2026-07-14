@@ -56,6 +56,7 @@ if (!name) {
 // Text files are fetched in chunks that grow while transfers succeed and
 // shrink with retries on failure; the log table shows per-chunk throughput.
 function loadText() {
+  var chunkTimeLimitMs = 2000;
   var pre = document.createElement('pre');
   pre.textContent = 'Loading...';
   viewer.appendChild(pre);
@@ -94,7 +95,11 @@ function loadText() {
       prevBytes = t.length;
       parts.push(t);
       offset += t.length;
-      if (t.length === requested && elapsed < 2000) size = Math.min(512 * 1024, size * 2);
+      if (t.length === requested) {
+        size = elapsed < chunkTimeLimitMs
+          ? Math.min(512 * 1024, size * 2)
+          : Math.max(8 * 1024, size / 2);
+      }
       setStatus('Loading ' + offset.toLocaleString() + expected() + ' bytes');
       if (t.length === requested) { next(); return; }
       var all = parts.join('');

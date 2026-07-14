@@ -31,7 +31,7 @@ bool ConfigApi::parseJsonBody(JsonDocument& doc, const char* route) {
 }
 
 void ConfigApi::handleDemoTest() {
-  if (server_.hasArg("plain") && server_.arg("plain").length() > 0) {
+  if (server_.hasArg("plain") && (server_.arg("plain").length() > 0)) {
     JsonDocument doc;
     if (!parseJsonBody(doc, "/api/demo/test")) return;
     JsonVariant finalMessage = doc["display"]["messages"]["final"];

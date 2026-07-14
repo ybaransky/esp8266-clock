@@ -9,6 +9,7 @@
 class ConfigManager;
 class WifiConnectionManager;
 
+// Handles WiFi status, scan, and credential-change HTTP endpoints.
 class WifiApi {
  public:
   WifiApi(ESP8266WebServer& server, HttpResponder& responder,
@@ -27,5 +28,5 @@ class WifiApi {
   ESP8266WebServer& server_;       // Source of WiFi API request bodies.
   HttpResponder& responder_;       // Sends WiFi API responses.
   ConfigManager& configManager_;   // Persists requested station credentials.
-  WifiConnectionManager& wifiConnectionManager_;
+  WifiConnectionManager& wifiConnectionManager_;  // Performs scans and connection changes.
 };

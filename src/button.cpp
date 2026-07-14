@@ -10,6 +10,7 @@ static void onBtnClick();
 static void onBtnDoubleClick();
 static void onBtnLongPressStart();
 
+// Debounces the hardware button and queues semantic button events for the application loop.
 class ButtonController {
 public:
   void begin() {
@@ -27,7 +28,7 @@ public:
   }
 
   void tick() {
-    if (!startupRecheckDone_ && static_cast<long>(millis() - startupRecheckAtMs_) >= 0) {
+    if (!startupRecheckDone_ && (static_cast<long>(millis() - startupRecheckAtMs_) >= 0)) {
       if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
         LOG_PRINTLN("WARNING: D3/GPIO0 still LOW 500ms after startup. Check wiring or release button during boot.");
       }
@@ -55,8 +56,8 @@ public:
   }
 
 private:
-  static constexpr int kEventQueueCapacity = 8;
-  static constexpr unsigned long kStartupRecheckDelayMs = 500;
+  static constexpr int kEventQueueCapacity = 8;  // Maximum queued button events.
+  static constexpr unsigned long kStartupRecheckDelayMs = 500;  // Boot-pin recheck delay.
 
   void enqueueEvent(ButtonEvent event) {
     const int nextTail = (eventTail_ + 1) % kEventQueueCapacity;

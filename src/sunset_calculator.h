@@ -2,6 +2,7 @@
 
 #include <RTClib.h>
 
+// Supplies the coordinates and UTC offset required for a local sunset calculation.
 struct Location {
   float latitude;                  // Observer latitude.
   float longitude;                 // Observer longitude.

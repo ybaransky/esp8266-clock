@@ -8,6 +8,7 @@
 class ClockController;
 class RtcService;
 
+// Handles RTC reads and browser-time synchronization through the clock controller.
 class TimeApi {
  public:
   TimeApi(ESP8266WebServer& server, HttpResponder& responder,
@@ -23,8 +24,8 @@ class TimeApi {
  private:
   bool parseJsonBody(JsonDocument& doc);
 
-  ESP8266WebServer& server_;
-  HttpResponder& responder_;
-  ClockController& clockController_;
-  RtcService& rtc_;
+  ESP8266WebServer& server_;  // Source of time-sync request bodies.
+  HttpResponder& responder_;  // Sends time API responses.
+  ClockController& clockController_;  // Applies synchronized time to the application.
+  RtcService& rtc_;  // Supplies current RTC time for read responses.
 };

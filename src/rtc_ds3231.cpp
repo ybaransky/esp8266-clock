@@ -10,6 +10,7 @@ bool rtcLogTimeProvider(char* buffer, size_t bufferSize);
 
 }  // namespace
 
+// Wraps RTClib initialization, validation, recovery, and direct DS3231 access.
 class RtcDs3231 {
 public:
   bool begin() {
@@ -58,7 +59,7 @@ public:
   }
 
 private:
-  static constexpr uint8_t RTC_I2C_ADDRESS = Hardware::I2CAddress::DS3231;
+  static constexpr uint8_t RTC_I2C_ADDRESS = Hardware::I2CAddress::DS3231;  // Fixed DS3231 bus address.
 
   bool probeAddress() {
     Wire.beginTransmission(RTC_I2C_ADDRESS);
@@ -126,7 +127,7 @@ static RtcDs3231 rtc;
 namespace {
 
 bool rtcLogTimeProvider(char* buffer, size_t bufferSize) {
-  if (buffer == nullptr || bufferSize == 0) {
+  if ((buffer == nullptr) || (bufferSize == 0)) {
     return false;
   }
 
@@ -180,12 +181,12 @@ struct SqwState {
   volatile uint32_t pendingPulseCount = 0;  // Incremented by the ISR, consumed in loop.
   volatile uint32_t isrPulseCount = 0;      // Lifetime ISR pulses (diagnostics).
   volatile uint32_t edgeAtMs = 0;           // millis() stamped in the ISR at the last rising edge.
-  bool processingStarted = false;
-  bool sawPulse = false;
-  uint32_t processingStartedAtMs = 0;
-  uint32_t lastPulseAtMs = 0;
-  uint32_t lastAcceptedPulseAtMs = 0;
-  uint32_t lastHealthLogMs = 0;
+  bool processingStarted = false;  // True after SQW interrupt setup begins.
+  bool sawPulse = false;  // True after accepting at least one real SQW edge.
+  uint32_t processingStartedAtMs = 0;  // millis() reference for startup health checks.
+  uint32_t lastPulseAtMs = 0;  // ISR timestamp of the last accepted pulse.
+  uint32_t lastAcceptedPulseAtMs = 0;  // Phase reference used for tenths.
+  uint32_t lastHealthLogMs = 0;  // Last missing-pulse warning time.
   DateTime cachedNow;            // Second-resolution time, advanced by SQW pulses.
   bool cachedNowSynced = false;  // False until the first real read has seeded the cache.
 };
@@ -266,7 +267,7 @@ static bool consumeAcceptedSqwPulse() {
   const uint32_t edgeMs = sqw.edgeAtMs;
   // DS3231 SQW is 1 Hz; ignore impossible back-to-back pulses caused by
   // sampling races/noise so the cached time stays aligned to real seconds.
-  if (sqw.sawPulse && static_cast<long>(edgeMs - sqw.lastAcceptedPulseAtMs) < 500L) {
+  if (sqw.sawPulse && (static_cast<long>(edgeMs - sqw.lastAcceptedPulseAtMs) < 500L)) {
     return false;
   }
 

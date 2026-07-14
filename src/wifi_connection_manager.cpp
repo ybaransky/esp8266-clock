@@ -75,8 +75,8 @@ void WifiConnectionManager::tick() {
   wifi_softap_free_station_info();
 
   if (apClientConnectedPending_ &&
-      static_cast<uint32_t>(millis() - apClientLookupStartedMs_) >=
-          kApClientIpTimeoutMs) {
+      (static_cast<uint32_t>(millis() - apClientLookupStartedMs_) >=
+       kApClientIpTimeoutMs)) {
     LOG_PRINTLN("AP client connected but no IP address was assigned");
     apClientConnectedPending_ = false;
   }
@@ -141,7 +141,7 @@ bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& 
   WiFi.begin(ssid.c_str(), password.c_str());
 
   const uint32_t deadline = millis() + kStationConnectTimeoutMs;
-  while (WiFi.status() != WL_CONNECTED && millis() < deadline) {
+  while ((WiFi.status() != WL_CONNECTED) && (millis() < deadline)) {
     delay(kStationConnectPollMs);
     yield();
   }

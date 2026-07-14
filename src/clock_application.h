@@ -10,6 +10,7 @@
 #include "rtc_ds3231.h"
 #include "wifi_connection_manager.h"
 
+// Owns the firmware services and coordinates their startup and per-loop work.
 class ClockApplication {
  public:
   ClockApplication();
@@ -21,17 +22,17 @@ class ClockApplication {
   void checkRtcHealth(uint32_t nowMs);
   void logModeOrViewTransition();
 
-  SegmentDisplay segmentDisplay_;
-  RtcService rtc_;
-  DisplayManager displayManager_;
-  ClockController clockController_;
-  ConfigManager configManager_;
-  PageManager pageManager_;
-  WifiConnectionManager wifiConnectionManager_;
+  SegmentDisplay segmentDisplay_;  // Physical three-panel display driver.
+  RtcService rtc_;  // RTC access, SQW processing, and cached wall-clock time.
+  DisplayManager displayManager_;  // Display view, overlay, and render policy.
+  ClockController clockController_;  // Application actions shared with APIs.
+  ConfigManager configManager_;  // Persistent clock and WiFi configuration.
+  PageManager pageManager_;  // Builds paged button-information overlays.
+  WifiConnectionManager wifiConnectionManager_;  // Station/AP network lifecycle.
   uint32_t maxTickUs_ = 0;          // Longest tick() this report period.
   uint32_t lastTickReportMs_ = 0;   // Last max-tick log time.
-  uint32_t lastRtcHealthCheckMs_ = 0;
-  bool rtcWasHealthy_ = true;
-  Mode lastLoggedMode_ = kModeClock;
-  View lastLoggedView_ = View::kClock;
+  uint32_t lastRtcHealthCheckMs_ = 0;  // Last RTC health-poll time.
+  bool rtcWasHealthy_ = true;  // Health state used to detect RTC transitions.
+  Mode lastLoggedMode_ = kModeClock;  // Mode in the last transition log.
+  View lastLoggedView_ = View::kClock;  // View in the last transition log.
 };

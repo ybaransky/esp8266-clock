@@ -80,7 +80,7 @@ void serializeWifiStatus(JsonDocument& doc, const WifiConfig& wifi) {
 namespace {
 
 bool applyZipcode(const char* zipcode, char* destination, size_t destinationSize) {
-  if (zipcode == nullptr || (zipcode[0] != '\0' && !isValidZipcode(zipcode))) {
+  if ((zipcode == nullptr) || ((zipcode[0] != '\0') && !isValidZipcode(zipcode))) {
     return false;
   }
   snprintf(destination, destinationSize, "%s", zipcode);
@@ -209,7 +209,7 @@ const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
       applyLocationInfo(root["location"], cfg.locations.device);
   const bool sunsetOk =
       applyLocationInfo(root["sunset"], cfg.locations.sunsetTest);
-  if ((!locationOk || !sunsetOk) && error == nullptr) {
+  if ((!locationOk || !sunsetOk) && (error == nullptr)) {
     error = "{\"error\":\"ZIP code must be 5 digits\"}";
   }
 

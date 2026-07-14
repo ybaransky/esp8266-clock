@@ -20,6 +20,11 @@ You are a senior software engineer with 15+ years of experience. When providing 
   `camelCase` functions and locals, trailing underscores for private members,
   and `kPascalCase` constants and enum values. Reserve `ALL_CAPS` for macros
   and established hardware pin identifiers.
+- In compound `if` conditions, parenthesize each comparison explicitly —
+  `if ((a == b) && (c < d))` — never rely on operator precedence.
+- Every class/struct declaration is preceded by a comment stating what it is
+  responsible for and how it fulfills that responsibility.
+- Every member variable carries a brief same-line comment describing its role.
 
 ## ARCHITECTURE
 - Separate concerns into distinct layers (data, logic, presentation).

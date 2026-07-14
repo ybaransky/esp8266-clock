@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
+// Reports RTC presence, oscillator state, SQW setup, and the latest setup error.
 struct RtcStatus {
   bool present;         // True when the DS3231 responds on I2C.
   bool powerLost;      // True when RTC reports oscillator stop/power loss.
@@ -11,6 +12,7 @@ struct RtcStatus {
   String error;        // Last RTC setup/probe error text.
 };
 
+// Provides DS3231 access and a SQW-driven cached time source for hot render paths.
 class RtcService {
  public:
   bool begin();

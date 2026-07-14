@@ -10,6 +10,7 @@ enum class WifiMode {
   kAccessPoint,
 };
 
+// Snapshots the connection details exposed to displays and HTTP clients.
 struct WifiRuntimeStatus {
   WifiMode mode;    // Active WiFi mode.
   bool connected;   // True when station mode has an active connection.
@@ -19,6 +20,7 @@ struct WifiRuntimeStatus {
   String apIp;      // Access-point IP address.
 };
 
+// Manages station connection attempts, AP fallback, scans, and deferred client events.
 class WifiConnectionManager {
  public:
   void begin(const WifiConfig& config);
@@ -40,6 +42,6 @@ class WifiConnectionManager {
   WifiMode mode_ = WifiMode::kAccessPoint;  // Current runtime WiFi mode.
 
   volatile bool apClientConnectedPending_ = false;  // Deferred AP-client log flag.
-  uint8_t apClientMac_[6] = {}; // Used internally to find the DHCP-assigned IP.
-  uint32_t apClientLookupStartedMs_ = 0;
+  uint8_t apClientMac_[6] = {};  // MAC used to find the DHCP-assigned client IP.
+  uint32_t apClientLookupStartedMs_ = 0;  // Start time for deferred DHCP lookup.
 };

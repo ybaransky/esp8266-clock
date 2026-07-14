@@ -26,6 +26,6 @@ class ClockController {
   Mode activeMode() const;
 
  private:
-  DisplayManager& displayManager_;
-  RtcService& rtc_;
+  DisplayManager& displayManager_;  // Applies view, overlay, and brightness actions.
+  RtcService& rtc_;  // Reads and updates the hardware clock.
 };

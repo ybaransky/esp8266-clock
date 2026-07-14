@@ -6,8 +6,9 @@
 constexpr size_t kDisplayPanelCount = 3;
 constexpr size_t kDisplayFramePanelSize = 8;
 
+// Carries the complete text payload for one render across all three panels.
 struct DisplayFrame {
-  char panels[kDisplayPanelCount][kDisplayFramePanelSize] = {};
+  char panels[kDisplayPanelCount][kDisplayFramePanelSize] = {};  // Null-terminated panel strings.
 };
 
 // Treats three TM1637 4-digit displays as independent 4-character panels.

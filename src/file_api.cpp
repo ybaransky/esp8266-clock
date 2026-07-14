@@ -18,20 +18,20 @@ const char* FileApi::mimeTypeForPath(const String& path) {
   ext.toLowerCase();
   if (ext == "json") return "application/json";
   if (ext == "pdf") return "application/pdf";
-  if (ext == "html" || ext == "htm") return "text/html";
+  if ((ext == "html") || (ext == "htm")) return "text/html";
   if (ext == "css") return "text/css";
   if (ext == "js") return "application/javascript";
-  if (ext == "txt" || ext == "log" || ext == "csv") return "text/plain";
+  if ((ext == "txt") || (ext == "log") || (ext == "csv")) return "text/plain";
   if (ext == "png") return "image/png";
-  if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+  if ((ext == "jpg") || (ext == "jpeg")) return "image/jpeg";
   if (ext == "gif") return "image/gif";
   if (ext == "svg") return "image/svg+xml";
   return "application/octet-stream";
 }
 
 String FileApi::normalizedFilePath(const String& requestedName) {
-  if (requestedName.isEmpty() || requestedName.indexOf("..") >= 0 ||
-      requestedName.indexOf('\\') >= 0) {
+  if (requestedName.isEmpty() || (requestedName.indexOf("..") >= 0) ||
+      (requestedName.indexOf('\\') >= 0)) {
     return String();
   }
 
@@ -39,7 +39,7 @@ String FileApi::normalizedFilePath(const String& requestedName) {
   if (!path.startsWith("/")) {
     path = "/" + path;
   }
-  if (path.length() <= 1 || path.endsWith("/")) {
+  if ((path.length() <= 1) || path.endsWith("/")) {
     return String();
   }
   return path;
@@ -167,7 +167,7 @@ void FileApi::handleReadFile() {
     const size_t fileSize = file.size();
     const size_t offset = static_cast<size_t>(server_.arg("offset").toInt());
     size_t length = static_cast<size_t>(server_.arg("limit").toInt());
-    if (length == 0 || length > kMaxViewerChunk) length = kMaxViewerChunk;
+    if ((length == 0) || (length > kMaxViewerChunk)) length = kMaxViewerChunk;
     if (offset >= fileSize) length = 0;
     else length = min(length, fileSize - offset);
 
@@ -234,7 +234,7 @@ void FileApi::handleUploadData() {
 
   if (upload.status == UPLOAD_FILE_WRITE) {
     if (!uploadFile_ ||
-        uploadFile_.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        (uploadFile_.write(upload.buf, upload.currentSize) != upload.currentSize)) {
       if (!uploadError_) LOG_PRINTLN("File upload failed while writing data");
       uploadError_ = true;
     }

@@ -37,9 +37,9 @@ void TimeApi::handleTimeSync() {
   const int hour = doc["hour"] | 0;
   const int minute = doc["minute"] | 0;
   const int second = doc["second"] | 0;
-  if (year < 2020 || year > 2099 || month < 1 || month > 12 ||
-      day < 1 || day > 31 || hour < 0 || hour > 23 ||
-      minute < 0 || minute > 59 || second < 0 || second > 59) {
+  if ((year < 2020) || (year > 2099) || (month < 1) || (month > 12) ||
+      (day < 1) || (day > 31) || (hour < 0) || (hour > 23) ||
+      (minute < 0) || (minute > 59) || (second < 0) || (second > 59)) {
     LOG_PRINTF("/api/time failed: invalid time %04d-%02d-%02d %02d:%02d:%02d\n",
                year, month, day, hour, minute, second);
     responder_.sendJson(400, "{\"error\":\"Invalid time\"}");

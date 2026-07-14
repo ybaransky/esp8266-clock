@@ -43,20 +43,22 @@ namespace Hardware {
 // I2C bus scanner
 // ---------------------------------------------------------------------------
 
+// Returns the addresses discovered by an I2C scan without exposing scanner storage.
 struct I2CScanResult {
 	const uint8_t *addresses;  // Addresses found during the last scan.
 	size_t count;              // Number of valid entries in addresses.
 };
 
+// Probes the I2C address range and retains results for later diagnostics.
 class I2CBusScanner {
 public:
 	void scan();
 	I2CScanResult lastResult() const;
 
 private:
-	static constexpr uint8_t FIRST_VALID_ADDRESS = 1;
-	static constexpr uint8_t LAST_VALID_ADDRESS = 126;
-	static constexpr size_t ADDRESS_CAPACITY = LAST_VALID_ADDRESS;
+	static constexpr uint8_t FIRST_VALID_ADDRESS = 1;  // First non-reserved address scanned.
+	static constexpr uint8_t LAST_VALID_ADDRESS = 126;  // Last non-reserved address scanned.
+	static constexpr size_t ADDRESS_CAPACITY = LAST_VALID_ADDRESS;  // Maximum stored results.
 
 	static const char *deviceNameForAddress(uint8_t address);
 

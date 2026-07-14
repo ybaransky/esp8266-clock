@@ -9,17 +9,20 @@
 
 namespace {
 
+// Maps a known I2C address to a diagnostic device label.
 struct I2CDeviceAddressLabel {
   uint8_t address;     // I2C address to label.
   const char *name;    // Human-readable device guess.
 };
 
+// Captures heap capacity and fragmentation for the startup diagnostic report.
 struct HeapInfo {
   uint32_t freeBytes;          // Current free heap.
   uint32_t maxFreeBlockBytes;  // Largest allocatable heap block.
   uint8_t fragmentationPct;    // ESP heap fragmentation percentage.
 };
 
+// Captures physical and configured flash properties for diagnostics.
 struct FlashInfo {
   uint32_t chipSizeBytes;  // Configured flash size.
   uint32_t realSizeBytes;  // Detected physical flash size.
@@ -27,6 +30,7 @@ struct FlashInfo {
   FlashMode_t mode;        // Flash access mode.
 };
 
+// Captures ESP8266 identity, runtime version, and reset information.
 struct ChipInfo {
   uint32_t chipId;     // ESP8266 chip identifier.
   uint8_t cpuFreqMHz;  // CPU frequency.
@@ -35,11 +39,13 @@ struct ChipInfo {
   String resetReason;  // Last reset reason.
 };
 
+// Captures firmware image size and remaining OTA space.
 struct SketchInfo {
   uint32_t sizeBytes;       // Current sketch size.
   uint32_t freeSpaceBytes;  // Free OTA/sketch space.
 };
 
+// Captures LittleFS mount state, capacity, and current usage.
 struct StorageInfo {
   bool mounted;       // True when LittleFS mounted.
   size_t totalBytes;  // LittleFS total capacity.

@@ -25,8 +25,8 @@ DateTime utcDateForLocalSunsetDate(const DateTime& localDate, int16_t utcOffsetM
 }  // namespace
 
 DateTime calculateSunset(const DateTime& localDate, const Location& location) {
-  if (location.latitude < -90.0f || location.latitude > 90.0f ||
-      location.longitude < -180.0f || location.longitude > 180.0f) {
+  if ((location.latitude < -90.0f) || (location.latitude > 90.0f) ||
+      (location.longitude < -180.0f) || (location.longitude > 180.0f)) {
     return fallbackSunset(localDate);
   }
 

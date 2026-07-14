@@ -11,6 +11,7 @@ struct WifiConfig;
 class ClockController;
 class ConfigManager;
 
+// Handles clock-configuration HTTP endpoints by validating input and invoking application actions.
 class ConfigApi {
  public:
   ConfigApi(ESP8266WebServer& server, HttpResponder& responder,

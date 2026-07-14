@@ -16,21 +16,21 @@ bool isLeapYear(int year) {
 int daysInMonth(int year, int month) {
   static const uint8_t kDaysByMonth[] = {
       31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-  if (month < 1 || month > 12) return 0;
-  if (month == 2 && isLeapYear(year)) return 29;
+  if ((month < 1) || (month > 12)) return 0;
+  if ((month == 2) && isLeapYear(year)) return 29;
   return kDaysByMonth[month - 1];
 }
 
 bool parseIsoDate(const char* text, int* year, int* month, int* day) {
   int consumed = 0;
-  if (text == nullptr ||
-      sscanf(text, "%d-%d-%d%n", year, month, day, &consumed) != 3 ||
-      text[consumed] != '\0') {
+  if ((text == nullptr) ||
+      (sscanf(text, "%d-%d-%d%n", year, month, day, &consumed) != 3) ||
+      (text[consumed] != '\0')) {
     return false;
   }
-  return *year >= 2020 && *year <= 2099 &&
-         *month >= 1 && *month <= 12 &&
-         *day >= 1 && *day <= daysInMonth(*year, *month);
+  return (*year >= 2020) && (*year <= 2099) &&
+         (*month >= 1) && (*month <= 12) &&
+         (*day >= 1) && (*day <= daysInMonth(*year, *month));
 }
 
 bool parseTimeOfDay(const char* text, int* hour, int* minute, int* second) {
@@ -40,16 +40,16 @@ bool parseTimeOfDay(const char* text, int* hour, int* minute, int* second) {
 
   const int matchedWithSeconds =
       sscanf(text, "%d:%d:%d%n", hour, minute, second, &consumed);
-  if (matchedWithSeconds != 3 || text[consumed] != '\0') {
+  if ((matchedWithSeconds != 3) || (text[consumed] != '\0')) {
     consumed = 0;
-    if (sscanf(text, "%d:%d%n", hour, minute, &consumed) != 2 ||
-        text[consumed] != '\0') {
+    if ((sscanf(text, "%d:%d%n", hour, minute, &consumed) != 2) ||
+        (text[consumed] != '\0')) {
       return false;
     }
   }
-  return *hour >= 0 && *hour <= 23 &&
-         *minute >= 0 && *minute <= 59 &&
-         *second >= 0 && *second <= 59;
+  return (*hour >= 0) && (*hour <= 23) &&
+         (*minute >= 0) && (*minute <= 59) &&
+         (*second >= 0) && (*second <= 59);
 }
 
 }  // namespace
@@ -107,8 +107,8 @@ void LocationApi::handleSunset() {
              doc["time"]["timezone"]["utcOffsetMinutes"] | 0,
              (doc["time"]["dst"] | false) ? "true" : "false");
 
-  if (!isfinite(latitude) || latitude < -90.0f || latitude > 90.0f ||
-      !isfinite(longitude) || longitude < -180.0f || longitude > 180.0f) {
+  if (!isfinite(latitude) || (latitude < -90.0f) || (latitude > 90.0f) ||
+      !isfinite(longitude) || (longitude < -180.0f) || (longitude > 180.0f)) {
     LOG_PRINTF("/api/sunset failed: invalid coordinates lat=%.6f lon=%.6f\n",
                latitude, longitude);
     responder_.sendJson(400, "{\"error\":\"Latitude or longitude is invalid\"}");
@@ -130,7 +130,7 @@ void LocationApi::handleSunset() {
   }
 
   const int utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | 0;
-  if (utcOffsetMinutes < -840 || utcOffsetMinutes > 840) {
+  if ((utcOffsetMinutes < -840) || (utcOffsetMinutes > 840)) {
     LOG_PRINTF("/api/sunset failed: invalid UTC offset=%d\n", utcOffsetMinutes);
     responder_.sendJson(400, "{\"error\":\"UTC offset is invalid\"}");
     return;

@@ -9,7 +9,7 @@ LogTimeProvider timeProvider = nullptr;
 const char* baseName(const char* path) {
   const char* fileName = path;
   for (const char* cursor = path; *cursor != '\0'; ++cursor) {
-    if (*cursor == '/' || *cursor == '\\') {
+    if ((*cursor == '/') || (*cursor == '\\')) {
       fileName = cursor + 1;
     }
   }
@@ -45,7 +45,7 @@ const char* logSourceName(const char* path) {
 
 const char* logCurrentTime() {
   static char timeText[12];
-  if (timeProvider != nullptr && timeProvider(timeText, sizeof(timeText))) {
+  if ((timeProvider != nullptr) && timeProvider(timeText, sizeof(timeText))) {
     return timeText;
   }
 

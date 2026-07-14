@@ -58,8 +58,8 @@ void DisplayScheduler::invalidateRender() { lastRenderMs_ = 0; }
 
 bool DisplayScheduler::shouldRender(uint32_t nowMs, uint32_t intervalMs,
                                     bool force) {
-  if (!force && static_cast<long>(nowMs - lastRenderMs_) <
-                    static_cast<long>(intervalMs)) return false;
+  if (!force && (static_cast<long>(nowMs - lastRenderMs_) <
+                 static_cast<long>(intervalMs))) return false;
   lastRenderMs_ = nowMs;
   return true;
 }
@@ -152,7 +152,7 @@ void DisplayManager::showPages(const DisplayPage* pages,
                                uint8_t pageCount,
                                uint16_t pageDurationMs,
                                bool repeat) {
-  if (pages == nullptr || pageCount == 0) {
+  if ((pages == nullptr) || (pageCount == 0)) {
     return;
   }
 
@@ -188,7 +188,7 @@ void DisplayManager::showPages(const DisplayPage* pages,
 
 void DisplayManager::clearOverlay() {
   if (hasOverlay() &&
-      (overlay_.overlay == Overlay::kMessage || overlay_.overlay == Overlay::kPagedMessage)) {
+      ((overlay_.overlay == Overlay::kMessage) || (overlay_.overlay == Overlay::kPagedMessage))) {
     finishOverlay(millis());
   }
 }
@@ -384,7 +384,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
   const uint8_t formatIndex = baseView_.formatIndex;
   const DisplayFormatInfo& format =
       displayFormatInfo(kFmtGroupClock, formatIndex);
-  if (format.colonAnimation == ColonAnimation::kBlinking &&
+  if ((format.colonAnimation == ColonAnimation::kBlinking) &&
       scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
     force = true;
   }

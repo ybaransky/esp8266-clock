@@ -6,6 +6,7 @@
 
 #include "http_responder.h"
 
+// Handles LittleFS listing, reading, deletion, and streamed-upload HTTP endpoints.
 class FileApi {
  public:
   FileApi(ESP8266WebServer& server, HttpResponder& responder)

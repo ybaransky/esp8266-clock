@@ -128,7 +128,7 @@ constexpr uint8_t ASCII_SEGMENTS[96] = {
  
 uint8_t segmentForChar(char c) {
   const uint8_t code = static_cast<uint8_t>(c);
-  if (code < 32 || code > 127) return SEG_BLANK;
+  if ((code < 32) || (code > 127)) return SEG_BLANK;
   return ASCII_SEGMENTS[code - 32] & SEG_VALUE_MASK;
 }
 
@@ -142,7 +142,7 @@ void renderPanelSegments(const char *text, uint8_t segments[PANEL_WIDTH]) {
   for (size_t index = 0; text[index] != '\0' && slot < PANEL_WIDTH; ++index) {
     const char value = text[index];
 
-    if ((value == ':' || value == ';') && slot == 2) {
+    if (((value == ':') || (value == ';')) && (slot == 2)) {
       segments[1] |= SEG_COLON;
       continue;
     }
@@ -196,7 +196,7 @@ void SegmentDisplay::showFrame(const DisplayFrame& frame) {
       }
 
       const size_t runStart = slot;
-      while (slot < PANEL_WIDTH && segments[slot] != lastSegments_[panel][slot]) {
+      while ((slot < PANEL_WIDTH) && (segments[slot] != lastSegments_[panel][slot])) {
         ++slot;
       }
 

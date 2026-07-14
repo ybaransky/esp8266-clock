@@ -6,6 +6,7 @@
 #include "config.h"
 #include "defaults.h"
 
+// Tracks render deadlines and independently advances message and colon blink phases.
 class DisplayScheduler {
  public:
   void reset(uint32_t nowMs);
@@ -18,11 +19,11 @@ class DisplayScheduler {
   bool colonVisible() const { return colonVisible_; }
 
  private:
-  bool blinkOn_ = true;
-  uint32_t blinkMs_ = 0;
-  bool colonVisible_ = true;
-  uint32_t colonMs_ = 0;
-  uint32_t lastRenderMs_ = 0;
+  bool blinkOn_ = true;  // Current visibility phase for blinking overlays.
+  uint32_t blinkMs_ = 0;  // Last overlay-blink transition time.
+  bool colonVisible_ = true;  // Current visibility phase for animated colons.
+  uint32_t colonMs_ = 0;  // Last colon transition time.
+  uint32_t lastRenderMs_ = 0;  // Last accepted render time.
 };
 
 class SegmentDisplay;
@@ -39,8 +40,9 @@ enum class View : uint8_t {
   kCountup,
 };
 
+// Captures the base content and format-specific anchor needed for rendering a view.
 struct ViewState {
-  View view = View::kClock;
+  View view = View::kClock;  // Kind of base content to render.
   DateTime anchor;          // Countdown: end time. Countup: start time. Clock: unused.
   uint8_t formatIndex = 0;  // Index into the view's format table.
 };
@@ -69,34 +71,39 @@ static constexpr uint8_t kDisplayPanelChars = 4;
 static constexpr uint8_t kMaxDisplayPages = 8;
 static constexpr uint16_t kDefaultPageDurationMs = 2000;
 
+// Holds the three panel strings that make up one page of an overlay.
 struct DisplayPage {
-  char panels[kDisplayPanelsPerPage][kDisplayPanelChars + 1];
+  char panels[kDisplayPanelsPerPage][kDisplayPanelChars + 1];  // Null-terminated panel text.
 };
 
+// Owns copied pages and timing state while a paged-message overlay is active.
 struct PagedDisplayPayload {
-  DisplayPage pages[kMaxDisplayPages] = {};
-  uint8_t  pageCount = 0;
-  uint8_t  currentPage = 0;
-  uint16_t pageDurationMs = kDefaultPageDurationMs;
-  uint32_t pageStartedAtMs = 0;
-  bool     repeat = false;
+  DisplayPage pages[kMaxDisplayPages] = {};  // Pages copied from the overlay request.
+  uint8_t pageCount = 0;  // Number of valid entries in pages.
+  uint8_t currentPage = 0;  // Index of the page currently rendered.
+  uint16_t pageDurationMs = kDefaultPageDurationMs;  // Display duration per page.
+  uint32_t pageStartedAtMs = 0;  // millis() when the current page began.
+  bool repeat = false;  // True to wrap after the final page.
 };
 
+// Describes when an overlay should transition away automatically.
 struct OverlayTransition {
   bool hasExpiration = false;  // True when the overlay should clear on its own.
   uint32_t expiresAtMs = 0;    // millis() deadline for automatic clearing.
 };
 
+// Owns the payload and lifecycle flags for the currently installed overlay.
 struct OverlayState {
-  Overlay overlay = Overlay::kNone;
+  Overlay overlay = Overlay::kNone;  // Active overlay type.
   bool blink = false;             // True when output alternates blank/on.
   bool chainFinalMessage = false; // On expiry, show the final message instead
                                   // of the base view (demo's second phase).
   char message[64] = "";          // kMessage text; unused otherwise.
   PagedDisplayPayload paged;      // kPagedMessage pages; unused otherwise.
-  OverlayTransition transition;
+  OverlayTransition transition;  // Automatic expiration policy.
 };
 
+// Resolves configured modes into base views and renders temporary overlays above them.
 class DisplayManager {
  public:
   DisplayManager(SegmentDisplay& display, RtcService& rtc)
@@ -169,6 +176,6 @@ class DisplayManager {
 
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
-  SegmentDisplay& display_;
-  RtcService& rtc_;
+  SegmentDisplay& display_;  // Hardware target for completed frames.
+  RtcService& rtc_;  // Cached time and SQW phase source for renderers.
 };

@@ -4,6 +4,7 @@
 
 class DisplayManager;
 
+// Converts network details into paged display overlays for button actions.
 class PageManager {
  public:
   explicit PageManager(DisplayManager& displayManager)
@@ -13,5 +14,5 @@ class PageManager {
   void showIpAddress(const String& ip);
 
  private:
-  DisplayManager& displayManager_;
+  DisplayManager& displayManager_;  // Installs the generated page overlays.
 };

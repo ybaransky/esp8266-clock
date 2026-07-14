@@ -33,7 +33,7 @@ bool isValidZipcode(const char* zipcode) {
 namespace {
 
 void trimLineEnding(char* row, size_t* length) {
-  while (*length > 0 && (row[*length - 1] == '\r' || row[*length - 1] == '\n')) {
+  while ((*length > 0) && ((row[*length - 1] == '\r') || (row[*length - 1] == '\n'))) {
     row[--(*length)] = '\0';
   }
 }
@@ -49,21 +49,21 @@ bool readCsvLine(File& file, char* row, size_t rowSize) {
   size_t trimmedLength = length;
   trimLineEnding(row, &trimmedLength);
 
-  if (length == rowSize - 1 && file.available()) {
-    while (file.available() && file.read() != '\n') {
+  if ((length == rowSize - 1) && file.available()) {
+    while (file.available() && (file.read() != '\n')) {
       yield();
     }
   }
 
-  return length > 0 || file.available();
+  return (length > 0) || file.available();
 }
 
 bool rowMatchesZipcode(const char* row, const char* zipcode) {
-  return strncmp(row, zipcode, kZipcodeLength) == 0 && row[kZipcodeLength] == ',';
+  return (strncmp(row, zipcode, kZipcodeLength) == 0) && (row[kZipcodeLength] == ',');
 }
 
 bool parseLocationRow(const char* row, ZipcodeLocation* location) {
-  if (row == nullptr || location == nullptr || strlen(row) < kZipcodeLength + 4) {
+  if ((row == nullptr) || (location == nullptr) || (strlen(row) < kZipcodeLength + 4)) {
     return false;
   }
 
@@ -75,14 +75,14 @@ bool parseLocationRow(const char* row, ZipcodeLocation* location) {
 
   char* latitudeEnd = nullptr;
   const float latitude = strtof(latitudeStart, &latitudeEnd);
-  if (latitudeEnd == latitudeStart || *latitudeEnd != ',') {
+  if ((latitudeEnd == latitudeStart) || (*latitudeEnd != ',')) {
     return false;
   }
 
   const char* longitudeStart = latitudeEnd + 1;
   char* longitudeEnd = nullptr;
   const float longitude = strtof(longitudeStart, &longitudeEnd);
-  if (longitudeEnd == longitudeStart || *longitudeEnd != '\0') {
+  if ((longitudeEnd == longitudeStart) || (*longitudeEnd != '\0')) {
     return false;
   }
 
@@ -94,7 +94,7 @@ bool parseLocationRow(const char* row, ZipcodeLocation* location) {
 }
 
 bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* path) {
-  if (!isValidZipcode(zipcode) || row == nullptr || rowSize == 0 || path == nullptr) {
+  if (!isValidZipcode(zipcode) || (row == nullptr) || (rowSize == 0) || (path == nullptr)) {
     LOG_PRINTF("Zipcode lookup invalid arguments: zip=\"%s\" row=%s rowSize=%u path=\"%s\"\n",
                zipcode == nullptr ? "(null)" : zipcode,
                row == nullptr ? "null" : "set",

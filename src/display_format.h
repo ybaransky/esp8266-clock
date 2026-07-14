@@ -22,12 +22,11 @@ enum class ColonAnimation : uint8_t {
   kBlinking,
 };
 
-// refreshRate and colonAnimation are derived from the format's panel shapes
-// (tenths panel present / blinking colon panel present), never stored.
+// Describes a display format and the scheduling behavior derived from its panel shapes.
 struct DisplayFormatInfo {
-  const char* label;
-  RefreshRate refreshRate;
-  ColonAnimation colonAnimation;
+  const char* label;  // Human-readable token layout shown in the UI.
+  RefreshRate refreshRate;  // Minimum cadence needed by the renderer.
+  ColonAnimation colonAnimation;  // Colon cadence required by the renderer.
 };
 
 uint8_t displayFormatCount(FormatGroup group);

@@ -5,6 +5,7 @@
 
 #include "http_responder.h"
 
+// Handles ZIP lookup and sunset-calculation requests and serializes their results.
 class LocationApi {
  public:
   LocationApi(ESP8266WebServer& server, HttpResponder& responder)
@@ -16,6 +17,6 @@ class LocationApi {
  private:
   bool parseJsonBody(JsonDocument& doc, const char* route);
 
-  ESP8266WebServer& server_;
-  HttpResponder& responder_;
+  ESP8266WebServer& server_;  // Source of location request arguments and bodies.
+  HttpResponder& responder_;  // Sends location API responses.
 };

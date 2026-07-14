@@ -111,7 +111,7 @@ void HttpResponder::logCompletion(uint32_t elapsedUs) {
 }
 
 const char* HttpResponder::abbreviatedRoute(const char* uri) {
-  if (uri == nullptr || uri[0] == '\0' || strcmp(uri, "/") == 0) return "home";
+  if ((uri == nullptr) || (uri[0] == '\0') || (strcmp(uri, "/") == 0)) return "home";
   if (strcmp(uri, "/settings") == 0) return "settings";
   if (strcmp(uri, "/format") == 0) return "formats";
   if (strcmp(uri, "/messages") == 0) return "messages";

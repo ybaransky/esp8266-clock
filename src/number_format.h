@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 
+// Formats an unsigned integer with comma separators into owned stack storage.
 class CommaNumber {
  public:
   explicit CommaNumber(uint32_t value) {

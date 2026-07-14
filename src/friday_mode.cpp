@@ -12,9 +12,10 @@ enum class FridayPhase : uint8_t {
   kNone, kClock, kToFridaySunset, kToSaturdaySunset,
 };
 
+// Couples the Friday schedule phase with the base view that should represent it.
 struct FridayScheduleResult {
-  FridayPhase phase = FridayPhase::kClock;
-  ViewState view;
+  FridayPhase phase = FridayPhase::kClock;  // Phase selected for the current time.
+  ViewState view;  // Base display view for the selected phase.
 };
 
 FridayScheduleResult evaluateFridaySchedule(
@@ -45,6 +46,7 @@ const char* fridayPhaseName(FridayPhase phase) {
   }
 }
 
+// Computes Friday phases, caches weekly sunsets, and pushes view transitions to the display.
 class FridayModeController {
  public:
   void applySettings(const ClockConfig& config) {
@@ -113,8 +115,8 @@ class FridayModeController {
                fridayDate.year(), fridayDate.month(), fridayDate.day());
   }
 
-  FridayPhase currentPhase_ = FridayPhase::kNone;
-  ClockConfig settings_;
+  FridayPhase currentPhase_ = FridayPhase::kNone;  // Last phase applied to the display.
+  ClockConfig settings_;  // Configuration snapshot used for schedule evaluation.
   DateTime cachedFridayDate_;     // Midnight of the reference Friday; invalid until first tick.
   DateTime cachedFridaySunset_;   // Cached local sunset for that Friday.
   DateTime cachedSaturdaySunset_; // Cached local sunset for that Saturday.

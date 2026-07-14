@@ -26,7 +26,7 @@ void printRtcErrorBanner(const char* detail) {
   Serial.println("#          ERROR           #");
   Serial.println("#      RTC NOT FOUND       #");
   Serial.println("############################");
-  if (detail != nullptr && detail[0] != '\0') {
+  if ((detail != nullptr) && (detail[0] != '\0')) {
     Serial.print("# ");
     Serial.println(detail);
   }
@@ -190,7 +190,7 @@ void ClockApplication::checkRtcHealth(uint32_t nowMs) {
 void ClockApplication::logModeOrViewTransition() {
   const Mode mode = displayManager_.activeMode();
   const View view = displayManager_.activeView();
-  if (mode == lastLoggedMode_ && view == lastLoggedView_) return;
+  if ((mode == lastLoggedMode_) && (view == lastLoggedView_)) return;
 
   LOG_PRINTF("mode/view: %s/%s -> %s/%s\n",
              modeName(lastLoggedMode_), viewName(lastLoggedView_),
