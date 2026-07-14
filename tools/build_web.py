@@ -16,6 +16,8 @@ output = build_dir / "generated_web_assets.h"
 
 # route -> (source file, content type, immutable cache)
 PAGES = {
+    "/": "home.html",
+    "/format": "format.html",
     "/settings": "settings.html",
     "/config": "files.html",
     "/time": "time.html",

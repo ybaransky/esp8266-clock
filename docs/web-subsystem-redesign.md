@@ -193,8 +193,10 @@ Each phase builds and runs on-device independently.
    `format.html`), factor out `common.css`/`common.js`, write
    `tools/build_web.py` + asset table + registration loop. Delete `html.cpp`,
    `html.h`, `generate_web_pages.py`, and the four dead page variants.
+   *(Done 2026-07-13, verified on device.)*
 2. **Unify** — add `/api/status`; switch `/` and `/format` to their static
    pages; delete the dynamic builders and form-POST routes.
+   *(Done 2026-07-13.)*
 3. **Polish** — uniformity pass on `common.css`; add the dev proxy server;
    decide whether `reportFieldMismatch` instrumentation stays after the
    AP-mode truncation bug is closed.

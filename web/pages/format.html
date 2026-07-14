@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Format Settings</title>
+</head>
+<body>
+<h1>Format Settings</h1>
+
+<label>Mode
+<select id="mode" onchange="sections()">
+  <option value="0">Countdown</option>
+  <option value="1">Countup</option>
+  <option value="2">Clock</option>
+  <option value="3">Friday</option>
+</select></label>
+
+<div id="cd">
+  <hr>
+  <label>Format<select id="fcd"></select></label>
+  <label>End time<input type="datetime-local" step="1" id="end"></label>
+</div>
+
+<div id="cu">
+  <hr>
+  <label>Format<select id="fcu"></select></label>
+  <label>Start time<input type="datetime-local" step="1" id="start"></label>
+  <button class="secondary" onclick="setStartNow()">Use Current Time</button>
+</div>
+
+<div id="ck">
+  <hr>
+  <label>Format<select id="fck"></select></label>
+</div>
+
+<div id="fri">
+  <hr>
+  <h3>Clock Phase &nbsp;(Sat sunset &rarr; Thu midnight)</h3>
+  <label>Format<select id="ffck"></select></label>
+  <h3>Countdown &nbsp;(Thu midnight &rarr; Fri sunset)</h3>
+  <label>Format<select id="ffri"></select></label>
+  <h3>Countdown &nbsp;(Fri sunset &rarr; Sat sunset)</h3>
+  <label>Format<select id="fsat"></select></label>
+</div>
+
+<div id="hours" class="choices">
+  <span>Hour format</span>
+  <label><input type="radio" name="hour" id="h24"> 24h</label>
+  <label><input type="radio" name="hour" id="h12"> 12h</label>
+</div>
+
+<hr>
+<label>Brightness: <span id="bv">4</span>
+<input type="range" min="0" max="7" id="br" oninput="previewBrightness(this.value)"></label>
+
+<div class="actions"><button onclick="save()">Save</button></div>
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+function sections() {
+  var m = +$('mode').value;
+  $('cd').hidden = m != 0;
+  $('cu').hidden = m != 1;
+  $('ck').hidden = m != 2;
+  $('fri').hidden = m != 3;
+  $('hours').hidden = m < 2;
+}
+sections();
+
+function options(id, labels, selected) {
+  var el = $(id);
+  el.innerHTML = '';
+  (labels || []).forEach(function (label, i) {
+    var o = document.createElement('option');
+    o.value = i;
+    o.textContent = label;
+    el.appendChild(o);
+  });
+  el.value = selected == null ? 0 : selected;
+}
+
+// Config stores "YYYY-MM-DD hh:mm:ss" (or "now"); datetime-local wants a "T".
+function local(s) { return s && s != 'now' ? s.replace(' ', 'T') : ''; }
+function stored(s) { return s ? s.replace('T', ' ') : 'now'; }
+
+function setStartNow() {
+  api('/api/time').then(function (d) {
+    $('start').value = local(d.dateTime);
+  }).catch(function () {});
+}
+
+var briteTimer = null;
+function previewBrightness(value) {
+  $('bv').textContent = value;
+  if (briteTimer) clearTimeout(briteTimer);
+  briteTimer = setTimeout(function () {
+    apiPost('/api/brightness', { brightness: parseInt(value) }).catch(function () {});
+  }, 120);
+}
+
+var formats;
+api('/api/formats').then(function (f) {
+  formats = f || {};
+  return api('/api/config');
+}).then(function (d) {
+  var display = d.display || {}, modes = display.modes || {};
+  var cd = modes.countdown || {}, cu = modes.countup || {};
+  var ck = modes.clock || {}, fri = modes.friday || {};
+  options('fcd', formats.countdown, cd.format);
+  options('fcu', formats.countup, cu.format);
+  options('fck', formats.clock, ck.format);
+  options('ffck', formats.clock, fri.clockFormat);
+  options('ffri', formats.countdown, fri.toFridaySunsetFormat);
+  options('fsat', formats.countdown, fri.toSaturdaySunsetFormat);
+  $('mode').value = { countdown: 0, countup: 1, clock: 2, friday: 3 }[display.activeMode] || 0;
+  $('end').value = local(cd.end);
+  $('start').value = local(cu.start);
+  $('br').value = display.brightness == null ? 4 : display.brightness;
+  $('bv').textContent = $('br').value;
+  $('h12').checked = !!display.clock12Hour;
+  $('h24').checked = !display.clock12Hour;
+  sections();
+}).catch(function (e) { setStatus('API failed: ' + e.message); });
+
+function save() {
+  var names = ['countdown', 'countup', 'clock', 'friday'];
+  var body = {
+    display: {
+      activeMode: names[+$('mode').value],
+      brightness: +$('br').value,
+      clock12Hour: $('h12').checked,
+      modes: {
+        countdown: { format: +$('fcd').value, end: stored($('end').value) },
+        countup: { format: +$('fcu').value, start: stored($('start').value) },
+        clock: { format: +$('fck').value },
+        friday: {
+          clockFormat: +$('ffck').value,
+          toFridaySunsetFormat: +$('ffri').value,
+          toSaturdaySunsetFormat: +$('fsat').value
+        }
+      }
+    }
+  };
+  if (!$('end').value) delete body.display.modes.countdown.end;
+  apiPost('/api/config', body).then(function (d) {
+    setStatus(d.message || d.error || 'Saved');
+  }).catch(function (e) { setStatus('API failed: ' + e.message); });
+}
+</script>
+</body>
+</html>

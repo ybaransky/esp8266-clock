@@ -13,6 +13,7 @@ body {
   color-scheme: dark;
 }
 body.wide { max-width: 720px; }
+body.center { text-align: center; }
 
 h1 { font-size: 1.6em; margin: 0 0 14px; text-align: center; }
 h2 { font-size: 1.1em; color: #8af; margin: 20px 0 8px; }
@@ -55,6 +56,29 @@ button.secondary:active { background: #246; }
 .actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 
 #st { margin-top: 12px; font-size: .9em; color: #8d8; min-height: 1.2em; text-align: center; }
+
+/* ---- Home page: mode buttons; the active mode blinks ---- */
+.mode {
+  display: block;
+  width: 100%;
+  margin: 10px auto;
+  padding: 18px;
+  font-size: 1.45em;
+  background: #3a9;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.mode:active { background: #2a8; }
+.mode.current { animation: modeBlink 1s linear infinite; }
+@keyframes modeBlink { 0%, 49% { color: #fff; } 50%, 99% { color: transparent; } }
+
+/* ---- Format page: inline radio choices ---- */
+.choices { display: flex; gap: 18px; align-items: center; margin-top: 14px; }
+.choices span { color: #aaa; font-size: .9em; }
+.choices label { margin-top: 0; }
 
 /* ---- Settings page: navigation buttons ---- */
 .btn {

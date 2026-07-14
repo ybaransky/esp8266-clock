@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Clock</title>
+</head>
+<body class="center">
+<h1 id="apn">Clock</h1>
+<hr>
+<button id="mode-countdown" class="mode" onclick="setMode('countdown')">Countdown</button>
+<button id="mode-clock" class="mode" onclick="setMode('clock')">Clock</button>
+<button id="mode-countup" class="mode" onclick="setMode('countup')">Countup</button>
+<button id="mode-friday" class="mode" onclick="setMode('friday')">Friday</button>
+<hr>
+<button id="mode-demo" class="mode" onclick="runDemo()">Demo</button>
+<hr>
+<a class="btn" href="/settings">Settings</a>
+<div id="st"></div>
+
+<script>
+var configuredMode = '';
+var demoTimer = null;
+
+function showMode(mode) {
+  ['countdown', 'clock', 'countup', 'friday', 'demo'].forEach(function (m) {
+    $('mode-' + m).classList.toggle('current', m === mode);
+  });
+}
+function showConfiguredMode() { showMode(configuredMode); }
+
+api('/api/status').then(function (d) {
+  if (d.name) {
+    document.title = d.name;
+    $('apn').textContent = d.name;
+  }
+  configuredMode = d.mode || '';
+  showConfiguredMode();
+}).catch(function () { setStatus('Status load failed'); });
+
+function setMode(mode) {
+  if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; }
+  fetch('/api/mode', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: mode })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    setStatus(d.message || d.error);
+    if (!d.error) { configuredMode = mode; showMode(mode); }
+  }).catch(function () { setStatus('Mode change failed'); });
+}
+
+function runDemo() {
+  if (demoTimer) clearTimeout(demoTimer);
+  setStatus('Running demo...');
+  showMode('demo');
+  fetch('/api/demo/test', { method: 'POST' })
+    .then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { setStatus(d.error); showConfiguredMode(); return; }
+      demoTimer = setTimeout(function () {
+        demoTimer = null;
+        setStatus('Demo finished.', 5000);
+        showConfiguredMode();
+      }, d.preview_ms || 10000);
+    }).catch(function () { setStatus('Demo failed'); showConfiguredMode(); });
+}
+</script>
+</body>
+</html>

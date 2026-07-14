@@ -8,7 +8,6 @@
 #include "clock_controller.h"
 #include "config_api.h"
 #include "config_validation.h"
-#include "display_format.h"
 #include "file_api.h"
 #include "http_responder.h"
 #include "log.h"
@@ -45,13 +44,8 @@ class WebPortal {
       }
     }
 
-    server_.on("/", HTTP_GET, []() { activePortal->handleRoot(); });
-    server_.on("/mode", HTTP_POST, []() { activePortal->handleModeForm(); });
-    server_.on("/demo", HTTP_POST, []() { activePortal->handleDemoForm(); });
-    server_.on("/format", HTTP_GET, []() { activePortal->handleFormatForm(); });
-    server_.on("/format", HTTP_POST, []() { activePortal->handleFormatSave(); });
-    // Static pages and shared assets, gzipped into flash by tools/build_web.py
-    // from the sources in web/.
+    // All pages and shared assets, gzipped into flash by tools/build_web.py
+    // from the sources in web/. Dynamic data flows through the JSON APIs.
     for (size_t i = 0; i < kWebAssetCount; ++i) {
       server_.on(kWebAssets[i].path, HTTP_GET, [i]() {
         const WebAsset& asset = kWebAssets[i];
@@ -85,6 +79,7 @@ class WebPortal {
 
     server_.on("/api/client-log", HTTP_POST,
                []() { activePortal->handleClientLog(); });
+    server_.on("/api/status", HTTP_GET, []() { activePortal->handleApiStatus(); });
 
     server_.on("/api/demo/test", HTTP_POST, []() { activePortal->configApi_.handleDemoTest(); });
     server_.on("/api/message/test", HTTP_POST, []() { activePortal->configApi_.handleMessageTest(); });
@@ -232,95 +227,14 @@ class WebPortal {
   static WebPortal* activePortal;
 
  private:
-  static String htmlEscape(const String& value) {
-    String escaped = value;
-    escaped.replace("&", "&amp;"); escaped.replace("<", "&lt;");
-    escaped.replace(">", "&gt;"); escaped.replace("\"", "&quot;");
-    return escaped;
-  }
-
-  void sendDynamicHtml(const String& page) {
-    // A String append that fails to reallocate is silently dropped on the
-    // ESP8266, producing a shorter page with a matching Content-Length: the
-    // browser renders a cut-off page and nothing errors. Detect it here.
-    if (!page.endsWith(F("</html>"))) {
-      LOG_PRINTF("ERROR dynamic page truncated during build: len=%u heap=%u maxblk=%u\n",
-                 page.length(), ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
-    }
-    responder_.logRequest(200, page.length());
-    server_.sendHeader("Cache-Control", "private, no-cache");
-    server_.send(200, "text/html", page);
-  }
-
-  void redirectTo(const char* path) {
-    responder_.logRequest(303, 0);
-    server_.sendHeader("Location", path, true);
-    server_.send(303, "text/plain", "");
-  }
-
-  void handleRoot() {
-    const char* activeMode = modeName(clockController_.activeMode());
-    String ssid, ip; getNetworkInfo(ssid, ip);
-    String page;
-    if (!page.reserve(2400)) {
-      LOG_PRINTF("ERROR home page reserve failed: heap=%u maxblk=%u\n",
-                 ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
-    }
-    page += F("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><title>");
-    page += htmlEscape(ssid.isEmpty() ? String("Clock") : ssid);
-    page += F("</title><script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script><style>body{font-family:sans-serif;text-align:center;padding:20px;background:#111;color:#eee;max-width:520px;margin:auto}form{margin:10px 0}button,a{display:block;width:100%;padding:16px;font-size:1.3em;background:#397;color:white;border:0;border-radius:8px;box-sizing:border-box;text-decoration:none}button.current{animation:b 1s linear infinite}@keyframes b{50%{color:transparent}}hr{border:0;border-top:1px solid #333;margin:18px 0}.settings{max-width:240px;margin:auto;background:#357}</style></head><body><h1>");
-    page += htmlEscape(ssid.isEmpty() ? String("Clock") : ssid); page += F("</h1>");
-    const char* modes[] = {"countdown", "clock", "countup", "friday"};
-    const char* labels[] = {"Countdown", "Clock", "Countup", "Friday"};
-    for (uint8_t i = 0; i < 4; ++i) {
-      page += F("<form method=post action=/mode><button name=mode value='"); page += modes[i];
-      page += strcmp(activeMode, modes[i]) == 0 ? F("' class=current>") : F("'>");
-      page += labels[i]; page += F("</button></form>");
-    }
-    page += F("<hr><form method=post action=/demo><button>Demo</button></form><hr><a class=settings href=/settings>Settings</a><div id=t style='text-align:right;color:#444;margin-top:12px'></div><script>addEventListener('load',function(){t.textContent=(performance.now()/1000).toFixed(2)})</script></body></html>");
-    sendDynamicHtml(page);
-  }
-
-  void handleModeForm() {
-    Mode mode;
-    if (!modeFromName(server_.arg("mode"), &mode)) { responder_.sendText(400, "Invalid mode"); return; }
-    ClockConfig config = configManager_.loadClockConfig(); config.activeMode = mode;
-    if (!configManager_.saveClockConfig(config)) { responder_.sendText(500, "Configuration write failed"); return; }
-    clockController_.applyConfig(config); redirectTo("/");
-  }
-
-  void handleDemoForm() { clockController_.showDemo(); redirectTo("/"); }
-
-  void appendFormatSelect(String& page, const char* name, FormatGroup group, uint8_t selected) {
-    page += F("<label>"); page += name; page += F("<select name='"); page += name; page += F("'>");
-    for (uint8_t i = 0; i < displayFormatCount(group); ++i) {
-      page += F("<option value='"); page += i; page += i == selected ? F("' selected>") : F("'>");
-      page += displayFormatInfo(group, i).label; page += F("</option>");
-    }
-    page += F("</select></label>");
-  }
-
-  void handleFormatForm() {
-    const ClockConfig c = configManager_.loadClockConfig(); String page;
-    if (!page.reserve(7500)) {
-      LOG_PRINTF("ERROR format page reserve failed: heap=%u maxblk=%u\n",
-                 ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
-    }
-    page += F("<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><title>Formats</title><script>function clog(d){d.page=location.pathname;try{navigator.sendBeacon('/api/client-log',JSON.stringify(d))}catch(e){}}window.onerror=function(m,s,l){clog({err:String(m).slice(0,120),line:l||0})};addEventListener('load',function(){var n=performance.getEntriesByType('navigation')[0];if(n&&n.loadEventStart>3000)clog({slow:1,conn:Math.round(n.connectEnd-n.connectStart),ttfb:Math.round(n.responseStart-n.requestStart),dl:Math.round(n.responseEnd-n.responseStart),load:Math.round(n.loadEventStart)})})</script><style>body{font-family:sans-serif;padding:16px;background:#111;color:#eee;max-width:540px;margin:auto;color-scheme:dark}label{display:block;margin:12px 0}select,input{width:100%;padding:9px;box-sizing:border-box;background:#202020;color:#eee;border:1px solid #555;border-radius:5px}input[type=checkbox]{width:auto}fieldset{border:1px solid #444;margin:14px 0}button{padding:12px 24px;background:#397;color:white;border:0;border-radius:7px}a{color:#8cf}</style></head><body><h1>Format Settings</h1><form method=post action=/format><label>Mode<select id=mode name=mode onchange=showMode()>");
-    const char* names[] = {"countdown","countup","clock","friday"};
-    for (uint8_t i=0;i<4;++i){page+=F("<option value='");page+=names[i];page+=c.activeMode==static_cast<Mode>(i)?F("' selected>"):F("'>");page+=names[i];page+=F("</option>");}
-    page += F("</select></label><fieldset id=f0><legend>Countdown</legend>"); appendFormatSelect(page,"countdownFormat",kFmtGroupCountdown,c.countdown.format);
-    page += F("<label>End<input type=datetime-local step=1 name=countdownEnd value='"); String end(c.countdown.end); end.replace(" ","T"); page+=end; page+=F("'></label></fieldset><fieldset id=f1><legend>Countup</legend>"); appendFormatSelect(page,"countupFormat",kFmtGroupCountUp,c.countup.format);
-    page += F("<label>Start<input type=datetime-local step=1 name=countupStart value='"); String start(c.countup.start); start.replace(" ","T"); page+=start; page+=F("'></label></fieldset><fieldset id=f2><legend>Clock</legend>"); appendFormatSelect(page,"clockFormat",kFmtGroupClock,c.display.clockFmt);
-    page += F("<label><input type=checkbox name=hour12 value=1"); if(c.display.clockUse12Hour)page+=F(" checked"); page+=F("> 12-hour clock</label></fieldset><fieldset id=f3><legend>Friday</legend>"); appendFormatSelect(page,"fridayClock",kFmtGroupClock,c.friday.clockFmt); appendFormatSelect(page,"fridayTo",kFmtGroupCountdown,c.friday.toFridaySunsetFmt); appendFormatSelect(page,"saturdayTo",kFmtGroupCountdown,c.friday.toSaturdaySunsetFmt);
-    page += F("</fieldset><label>Brightness<input type=range min=0 max=7 name=brightness value='");page+=c.display.brightness;page+=F("'></label><button type=submit>Save</button></form><p><a href=/ >Home</a> &nbsp; <a href=/settings>Settings</a><span id=t style='float:right;color:#444'></span></p><script>function showMode(){var m=document.getElementById('mode').selectedIndex;for(var i=0;i<4;i++)document.getElementById('f'+i).hidden=i!=m}showMode();var bt;document.getElementsByName('brightness')[0].oninput=function(){var v=+this.value;clearTimeout(bt);bt=setTimeout(function(){fetch('/api/brightness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({brightness:v})})},120)};addEventListener('load',function(){document.getElementById('t').textContent=(performance.now()/1000).toFixed(2)})</script></body></html>"); sendDynamicHtml(page);
-  }
-
-  void handleFormatSave() {
-    ClockConfig c=configManager_.loadClockConfig(); Mode m;if(modeFromName(server_.arg("mode"),&m))c.activeMode=m;
-    c.countdown.format=server_.arg("countdownFormat").toInt();c.countup.format=server_.arg("countupFormat").toInt();c.display.clockFmt=server_.arg("clockFormat").toInt();c.friday.clockFmt=server_.arg("fridayClock").toInt();c.friday.toFridaySunsetFmt=server_.arg("fridayTo").toInt();c.friday.toSaturdaySunsetFmt=server_.arg("saturdayTo").toInt();c.display.brightness=server_.arg("brightness").toInt();c.display.clockUse12Hour=server_.hasArg("hour12");
-    String value=server_.arg("countdownEnd");if(!value.isEmpty()){value.replace("T"," ");snprintf(c.countdown.end,sizeof(c.countdown.end),"%s",value.c_str());}value=server_.arg("countupStart");if(!value.isEmpty()){value.replace("T"," ");snprintf(c.countup.start,sizeof(c.countup.start),"%s",value.c_str());}
-    c=configManager_.sanitizeClockConfig(c);if(!configManager_.saveClockConfig(c)){responder_.sendText(500,"Configuration write failed");return;}clockController_.applyConfig(c);redirectTo("/format");
+  // Dynamic values for the static home page: device name and configured mode.
+  void handleApiStatus() {
+    String ssid, ip;
+    getNetworkInfo(ssid, ip);
+    JsonDocument doc;
+    doc["name"] = ssid;
+    doc["mode"] = modeName(clockController_.activeMode());
+    responder_.sendJsonDocument(200, doc);
   }
 
   ESP8266WebServer server_;        // HTTP server on port 80.
