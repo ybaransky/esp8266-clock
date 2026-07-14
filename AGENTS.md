@@ -13,6 +13,7 @@ pio run                          # compile
 pio run --target upload          # compile + flash firmware
 pio run --target uploadfs        # upload LittleFS (data/ directory)
 pio device monitor               # serial monitor at 74880 baud
+python tools/dev_server.py --device <clock-ip>   # edit web/ pages live, no reflash
 ```
 
 ## Architecture at a glance
@@ -36,8 +37,11 @@ main.cpp
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
   ├── wifi_connection_manager – ClockApplication-owned STA → AP fallback service
-  ├── web_server          – ESP8266WebServer; HTML pages + REST API
+  ├── web_server          – ESP8266WebServer; static gzipped pages + REST API
   │     ClockController   – application actions shared by the loop and web APIs
+  │     web/              – page sources (pages/*.html, common.css, common.js);
+  │                         tools/build_web.py packages them into flash, and
+  │                         tools/web_manifest.py owns the route → file map
   ├── button / page_manager – debounced input; scrolling page display
   └── zipcode / sunset_calculator – geography helpers (LittleFS lookup + math)
 ```
@@ -83,6 +87,8 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.
 - **Device location vs `sunsetTest`** — `ClockConfig.locations.device` is the physical device location used by friday_mode; `ClockConfig.locations.sunsetTest` is the Sunset Calculator page's test input. Do not substitute one for the other.
 - **`webHandleClients()` must be called every `loop()` iteration** — skipping it stalls the web server and DNS.
+- **Never build HTML on the server** — every page is a static gzipped PROGMEM asset generated from `web/` by `tools/build_web.py`; dynamic data flows through the JSON APIs (the home page uses `GET /api/status`). Add or rename routes only in `tools/web_manifest.py`. Shared page helpers belong in `web/common.js`, styles in `web/common.css` (both served hash-versioned and immutable).
+- **AP-mode radio settings are evidence-backed** — the 11g phy mode, channel survey, and 17 dBm TX power in `wifi_connection_manager.cpp` fix observed transfer stalls with power-save phone clients; comments there record what was tried and what made things worse. Do not change them without new on-device evidence.
 - **GPIO15 must stay LOW at boot** — do not add any pull-up on D8.
 - **`setView()` vs `applySettings()`** — use `setView()` to update the base view without disturbing an active overlay (e.g. from `FridayModeController`). Use `applySettings()` only for full config reloads (it resets colon state and re-evaluates the full mode). Don't reintroduce a "previous state" snapshot to restore when an overlay clears — that pattern (the old `defaultState_`/`currentState_`/`previousState_` model) is what caused a real bug where a boot splash restored a stale pre-Friday-correction view instead of the live one. The current model has no snapshot: clearing an overlay just re-renders whatever `baseView_` currently is.
 - **`RtcService::getNow()` vs `getNowCached()`** — `getNow()` is a live I2C read; `getNowCached()` is advanced by SQW pulses with a live-read fallback if pulses go stale. `DisplayManager` uses the cached version; do not replace it with live reads on the hot render path.
