@@ -118,7 +118,7 @@ const char* HttpResponder::abbreviatedRoute(const char* uri) {
   if (strcmp(uri, "/location") == 0) return "location";
   if (strcmp(uri, "/time") == 0) return "time";
   if (strcmp(uri, "/wifi") == 0) return "wifi";
-  if (strcmp(uri, "/config") == 0) return "files";
+  if (strcmp(uri, "/files") == 0) return "files";
   if (strcmp(uri, "/sunset") == 0) return "sunset";
   if (strcmp(uri, "/view") == 0) return "view";
   return uri[0] == '/' ? uri + 1 : uri;

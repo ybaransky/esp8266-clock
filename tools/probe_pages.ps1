@@ -20,7 +20,7 @@ param(
 )
 
 $htmlRoutes = @("/", "/settings", "/format", "/time", "/sunset",
-                "/messages", "/location", "/wifi", "/config", "/view")
+                "/messages", "/location", "/wifi", "/files", "/view")
 $apiRoutes  = @("/api/config", "/api/formats", "/api/time",
                 "/api/files", "/api/wifi/status")
 

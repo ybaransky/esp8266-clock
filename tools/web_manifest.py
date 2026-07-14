@@ -9,7 +9,7 @@ PAGES = {
     "/": "home.html",
     "/format": "format.html",
     "/settings": "settings.html",
-    "/config": "files.html",
+    "/files": "files.html",
     "/time": "time.html",
     "/sunset": "sunset.html",
     "/messages": "messages.html",
