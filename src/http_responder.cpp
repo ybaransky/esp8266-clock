@@ -39,12 +39,16 @@ void HttpResponder::sendJsonError(int status, const char* message) {
 }
 
 void HttpResponder::sendGzipProgmem(int status, const char* contentType,
-                                    const uint8_t* body, size_t length) {
+                                    const uint8_t* body, size_t length,
+                                    bool cacheImmutable) {
   logRequest(status, length);
   server_.sendHeader("Content-Encoding", "gzip");
-  // Permit the browser's back/forward cache to restore complete pages without
-  // another ESP8266 transfer. Normal navigation still revalidates the page.
-  server_.sendHeader("Cache-Control", "private, no-cache");
+  // Shared assets are hash-versioned in the URL, so they may be cached
+  // forever. Pages allow only the back/forward cache; normal navigation
+  // still revalidates so config edits show immediately.
+  server_.sendHeader("Cache-Control", cacheImmutable
+                                          ? "public, max-age=31536000, immutable"
+                                          : "private, no-cache");
   server_.sendHeader("Vary", "Accept-Encoding");
   // Send headers only, then write the body directly so the socket reports how
   // many bytes actually went out. server_.send_P() discards that count, which

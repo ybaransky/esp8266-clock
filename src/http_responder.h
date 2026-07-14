@@ -14,7 +14,8 @@ class HttpResponder {
   void sendJsonDocument(int status, JsonDocument& doc);
   void sendJsonError(int status, const char* message);
   void sendGzipProgmem(int status, const char* contentType,
-                       const uint8_t* body, size_t length);
+                       const uint8_t* body, size_t length,
+                       bool cacheImmutable = false);
   void logRequest(int status, size_t txBytes = 0);
   uint32_t responseSequence() const { return responseSequence_; }
   void logCompletion(uint32_t elapsedUs);

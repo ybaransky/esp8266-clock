@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Sunset Calculator</title>
+</head>
+<body>
+<h1>Sunset Calculator</h1>
+
+<div class="box">
+  <table class="timetable locationTable">
+    <colgroup><col class="coordCol"><col class="coordCol"></colgroup>
+    <tr><th>Latitude</th><th>Longitude</th></tr>
+    <tr>
+      <td><input type="number" id="lat" min="-90" max="90" step="0.000001"></td>
+      <td><input type="number" id="lon" min="-180" max="180" step="0.000001"></td>
+    </tr>
+    <tr><td colspan="2"><div class="zipLookup"><span class="zipLabel">Zipcode</span><input type="text" id="zip" inputmode="numeric" maxlength="5" size="6" pattern="[0-9]{5}"><button class="secondary" onclick="getFromZipcode()">Compute</button></div></td></tr>
+  </table>
+</div>
+
+<div class="box">
+  <table class="timetable">
+    <colgroup><col class="rowLabel"><col><col class="dstLabelCol"><col class="dstValueCol"></colgroup>
+    <tr><td class="label">Date</td><td colspan="3"><input type="date" id="date"></td></tr>
+    <tr><td class="label">Timezone</td><td colspan="3"><input type="text" id="timezone" maxlength="39"></td></tr>
+    <tr><td class="label">UTC offset</td><td><input type="number" id="offset" min="-840" max="840" step="1"></td><td class="label">DST</td><td><input type="checkbox" id="dst"></td></tr>
+  </table>
+</div>
+
+<div class="actions"><button onclick="computeSunset()">Compute sunset</button></div>
+<div id="result"></div>
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+function setResult(s) { $('result').textContent = s || ''; }
+function browserOffsetMinutes() { return -new Date().getTimezoneOffset(); }
+
+function loadInitialValues() {
+  Promise.all([api('/api/config'), api('/api/time')]).then(function (values) {
+    var cfg = values[0] || {}, now = values[1] || {};
+    var sunset = cfg.sunset || {};
+    var time = cfg.time || {};
+    var timezone = time.timezone || {};
+    $('lat').value = sunset.latitude !== undefined ? sunset.latitude : '';
+    $('lon').value = sunset.longitude !== undefined ? sunset.longitude : '';
+    $('zip').value = sunset.zipcode || '';
+    $('date').value = now.date || '';
+    $('timezone').value = timezone.name || '';
+    $('offset').value = timezone.utcOffsetMinutes !== undefined
+        ? timezone.utcOffsetMinutes : browserOffsetMinutes();
+    $('dst').checked = !!time.dst;
+  }).catch(function () { setStatus('Load failed'); });
+}
+
+function readNumber(id, label, min, max) {
+  var value = parseFloat($(id).value);
+  if (!isFinite(value) || value < min || value > max) {
+    throw new Error(label + ' must be ' + min + ' to ' + max);
+  }
+  return value;
+}
+function readOffset() {
+  var value = parseInt($('offset').value, 10);
+  if (!isFinite(value) || value < -840 || value > 840) {
+    throw new Error('UTC offset must be -840 to 840');
+  }
+  return value;
+}
+function validZip(value) { return /^[0-9]{5}$/.test(value); }
+
+function getFromZipcode() {
+  setStatus('');
+  setResult('');
+  var zip = $('zip').value;
+  if (!validZip(zip)) { setStatus('ZIP code must be 5 digits'); return; }
+  setStatus('Looking up...');
+  fetch('/api/zipcode/lookup?zip=' + encodeURIComponent(zip))
+    .then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { setStatus(d.error); return; }
+      $('lat').value = Number(d.latitude).toFixed(6);
+      $('lon').value = Number(d.longitude).toFixed(6);
+      setStatus('');
+    }).catch(function () { setStatus('ZIP lookup failed'); });
+}
+
+function computeSunset() {
+  setStatus('');
+  setResult('');
+  var body;
+  try {
+    if (!$('date').value) throw new Error('Date is required');
+    body = {
+      location: {
+        latitude: readNumber('lat', 'Latitude', -90, 90),
+        longitude: readNumber('lon', 'Longitude', -180, 180)
+      },
+      time: {
+        date: $('date').value,
+        time: '00:00:00',
+        timezone: { name: $('timezone').value, utcOffsetMinutes: readOffset() },
+        dst: $('dst').checked
+      }
+    };
+  } catch (e) {
+    setStatus(e.message);
+    return;
+  }
+  fetch('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sunset: {
+        zipcode: $('zip').value,
+        latitude: body.location.latitude,
+        longitude: body.location.longitude
+      }
+    })
+  }).then(function (r) { return r.json(); }).then(function (saved) {
+    if (saved.error) throw new Error(saved.error);
+    return fetch('/api/sunset', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.error) { setStatus(d.error); return; }
+    setResult(d.time);
+  }).catch(function (e) { setStatus(e.message || 'Sunset calculation failed'); });
+}
+
+loadInitialValues();
+</script>
+</body>
+</html>

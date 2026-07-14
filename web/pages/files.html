@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Directory</title>
+</head>
+<body>
+<h1>Directory</h1>
+
+<table class="files">
+  <thead><tr><th>Filename</th><th class="size">Size</th><th class="del"></th></tr></thead>
+  <tbody id="files"><tr><td colspan="3">Loading&#8230;</td></tr></tbody>
+  <tfoot id="totals"></tfoot>
+</table>
+
+<div class="upload-row"><input type="file" id="upload-input"><button onclick="uploadFile()">Upload</button></div>
+<div id="upload-warning" style="display:none" class="upload-warn"><span id="upload-warn-msg"></span><button class="del" onclick="confirmOverwrite()">Overwrite</button><button class="cancel" onclick="cancelUpload()">Cancel</button></div>
+<div id="upload-st"></div>
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+var currentFiles = [];
+
+function setUploadSt(msg, ok) {
+  var el = $('upload-st');
+  el.textContent = msg || '';
+  el.style.color = ok === false ? '#f88' : '#8d8';
+}
+
+function deleteFile(name) {
+  if (!confirm('Delete ' + name + '?')) return;
+  api('/api/file?name=' + encodeURIComponent(name), { method: 'DELETE' }).then(function () {
+    setStatus('Deleted ' + name);
+    loadDirectory();
+  }).catch(function () { setStatus('Delete failed'); });
+}
+
+function uploadFile() {
+  var input = $('upload-input');
+  if (!input.files.length) { setUploadSt('No file selected', false); return; }
+  var file = input.files[0];
+  $('upload-warning').style.display = 'none';
+  var exists = currentFiles.some(function (f) { return f.name === file.name; });
+  if (exists) {
+    $('upload-warn-msg').textContent = '"' + file.name + '" already exists.';
+    $('upload-warning').style.display = '';
+    return;
+  }
+  doUpload(file);
+}
+
+function confirmOverwrite() {
+  var input = $('upload-input');
+  $('upload-warning').style.display = 'none';
+  if (input.files.length) doUpload(input.files[0]);
+}
+
+function cancelUpload() {
+  $('upload-warning').style.display = 'none';
+  $('upload-input').value = '';
+  setUploadSt('');
+}
+
+function doUpload(file) {
+  setUploadSt('Uploading ' + file.name + '...', true);
+  var fd = new FormData();
+  fd.append('file', file, file.name);
+  fetch('/api/file/upload', { method: 'POST', body: fd }).then(function (r) {
+    return r.json();
+  }).then(function (d) {
+    setUploadSt(d.message || d.error, !d.error);
+    if (!d.error) { $('upload-input').value = ''; loadDirectory(); }
+  }).catch(function () { setUploadSt('Upload failed', false); });
+}
+
+function loadDirectory() {
+  api('/api/files').then(function (d) {
+    currentFiles = d.files || [];
+    var body = $('files');
+    body.innerHTML = '';
+    currentFiles.forEach(function (file) {
+      var tr = document.createElement('tr');
+      var name = document.createElement('td');
+      var button = document.createElement('button');
+      button.className = 'file';
+      button.type = 'button';
+      button.textContent = file.name;
+      button.onclick = function () {
+        window.location.href = '/view?name=' + encodeURIComponent(file.name);
+      };
+      name.appendChild(button);
+      var size = document.createElement('td');
+      size.className = 'size';
+      size.textContent = file.size.toLocaleString();
+      var del = document.createElement('td');
+      del.className = 'del';
+      var delButton = document.createElement('button');
+      delButton.className = 'del';
+      delButton.type = 'button';
+      delButton.textContent = 'del';
+      delButton.onclick = function () { deleteFile(file.name); };
+      del.appendChild(delButton);
+      tr.appendChild(name);
+      tr.appendChild(size);
+      tr.appendChild(del);
+      body.appendChild(tr);
+    });
+    if (!body.children.length) body.innerHTML = '<tr><td colspan="3">No files found</td></tr>';
+    var totals = $('totals');
+    totals.innerHTML = '';
+    if (d.total) {
+      var free = d.total - d.used;
+      totals.innerHTML =
+        '<tr class="tfoot-gap"><td colspan="3"></td></tr>' +
+        '<tr><td>Used</td><td class="size">' + d.used.toLocaleString() + '</td><td></td></tr>' +
+        '<tr><td>Available</td><td class="size">' + free.toLocaleString() + '</td><td></td></tr>';
+    }
+  }).catch(function () { setStatus('Directory load failed'); });
+}
+
+loadDirectory();
+</script>
+</body>
+</html>

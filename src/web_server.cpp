@@ -10,14 +10,13 @@
 #include "config_validation.h"
 #include "display_format.h"
 #include "file_api.h"
-#include "html.h"
 #include "http_responder.h"
 #include "log.h"
 #include "location_api.h"
 #include "time_api.h"
 #include "wifi_api.h"
 #include "wifi_connection_manager.h"
-#include "generated_web_pages.h"
+#include "generated_web_assets.h"
 
 namespace {
 
@@ -49,16 +48,18 @@ class WebPortal {
     server_.on("/", HTTP_GET, []() { activePortal->handleRoot(); });
     server_.on("/mode", HTTP_POST, []() { activePortal->handleModeForm(); });
     server_.on("/demo", HTTP_POST, []() { activePortal->handleDemoForm(); });
-    server_.on("/settings", HTTP_GET, []() { activePortal->sendGzip(GZIP_SETTINGS_HTML, GZIP_SETTINGS_HTML_SIZE); });
-    server_.on("/config", HTTP_GET, []() { activePortal->sendGzip(GZIP_CONFIG_JSON_HTML, GZIP_CONFIG_JSON_HTML_SIZE); });
     server_.on("/format", HTTP_GET, []() { activePortal->handleFormatForm(); });
     server_.on("/format", HTTP_POST, []() { activePortal->handleFormatSave(); });
-    server_.on("/time", HTTP_GET, []() { activePortal->sendGzip(GZIP_TIME_HTML, GZIP_TIME_HTML_SIZE); });
-    server_.on("/sunset", HTTP_GET, []() { activePortal->sendGzip(GZIP_SUNSET_HTML, GZIP_SUNSET_HTML_SIZE); });
-    server_.on("/messages", HTTP_GET, []() { activePortal->sendGzip(GZIP_MESSAGE_HTML, GZIP_MESSAGE_HTML_SIZE); });
-    server_.on("/location", HTTP_GET, []() { activePortal->sendGzip(GZIP_LOCATION_HTML, GZIP_LOCATION_HTML_SIZE); });
-    server_.on("/wifi", HTTP_GET, []() { activePortal->sendGzip(GZIP_WIFI_HTML, GZIP_WIFI_HTML_SIZE); });
-    server_.on("/view", HTTP_GET, []() { activePortal->sendGzip(GZIP_VIEW_FILE_HTML, GZIP_VIEW_FILE_HTML_SIZE); });
+    // Static pages and shared assets, gzipped into flash by tools/build_web.py
+    // from the sources in web/.
+    for (size_t i = 0; i < kWebAssetCount; ++i) {
+      server_.on(kWebAssets[i].path, HTTP_GET, [i]() {
+        const WebAsset& asset = kWebAssets[i];
+        activePortal->responder_.sendGzipProgmem(200, asset.contentType,
+                                                 asset.data, asset.size,
+                                                 asset.immutable);
+      });
+    }
     server_.on("/favicon.ico", HTTP_GET,
                []() { activePortal->sendProbe204("image/x-icon"); });
 
@@ -320,10 +321,6 @@ class WebPortal {
     c.countdown.format=server_.arg("countdownFormat").toInt();c.countup.format=server_.arg("countupFormat").toInt();c.display.clockFmt=server_.arg("clockFormat").toInt();c.friday.clockFmt=server_.arg("fridayClock").toInt();c.friday.toFridaySunsetFmt=server_.arg("fridayTo").toInt();c.friday.toSaturdaySunsetFmt=server_.arg("saturdayTo").toInt();c.display.brightness=server_.arg("brightness").toInt();c.display.clockUse12Hour=server_.hasArg("hour12");
     String value=server_.arg("countdownEnd");if(!value.isEmpty()){value.replace("T"," ");snprintf(c.countdown.end,sizeof(c.countdown.end),"%s",value.c_str());}value=server_.arg("countupStart");if(!value.isEmpty()){value.replace("T"," ");snprintf(c.countup.start,sizeof(c.countup.start),"%s",value.c_str());}
     c=configManager_.sanitizeClockConfig(c);if(!configManager_.saveClockConfig(c)){responder_.sendText(500,"Configuration write failed");return;}clockController_.applyConfig(c);redirectTo("/format");
-  }
-
-  void sendGzip(const uint8_t* html, size_t length) {
-    responder_.sendGzipProgmem(200, "text/html", html, length);
   }
 
   ESP8266WebServer server_;        // HTTP server on port 80.

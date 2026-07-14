@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Location Settings</title>
+</head>
+<body>
+<h1>Location Settings</h1>
+
+<label class="field"><span>Latitude</span><input type="text" id="lat" inputmode="decimal" pattern="-?[0-9]+(\.[0-9]+)?" placeholder="40.7128"></label>
+<label class="field"><span>Longitude</span><input type="text" id="lon" inputmode="decimal" pattern="-?[0-9]+(\.[0-9]+)?" placeholder="-74.0060"></label>
+<label class="field"><span>ZIP code</span><input type="text" id="zip" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="10001"></label>
+<div class="lookupActions">
+  <button class="secondary" onclick="computeZip()">Get From Zipcode</button>
+  <button class="secondary" onclick="useBrowser()">Get From Browser</button>
+</div>
+<div id="st-lookup" class="substatus"></div>
+<hr>
+<div class="actions"><button onclick="save()">Save Location</button></div>
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+var _subTimers = {};
+function showSubstatus(id, msg, isError) {
+  var el = $(id);
+  clearTimeout(_subTimers[id]);
+  el.textContent = msg || '';
+  el.className = 'substatus' + (isError && msg ? ' blinking' : '');
+  if (isError && msg) {
+    _subTimers[id] = setTimeout(function () {
+      el.textContent = '';
+      el.className = 'substatus';
+    }, 5000);
+  }
+}
+function setLookupStatus(msg, isError) { showSubstatus('st-lookup', msg, isError); }
+
+// Parses the body even on HTTP errors so server-provided messages are shown.
+function jsonFetch(url, options) {
+  return fetch(url, options).then(function (r) {
+    return r.json().then(function (d) {
+      d._httpStatus = r.status;
+      if (!r.ok && !d.error) d.error = 'HTTP ' + r.status;
+      return d;
+    });
+  });
+}
+
+api('/api/config').then(function (d) {
+  var location = d.location || {};
+  setFieldFromConfig('location', 'zip', 'location.zipcode', location.zipcode, location.zipcode || '');
+  setFieldFromConfig('location', 'lat', 'location.latitude', location.latitude,
+                     location.latitude !== undefined ? location.latitude : '');
+  setFieldFromConfig('location', 'lon', 'location.longitude', location.longitude,
+                     location.longitude !== undefined ? location.longitude : '');
+}).catch(function (e) { setStatus('Load failed: ' + e.message); });
+
+function useBrowser() {
+  if (!navigator.geolocation) { setLookupStatus('Browser location unavailable', true); return; }
+  setLookupStatus('Requesting location...');
+  navigator.geolocation.getCurrentPosition(function (pos) {
+    $('lat').value = pos.coords.latitude.toFixed(6);
+    $('lon').value = pos.coords.longitude.toFixed(6);
+    setLookupStatus('');
+  }, function () { setLookupStatus('Location blocked or unavailable', true); },
+  { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
+}
+
+function validNumber(value, min, max) {
+  if (!/^-?[0-9]+(\.[0-9]+)?$/.test(value)) return false;
+  var n = parseFloat(value);
+  return isFinite(n) && n >= min && n <= max;
+}
+function validZip(value) { return /^[0-9]{5}$/.test(value); }
+
+function computeZip() {
+  var zip = $('zip').value;
+  if (!validZip(zip)) { setLookupStatus('ZIP code must be 5 digits', true); return; }
+  setLookupStatus('Looking up...');
+  jsonFetch('/api/zipcode/lookup?zip=' + encodeURIComponent(zip)).then(function (d) {
+    if (d.error) { setLookupStatus(d.error + ' - coordinates left unchanged', true); return; }
+    $('lat').value = Number(d.latitude).toFixed(6);
+    $('lon').value = Number(d.longitude).toFixed(6);
+    setLookupStatus('');
+  }).catch(function (e) {
+    setLookupStatus('ZIP lookup failed: ' + e.message + ' - coordinates left unchanged', true);
+  });
+}
+
+function save() {
+  var zip = $('zip').value;
+  if (zip && !validZip(zip)) { setStatus('ZIP code must be 5 digits'); return; }
+  if (!validNumber($('lat').value, -90, 90)) { setStatus('Latitude must be -90 to 90'); return; }
+  if (!validNumber($('lon').value, -180, 180)) { setStatus('Longitude must be -180 to 180'); return; }
+  jsonFetch('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      location: {
+        zipcode: zip,
+        latitude: parseFloat($('lat').value),
+        longitude: parseFloat($('lon').value)
+      }
+    })
+  }).then(function (d) {
+    setStatus(d.message || d.error);
+  }).catch(function (e) { setStatus('Save failed: ' + e.message); });
+}
+</script>
+</body>
+</html>

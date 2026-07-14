@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Message Settings</title>
+</head>
+<body>
+<h1>Message Settings</h1>
+<p>Each message is split across the three display panels. Test shows the message on the device for 5 seconds without saving.</p>
+
+<h2>Splash Screen Text</h2>
+<label>Shown at boot for 5 seconds</label>
+<div class="row">
+  <input id="s1" maxlength="4" placeholder="R1" oninput="nextPanel(this,'s2')">
+  <input id="s2" maxlength="4" placeholder="R2" oninput="nextPanel(this,'s3')">
+  <input id="s3" maxlength="4" placeholder="R3" oninput="trimPanel(this)">
+</div>
+<div class="actions"><button class="secondary" onclick="testMsg('s')">Test Splash</button></div>
+
+<hr>
+<h2>Countdown Text</h2>
+<label>Shown when Count Down mode finishes</label>
+<div class="row">
+  <input id="f1" maxlength="4" placeholder="R1" oninput="nextPanel(this,'f2')">
+  <input id="f2" maxlength="4" placeholder="R2" oninput="nextPanel(this,'f3')">
+  <input id="f3" maxlength="4" placeholder="R3" oninput="trimPanel(this)">
+</div>
+<div class="actions">
+  <button class="secondary" onclick="testMsg('f')">Test Final</button>
+  <button class="secondary" onclick="runDemo()">Run Demo</button>
+</div>
+
+<hr>
+<h2>Friday Sunset Text</h2>
+<label>Blinks for 5 seconds when Friday mode hits Friday sundown</label>
+<div class="row">
+  <input id="y1" maxlength="4" placeholder="R1" oninput="nextPanel(this,'y2')">
+  <input id="y2" maxlength="4" placeholder="R2" oninput="nextPanel(this,'y3')">
+  <input id="y3" maxlength="4" placeholder="R3" oninput="trimPanel(this)">
+</div>
+<div class="actions"><button class="secondary" onclick="testMsg('y',true)">Test Friday Sunset</button></div>
+
+<hr>
+<div class="actions"><button onclick="save()">Save Messages</button></div>
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+function cleanMessage(value) {
+  return String(value || '').replace(/[^\x20-\x7E]/g, '').slice(0, 12);
+}
+function trimPanel(el) { el.value = cleanMessage(el.value).slice(0, 4); }
+function nextPanel(el, nextId) {
+  trimPanel(el);
+  if (el.value.length >= 4) $(nextId).focus();
+}
+function msg(prefix) {
+  return cleanMessage(($(prefix + '1').value || '').slice(0, 4) +
+                      ($(prefix + '2').value || '').slice(0, 4) +
+                      ($(prefix + '3').value || '').slice(0, 4));
+}
+function split(prefix, value, field) {
+  var original = value || '';
+  var cleaned = cleanMessage(original);
+  if (String(original) !== cleaned) {
+    reportFieldMismatch('messages', field, original, cleaned,
+                        'message must be 12 printable ASCII chars');
+  }
+  $(prefix + '1').value = cleaned.slice(0, 4);
+  $(prefix + '2').value = cleaned.slice(4, 8);
+  $(prefix + '3').value = cleaned.slice(8, 12);
+}
+
+api('/api/config').then(function (d) {
+  var messages = ((d.display || {}).messages) || {};
+  split('s', messages.splash || '', 'display.messages.splash');
+  split('f', messages.final || '', 'display.messages.final');
+  split('y', messages.fridaySunset || '', 'display.messages.fridaySunset');
+}).catch(function () { setStatus('Load failed'); });
+
+function testMsg(prefix, blink) {
+  setStatus('Previewing for 5 seconds...');
+  fetch('/api/message/test', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: msg(prefix), blink: !!blink })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    setStatus(d.message || d.error);
+  }).catch(function () { setStatus('Test failed'); });
+}
+
+function runDemo() {
+  setStatus('Running demo...');
+  fetch('/api/demo/test', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ display: { messages: { final: msg('f') } } })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.error) { setStatus(d.error); return; }
+    setTimeout(function () { setStatus('Demo finished.'); }, d.preview_ms || 10000);
+  }).catch(function () { setStatus('Demo failed'); });
+}
+
+function save() {
+  fetch('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      display: { messages: { splash: msg('s'), final: msg('f'), fridaySunset: msg('y') } }
+    })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    setStatus(d.message || d.error);
+  }).catch(function () { setStatus('Save failed'); });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>View File</title>
+</head>
+<body class="wide">
+<h1 id="title">&#8230;</h1>
+<div id="viewer"></div>
+<div id="st"></div>
+<table id="log" hidden><thead><tr><th>#</th><th>offset</th><th>bytes</th><th>time (s)</th><th>KB/s</th></tr></thead><tbody></tbody></table>
+<p class="footer"><a href="/config">&#8592; Directory</a></p>
+
+<script>
+function sorted(v) {
+  if (Array.isArray(v)) return v.map(sorted);
+  if (v && typeof v === 'object') {
+    return Object.keys(v).sort().reduce(function (o, k) { o[k] = sorted(v[k]); return o; }, {});
+  }
+  return v;
+}
+function extOf(n) {
+  var d = n.lastIndexOf('.');
+  return d >= 0 ? n.substring(d + 1).toLowerCase() : '';
+}
+
+var params = new URLSearchParams(window.location.search);
+var name = params.get('name') || '';
+document.title = name || 'View File';
+$('title').textContent = name || '(unknown)';
+var url = '/api/file?name=' + encodeURIComponent(name);
+var ext = extOf(name);
+var viewer = $('viewer');
+
+if (!name) {
+  setStatus('No file specified.');
+} else if (ext === 'pdf') {
+  var fr = document.createElement('iframe');
+  fr.className = 'viewer';
+  fr.src = url;
+  fr.title = name;
+  viewer.appendChild(fr);
+} else if (/^(png|jpg|jpeg|gif|svg)$/.test(ext)) {
+  var im = document.createElement('img');
+  im.className = 'viewer';
+  im.src = url;
+  im.alt = name;
+  viewer.appendChild(im);
+} else {
+  loadText();
+}
+
+// Text files are fetched in chunks that grow while transfers succeed and
+// shrink with retries on failure; the log table shows per-chunk throughput.
+function loadText() {
+  var pre = document.createElement('pre');
+  pre.textContent = 'Loading...';
+  viewer.appendChild(pre);
+  var size = 8 * 1024, offset = 0, parts = [], seq = 0, total = 0, prevBytes = 0;
+
+  function logRow(cells, color) {
+    var t = $('log');
+    t.hidden = false;
+    var r = t.tBodies[0].insertRow(0);
+    if (color) r.style.color = color;
+    cells.forEach(function (v) { r.insertCell(-1).textContent = v; });
+  }
+  function expected() { return total ? ' of ' + total.toLocaleString() : ''; }
+
+  fetch('/api/files').then(function (r) { return r.json(); }).then(function (d) {
+    (d.files || []).forEach(function (f) {
+      if (f.name === name || f.name === '/' + name) total = f.size;
+    });
+    if (total && !offset) setStatus('Loading 0' + expected() + ' bytes');
+  }).catch(function () {});
+
+  function next() {
+    var requested = size, began = performance.now();
+    var u = url + '&offset=' + offset + '&limit=' + requested;
+    fetch(u).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      if (!total) total = +r.headers.get('X-File-Size') || 0;
+      return r.text();
+    }).then(function (t) {
+      var elapsed = performance.now() - began;
+      if (offset === 0) pre.textContent = '';
+      logRow([++seq, offset.toLocaleString(), t.length.toLocaleString(),
+              (elapsed / 1000).toFixed(2), (t.length / 1.024 / elapsed).toFixed(1)],
+             prevBytes && t.length > prevBytes ? '#7d7'
+                 : prevBytes && t.length < prevBytes ? '#f77' : '');
+      prevBytes = t.length;
+      parts.push(t);
+      offset += t.length;
+      if (t.length === requested && elapsed < 2000) size = Math.min(512 * 1024, size * 2);
+      setStatus('Loading ' + offset.toLocaleString() + expected() + ' bytes');
+      if (t.length === requested) { next(); return; }
+      var all = parts.join('');
+      if (ext === 'json') {
+        try { all = JSON.stringify(sorted(JSON.parse(all)), null, 2); } catch (e) {}
+      }
+      pre.textContent = all;
+      setStatus('Loaded ' + offset.toLocaleString() + ' bytes');
+    }).catch(function (e) {
+      if (size > 8192) {
+        size = Math.max(8192, size / 2);
+        logRow([++seq, offset.toLocaleString(), 'retry → ' + size.toLocaleString(), '', ''], '#f77');
+        setStatus('Retrying byte ' + offset + ' with ' + size.toLocaleString() + ' byte chunks');
+        setTimeout(next, 100);
+        return;
+      }
+      setStatus('Load failed at byte ' + offset + ': ' + e.message);
+    });
+  }
+  next();
+}
+</script>
+</body>
+</html>

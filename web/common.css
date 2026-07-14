@@ -1,0 +1,265 @@
+/* Shared stylesheet for all clock pages. Served gzipped with an immutable
+   cache header; tools/build_web.py stamps a content hash into each page's
+   reference, so editing this file busts the cache. */
+
+/* ---- Page frame ---- */
+body {
+  font-family: sans-serif;
+  padding: 18px;
+  background: #111;
+  color: #eee;
+  max-width: 560px;
+  margin: 0 auto;
+  color-scheme: dark;
+}
+body.wide { max-width: 720px; }
+
+h1 { font-size: 1.6em; margin: 0 0 14px; text-align: center; }
+h2 { font-size: 1.1em; color: #8af; margin: 20px 0 8px; }
+h3 { font-size: 1em; color: #adf; margin: 16px 0 4px; }
+p  { font-size: .95em; line-height: 1.4; color: #bbb; }
+a  { color: #6af; font-size: .95em; }
+hr { border: none; border-top: 1px solid #333; margin: 20px 0; }
+.footer { text-align: left; }
+
+/* ---- Form controls ---- */
+label { display: block; margin-top: 12px; font-size: .9em; color: #aaa; }
+input, select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px;
+  background: #202020;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 5px;
+  font-size: 1em;
+  margin-top: 4px;
+}
+input[type=checkbox], input[type=radio] { width: auto; accent-color: #3a9; }
+input[type=range] { padding: 0; accent-color: #3a9; }
+input[type=file] { padding: 5px; font-size: .85em; }
+
+button {
+  margin-top: 12px;
+  padding: 12px 24px;
+  font-size: 1em;
+  background: #3a9;
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+button:active { background: #2a8; }
+button.secondary { background: #357; }
+button.secondary:active { background: #246; }
+.actions { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+
+#st { margin-top: 12px; font-size: .9em; color: #8d8; min-height: 1.2em; text-align: center; }
+
+/* ---- Settings page: navigation buttons ---- */
+.btn {
+  display: block;
+  padding: 13px;
+  font-size: 1em;
+  background: #357;
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  box-sizing: border-box;
+  border: 0;
+  cursor: pointer;
+  margin: 10px auto;
+  max-width: 260px;
+}
+.btn:active { background: #246; }
+
+/* ---- Boxed panels and label/value grids (time, sunset) ---- */
+.box {
+  background: #1b1b1b;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 14px 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 35% 65%;
+  gap: 9px;
+  align-items: center;
+}
+.grid .label { text-align: right; color: #aaa; }
+.grid .value { text-align: center; font-family: monospace; }
+.box button { display: block; margin: 14px auto 0; }
+
+.timetable { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.timetable th, .timetable td { border-bottom: 1px solid #333; padding: 6px 8px; }
+.timetable tr:last-child td { border-bottom: 0; }
+.timetable th { color: #8af; font-size: 1.1em; font-weight: normal; text-align: center; }
+.timetable .rowLabel { width: 34%; }
+.timetable .dstLabelCol { width: 15%; }
+.timetable .dstValueCol { width: 16%; }
+.timetable .label { color: #aaa; text-align: right; white-space: nowrap; }
+.timetable input { font-family: monospace; text-align: center; margin-top: 0; }
+.timetable input[type=checkbox] { display: block; margin: 0 auto; }
+.locationTable th, .locationTable td { text-align: center; }
+.locationTable .coordCol { width: 40%; }
+
+/* ---- Label/input rows (wifi, location) ---- */
+.field {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-top: 12px;
+  color: #aaa;
+  font-size: .9em;
+}
+.field span { text-align: right; }
+.field input { margin-top: 0; }
+
+/* ---- Sunset page ---- */
+.zipLookup {
+  display: grid;
+  grid-template-columns: max-content 6.5em 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.zipLookup .zipLabel { color: #aaa; text-align: right; white-space: nowrap; }
+.zipLookup button { width: 100%; margin-top: 0; padding: 8px 16px; }
+#result {
+  margin: 16px 0 4px;
+  min-height: 2.8rem;
+  color: #8d8;
+  text-align: center;
+  font-size: 2em;
+  font-family: monospace;
+}
+
+/* ---- Location page ---- */
+.lookupActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+.lookupActions button { width: 100%; margin-top: 0; padding-left: 10px; padding-right: 10px; }
+.substatus {
+  font-size: .9em;
+  color: #f88;
+  min-height: 44px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.blinking { animation: blink 1s step-end infinite; }
+
+/* ---- Messages page: three-panel message rows ---- */
+.row { display: flex; gap: 8px; }
+.row input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.3em;
+  font-family: monospace;
+  text-align: center;
+}
+
+/* ---- WiFi page: scan list with signal bars ---- */
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+}
+.sectionHead h2 { margin: 0; }
+.sectionHead button { margin-top: 0; padding: 8px 18px; }
+#networks {
+  margin-top: 8px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #181818;
+}
+.network {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-bottom: 1px solid #2b2b2b;
+  background: #181818;
+  color: #eee;
+  text-align: left;
+  border-radius: 0;
+  margin: 0;
+  box-sizing: border-box;
+  font-size: 1em;
+}
+.network:last-child { border-bottom: 0; }
+.network:active, .network.selected { background: #26384a; }
+.ssid { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rssi { font-size: .85em; color: #bbb; font-family: monospace; }
+.bars { display: flex; align-items: flex-end; gap: 2px; width: 24px; height: 18px; }
+.bars span { display: block; width: 4px; background: #444; border-radius: 1px; }
+.bars span:nth-child(1) { height: 5px; }
+.bars span:nth-child(2) { height: 9px; }
+.bars span:nth-child(3) { height: 13px; }
+.bars span:nth-child(4) { height: 17px; }
+.bars.l1 span:nth-child(-n+1), .bars.l2 span:nth-child(-n+2),
+.bars.l3 span:nth-child(-n+3), .bars.l4 span:nth-child(-n+4) { background: #3a9; }
+.muted { color: #aaa; }
+
+/* ---- Files page: directory table and upload ---- */
+table.files { width: 100%; border-collapse: collapse; table-layout: fixed; }
+table.files th, table.files td { border-bottom: 1px solid #333; padding: 8px; text-align: left; }
+table.files th { color: #8af; font-weight: 600; background: #1a2a3a; }
+table.files th.size { text-align: right; }
+table.files td.size { text-align: right; font-family: monospace; color: #ccc; width: 24%; }
+table.files td.del { text-align: right; width: 56px; }
+table.files tfoot td { color: #aaa; font-size: .9em; background: #1a2a3a; }
+.tfoot-gap td { height: 40px; border-bottom: none !important; padding: 0; background: transparent; }
+button.file {
+  background: none; border: 0; color: #6af; padding: 0; margin: 0;
+  font: inherit; text-align: left; cursor: pointer;
+}
+button.del {
+  padding: 6px 10px; font-size: .85em; margin-top: 0;
+  background: #733; color: #fff; border: 0; border-radius: 5px; cursor: pointer;
+}
+button.cancel {
+  padding: 6px 10px; font-size: .85em; margin-top: 0;
+  background: #444; color: #fff; border: 0; border-radius: 5px; cursor: pointer;
+}
+.upload-row { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+.upload-row input[type=file] { flex: 1; min-width: 0; margin-top: 0; }
+.upload-row button {
+  margin-top: 0; padding: 6px 14px; font-size: .85em;
+  border-radius: 5px; white-space: nowrap;
+}
+.upload-warn {
+  margin-top: 8px; background: #2a1a1a; border: 1px solid #633;
+  padding: 8px 12px; border-radius: 5px; font-size: .9em; color: #f88;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+#upload-st { margin-top: 6px; font-size: .9em; min-height: 1em; }
+
+/* ---- View-file page ---- */
+pre {
+  background: #1a1a1a;
+  padding: 14px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: .88em;
+  line-height: 1.5;
+  color: #8f8;
+  white-space: pre-wrap;
+}
+iframe.viewer { width: 100%; height: 80vh; border: none; border-radius: 6px; }
+img.viewer { max-width: 100%; border-radius: 6px; display: block; margin: 0 auto; }
+#log { width: 100%; border-collapse: collapse; font-size: .85em; margin-top: 8px; }
+#log th, #log td { padding: 3px 8px; text-align: right; border-bottom: 1px solid #2a2a2a; color: #aaa; }
+#log th { color: #8af; }

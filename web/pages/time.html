@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Time Settings</title>
+</head>
+<body>
+<h1>Time Settings</h1>
+
+<div class="box">
+  <div class="grid">
+    <span class="label">Browser time</span><span class="value" id="bt">--</span>
+    <span class="label">Browser date</span><span class="value" id="bd">--</span>
+    <span class="label">Timezone</span><span class="value" id="bz">--</span>
+    <span class="label">UTC offset / DST</span><span class="value" id="bo">--</span>
+  </div>
+  <button onclick="fromBrowser()">Set Time from Browser</button>
+</div>
+
+<div class="box">
+  <div class="grid">
+    <span class="label">Device time</span><input type="time" step="1" id="time">
+    <span class="label">Device date</span><input type="date" id="date">
+    <span class="label">Timezone</span><input id="zone" maxlength="39">
+    <span class="label">UTC offset</span><input type="number" min="-840" max="840" id="offset">
+    <span class="label">DST</span><input type="checkbox" id="dst">
+  </div>
+  <button onclick="explicitTime()">Set Time Explicitly</button>
+</div>
+
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+function pad(x) { return (x < 10 ? '0' : '') + x; }
+function zone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
+  catch (e) { return 'UTC'; }
+}
+function offset() { return -new Date().getTimezoneOffset(); }
+function isDst(now) {
+  var y = now.getFullYear();
+  var jan = new Date(y, 0, 1).getTimezoneOffset();
+  var jul = new Date(y, 6, 1).getTimezoneOffset();
+  return now.getTimezoneOffset() < Math.max(jan, jul);
+}
+
+function show() {
+  var n = new Date();
+  $('bt').textContent = pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds());
+  $('bd').textContent = n.toLocaleDateString();
+  $('bz').textContent = zone();
+  $('bo').textContent = offset() + ' / ' + (isDst(n) ? 'true' : 'false');
+}
+show();
+setInterval(show, 1000);
+
+api('/api/time').then(function (t) {
+  $('date').value = t.date || '';
+  $('time').value = t.time || '';
+  return api('/api/config');
+}).then(function (c) {
+  var time = c.time || {}, tz = time.timezone || {};
+  $('zone').value = tz.name || zone();
+  $('offset').value = tz.utcOffsetMinutes == null ? offset() : tz.utcOffsetMinutes;
+  $('dst').checked = !!time.dst;
+}).catch(function (e) { setStatus('API failed: ' + e.message); });
+
+function sync(date, time, zoneName, utcOffset, dst) {
+  utcOffset = +utcOffset;
+  if (!date || !time || utcOffset < -840 || utcOffset > 840) {
+    setStatus('Date, time, and valid offset are required');
+    return;
+  }
+  var d = date.split('-'), t = time.split(':');
+  apiPost('/api/time', {
+    year: +d[0], month: +d[1], day: +d[2],
+    hour: +t[0], minute: +t[1], second: +(t[2] || 0)
+  }).then(function () {
+    return apiPost('/api/config', {
+      time: { timezone: { name: zoneName, utcOffsetMinutes: utcOffset }, dst: !!dst }
+    });
+  }).then(function (result) {
+    setStatus(result.message || 'Saved');
+  }).catch(function (e) { setStatus('API failed: ' + e.message); });
+}
+
+function fromBrowser() {
+  var n = new Date();
+  sync(n.getFullYear() + '-' + pad(n.getMonth() + 1) + '-' + pad(n.getDate()),
+       pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds()),
+       zone(), offset(), isDst(n));
+}
+function explicitTime() {
+  sync($('date').value, $('time').value, $('zone').value, $('offset').value, $('dst').checked);
+}
+</script>
+</body>
+</html>

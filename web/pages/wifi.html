@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>WiFi Settings</title>
+</head>
+<body>
+<h1>WiFi Settings</h1>
+
+<div class="sectionHead"><h2>Available Networks</h2><button class="secondary" id="scan" onclick="scan()">Scan</button></div>
+<div id="networks"><div class="network muted">Scanning...</div></div>
+<label class="field"><span>Network</span><input type="text" id="staSsid" placeholder="SSID"></label>
+<label class="field"><span>Password</span><input type="password" id="staPw" placeholder="open networks can be blank"></label>
+<div class="actions"><button onclick="connect()">Connect &amp; Reboot</button></div>
+
+<hr>
+<h2>Local Hotspot Mode</h2>
+<label class="field"><span>AP Name</span><input type="text" id="apSsid"></label>
+<label class="field"><span>AP Password</span><input type="password" id="apPw" placeholder="blank keeps current"></label>
+<div class="actions"><button onclick="saveAp()">Save AP &amp; Reboot</button></div>
+
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+function loadConfig() {
+  api('/api/config').then(function (d) {
+    var wifi = d.wifi || {}, station = wifi.station || {}, accessPoint = wifi.accessPoint || {};
+    setFieldFromConfig('wifi', 'staSsid', 'wifi.station.ssid', station.ssid, station.ssid || '');
+    setFieldFromConfig('wifi', 'apSsid', 'wifi.accessPoint.ssid', accessPoint.ssid, accessPoint.ssid || '');
+  }).catch(function () {});
+}
+
+function signalLevel(rssi) {
+  if (rssi >= -55) return 4;
+  if (rssi >= -67) return 3;
+  if (rssi >= -75) return 2;
+  return 1;
+}
+
+function selectNetwork(button, ssid) {
+  $('staSsid').value = ssid;
+  Array.prototype.forEach.call(document.querySelectorAll('.network'), function (n) {
+    n.classList.remove('selected');
+  });
+  button.classList.add('selected');
+}
+
+function networkRow(n) {
+  var button = document.createElement('button');
+  var level = signalLevel(n.rssi);
+  button.type = 'button';
+  button.className = 'network';
+  button.onclick = function () { selectNetwork(button, n.ssid || ''); };
+  var ssid = document.createElement('span');
+  ssid.className = 'ssid';
+  ssid.textContent = (n.ssid || '(hidden network)') + (n.secure ? '' : ' open');
+  var rssi = document.createElement('span');
+  rssi.className = 'rssi';
+  rssi.textContent = n.rssi + ' dBm';
+  var bars = document.createElement('span');
+  bars.className = 'bars l' + level;
+  for (var i = 0; i < 4; i++) bars.appendChild(document.createElement('span'));
+  button.appendChild(ssid);
+  button.appendChild(rssi);
+  button.appendChild(bars);
+  return button;
+}
+
+function scan() {
+  setStatus('Scanning...');
+  api('/api/wifi/scan').then(function (d) {
+    var list = $('networks');
+    list.innerHTML = '';
+    (d.networks || []).sort(function (a, b) { return b.rssi - a.rssi; }).forEach(function (n) {
+      list.appendChild(networkRow(n));
+    });
+    if (!list.children.length) {
+      var empty = document.createElement('div');
+      empty.className = 'network muted';
+      empty.textContent = 'No networks found';
+      list.appendChild(empty);
+    }
+    setStatus(list.children.length && list.children[0].tagName === 'BUTTON' ? '' : 'No networks found');
+  }).catch(function () { setStatus('Scan failed'); });
+}
+
+function connect() {
+  fetch('/api/wifi/connect', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ssid: $('staSsid').value, password: $('staPw').value })
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    setStatus(d.message || d.error);
+  }).catch(function () { setStatus('Connect failed'); });
+}
+
+function saveAp() {
+  var body = { wifi: { accessPoint: { ssid: $('apSsid').value } } };
+  var pw = $('apPw').value;
+  if (pw) body.wifi.accessPoint.password = pw;
+  fetch('/api/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    setStatus(d.message || d.error);
+  }).catch(function () { setStatus('AP save failed'); });
+}
+
+loadConfig();
+scan();
+</script>
+</body>
+</html>
