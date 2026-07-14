@@ -39,10 +39,6 @@ void WifiConnectionManager::begin(const WifiConfig& config) {
   config_ = config;
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
-  // This device is continuously powered and serves an interactive web UI.
-  // Modem sleep can add noticeable latency between page requests, especially
-  // after the browser has been idle, so keep the radio awake while running.
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
 
   if (!config_.staSsid.isEmpty() &&
       tryStationConnect(config_.staSsid, config_.staPassword)) {
@@ -101,7 +97,6 @@ void WifiConnectionManager::scanNetworks(JsonDocument& doc) {
   const bool restoreApOnly = mode_ == WifiMode::kAccessPoint;
   if (restoreApOnly) {
     WiFi.mode(WIFI_AP_STA);
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
   }
   JsonArray networks = doc["networks"].to<JsonArray>();
   const int count = WiFi.scanNetworks();
@@ -119,7 +114,6 @@ void WifiConnectionManager::scanNetworks(JsonDocument& doc) {
   WiFi.scanDelete();
   if (restoreApOnly) {
     WiFi.mode(WIFI_AP);
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
   }
 }
 
@@ -153,7 +147,6 @@ bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& 
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
     return true;
   }
 
@@ -162,9 +155,11 @@ bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& 
   return false;
 }
 
-// softAP() defaults to channel 1, the most crowded 2.4 GHz channel. Neighbor
-// traffic there causes packet loss that stalls page transfers mid-body, so
-// survey the air once and start the AP on the quietest primary channel.
+// softAP() defaults to channel 1, the most crowded 2.4 GHz channel. With the
+// AP on channel 1 (2026-07-13), a page load showed loss in every phase --
+// conn:1023 (one SYN retransmit) and dl:4612 for a ~2 KB body -- so survey
+// the air once and start the AP on the quietest primary channel. The logged
+// scores double as RF-environment evidence.
 uint8_t WifiConnectionManager::pickLeastCongestedChannel() {
   const uint8_t candidates[] = {1, 6, 11};
   int32_t scores[3] = {0, 0, 0};
@@ -201,20 +196,21 @@ uint8_t WifiConnectionManager::pickLeastCongestedChannel() {
 void WifiConnectionManager::startAccessPoint() {
   mode_ = WifiMode::kAccessPoint;
   const uint8_t channel = pickLeastCongestedChannel();
-  // A disconnected station interface may scan/reconnect in the background,
-  // stealing radio time from the local web server. The fallback portal needs
-  // only AP mode; STA is enabled temporarily by scanNetworks().
-  WiFi.setAutoReconnect(false);
-  WiFi.disconnect();
   WiFi.mode(WIFI_AP);
-  // Phones keep 802.11 power-save enabled regardless of their user-facing
-  // battery settings, and the ESP8266's 11n softAP path stalls mid-transfer
-  // when buffering for power-save clients. Forcing 802.11g avoids that path.
+  // Confirmed on stock settings (2026-07-13): transfers to a power-save
+  // client stall mid-body (TRUNCATED wrote 906 of 1236 bytes, healthy heap).
+  // The ESP8266's 11n softAP path is the known-bad case when buffering for
+  // dozing clients; forcing 802.11g avoids it. Reintroduce further tweaks
+  // one at a time, only against observed evidence.
   WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+  // Keep the default 100 TU beacon interval: 50 TU was tried against the
+  // power-save Android client (2026-07-13) and produced frequent TRUNCATED
+  // transfers instead of helping.
   WiFi.softAP(config_.apSsid.c_str(), config_.apPassword.c_str(), channel);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  // Full power (20.5 dBm) draws supply-drooping TX spikes over USB and can
-  // saturate a nearby client's receiver; 17 dBm is the stable choice.
+  // Full power (20.5 dBm) draws supply-drooping TX spikes over USB; long
+  // frames (multi-segment page bodies) are the first casualties, and supply
+  // sag varies run to run -- matching the observed inconsistency between
+  // otherwise-identical test sessions (2026-07-13).
   WiFi.setOutputPower(17.0f);
 
   while (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {

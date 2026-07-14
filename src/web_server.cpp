@@ -113,9 +113,9 @@ class WebPortal {
     server_.on("/api/wifi/connect", HTTP_POST, []() { activePortal->wifiApi_.handleConnect(); });
 
     server_.onNotFound([]() { activePortal->handleCaptiveRedirect(); });
-    // Small responses on the AP link should not sit in Nagle's buffer waiting
-    // for an ACK that phones can be slow to send.
-    WiFiClient::setDefaultNoDelay(true);
+    // Leave Nagle enabled: setDefaultNoDelay(true) was tried against the
+    // power-save Android client (2026-07-13) and made transfers worse --
+    // more small segments means more chances to hit the phone's doze window.
     server_.begin();
     LOG_PRINTLN("HTTP server started");
   }
