@@ -47,6 +47,10 @@ pio run --target uploadfs
 # Monitor serial output (74880 baud with ESP8266 exception decoder)
 pio device monitor
 
+# Edit web pages against a live device without reflashing: serves web/
+# sources raw at localhost:8080 and proxies /api/* to the device
+python tools/dev_server.py --device <clock-ip>
+
 # Clean build artifacts
 pio run --target clean
 ```
@@ -174,7 +178,7 @@ The display system has four layers:
   - `scanNetworks(doc)`, `connectAndSave(ssid, password)` for web-driven network switching.
 - **`web_server.h/cpp`**: `webBegin()`, `webHandleClients()` (must be called every loop), `networkGetInfo(ssid, ip)`, `webScheduleReboot(delayMs)` (deferred reboot, gives the HTTP response time to flush).
   - `WebPortal` (internal) owns the `ESP8266WebServer`, `HttpResponder`, and the domain API handlers (`ConfigApi`, `TimeApi`, `LocationApi`, `FileApi`, `WifiApi`). Endpoint domains remain separate where they contain meaningful behavior.
-  - **Every page is a static gzipped PROGMEM asset; all dynamic data flows through the JSON APIs.** Page sources live in `web/` (`pages/*.html`, `common.css`, `common.js`); `tools/build_web.py` (a PlatformIO pre-script) gzips them into a `kWebAssets` table that `WebPortal::begin()` registers in one loop. Never build HTML on the server.
+  - **Every page is a static gzipped PROGMEM asset; all dynamic data flows through the JSON APIs.** Page sources live in `web/` (`pages/*.html`, `common.css`, `common.js`); `tools/build_web.py` (a PlatformIO pre-script) gzips them into a `kWebAssets` table that `WebPortal::begin()` registers in one loop. Never build HTML on the server. The route → file mapping lives only in `tools/web_manifest.py`, shared by the build and by `tools/dev_server.py` (edit-reload page development against a live device, no reflash).
   - `web/common.js` owns the shared page helpers (`$`, `api`/`apiPost`, `setStatus`, error/slow-load beacons to `POST /api/client-log`, `reportFieldMismatch`, `setFieldFromConfig`); `web/common.css` is the single stylesheet. Both are served hash-versioned (`?v=`) with an immutable cache header, so each page transfers only its own small body; pages stay `no-cache`.
   - Runs `DNSServer` for captive portal only when in AP mode.
   - UI pages: `GET /`, `/settings`, `/config`, `/format`, `/time`, `/sunset`, `/messages`, `/location`, `/wifi`, `/view`.

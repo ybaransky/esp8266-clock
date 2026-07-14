@@ -3,6 +3,7 @@ Import("env")
 import gzip
 import hashlib
 import pathlib
+import sys
 
 # Packages web/ sources into a single generated header of gzipped PROGMEM
 # assets. Pages reference /common.css and /common.js; those references are
@@ -14,23 +15,8 @@ web_dir = project / "web"
 build_dir = pathlib.Path(env.subst("$BUILD_DIR"))
 output = build_dir / "generated_web_assets.h"
 
-# route -> (source file, content type, immutable cache)
-PAGES = {
-    "/": "home.html",
-    "/format": "format.html",
-    "/settings": "settings.html",
-    "/config": "files.html",
-    "/time": "time.html",
-    "/sunset": "sunset.html",
-    "/messages": "messages.html",
-    "/location": "location.html",
-    "/wifi": "wifi.html",
-    "/view": "view.html",
-}
-SHARED = {
-    "/common.css": ("common.css", "text/css"),
-    "/common.js": ("common.js", "application/javascript"),
-}
+sys.path.insert(0, str(project / "tools"))
+from web_manifest import PAGES, SHARED
 
 
 def short_hash(data: bytes) -> str:

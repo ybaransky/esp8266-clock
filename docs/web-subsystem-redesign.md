@@ -200,6 +200,12 @@ Each phase builds and runs on-device independently.
 3. **Polish** — uniformity pass on `common.css`; add the dev proxy server;
    decide whether `reportFieldMismatch` instrumentation stays after the
    AP-mode truncation bug is closed.
+   *(Done 2026-07-13: `tools/dev_server.py` serves `web/` raw and proxies
+   `/api/*` to a device, sharing its route map with the build via
+   `tools/web_manifest.py`; the CSS uniformity pass happened during the
+   styling round. Decision: `reportFieldMismatch` stays — it detects
+   config-vs-browser value mismatches, which is orthogonal to the closed
+   truncation bug, and costs a few lines in one place.)*
 
 ## Costs / risks
 
