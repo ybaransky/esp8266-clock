@@ -5,6 +5,9 @@
 /* ---- Page frame ---- */
 body {
   font-family: sans-serif;
+  /* Every font-size below is in em, so this base size scales headers,
+     labels, inputs, and buttons together. */
+  font-size: 112.5%;
   padding: 18px;
   background: #111;
   color: #eee;
@@ -105,13 +108,20 @@ button.secondary:active { background: #246; }
   padding: 12px;
   margin: 14px 0;
 }
+.box h2 {
+  margin: 0 0 10px;
+  text-align: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
 .grid {
   display: grid;
-  grid-template-columns: 35% 65%;
+  /* Label column hugs its widest label so labels never wrap. */
+  grid-template-columns: max-content 1fr;
   gap: 9px;
   align-items: center;
 }
-.grid .label { text-align: right; color: #aaa; }
+.grid .label { text-align: right; color: #aaa; white-space: nowrap; }
 .grid .value { text-align: center; font-family: monospace; }
 .box button { display: block; margin: 14px auto 0; }
 
