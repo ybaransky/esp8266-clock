@@ -76,6 +76,15 @@ button.secondary:active { background: #246; }
 }
 .mode:active { background: #2a8; }
 .mode.current { animation: modeBlink 1s linear infinite; }
+/* Two-column mode layout; grid gap replaces the buttons' own margins, and
+   the tighter cells get smaller padding/type so "Countdown" fits on phones. */
+.modeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 10px 0;
+}
+.modeGrid .mode { margin: 0; padding: 16px 8px; font-size: 1.15em; }
 @keyframes modeBlink { 0%, 49% { color: #fff; } 50%, 99% { color: transparent; } }
 
 /* ---- Format page: inline radio choices ---- */
