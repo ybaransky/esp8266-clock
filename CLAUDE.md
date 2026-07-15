@@ -100,11 +100,11 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 
 ### Logging
 - `log.h` provides `LOG_PRINTLN(msg)` and `LOG_PRINTF(fmt, ...)` macros.
-- Each line is prefixed with `logCurrentTime()` and `logSourceName(__FILE__):__LINE__`.
+- Each line is prefixed with `logCurrentTime()`, the peak cont-stack usage in bytes (bare value, of 4096), and `logSourceName(__FILE__):__LINE__`.
 - Both macros keep their strings in **flash** (`PSTR` + `Serial.printf_P`). On the ESP8266 a plain string literal occupies RAM for the life of the program; moving the log strings to flash is what holds static RAM under 50% (OTA headroom). Consequences:
   - `LOG_PRINTLN(msg)` and the `fmt` of `LOG_PRINTF` **must be string literals**. For a runtime string, use `LOG_PRINTF("%s", value)`.
   - `LOG_PRINTLN` pastes its literal into the printf format, so a literal `%` must be written `%%`.
-- Each macro call emits exactly one line: the macro itself appends ` stack=<peak cont-stack bytes used, of 4096>` and the terminating newline, so **formats must not end with `\n`**.
+- Each macro call emits exactly one line and appends the terminating newline itself, so **formats must not end with `\n`**.
 
 ### Display / mode architecture
 The display system has four layers:
