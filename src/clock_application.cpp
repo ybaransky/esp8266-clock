@@ -134,7 +134,6 @@ void ClockApplication::begin() {
 }
 
 void ClockApplication::tick(uint32_t nowMs) {
-  const uint32_t tickStartUs = micros();
   buttonTick();
   processButtonEvents();
   if (rtc_.consumeSqwPulse()) {
@@ -151,18 +150,6 @@ void ClockApplication::tick(uint32_t nowMs) {
   displayManager_.tick(nowMs);
   wifiConnectionManager_.tick();
   webHandleClients();
-
-  const uint32_t tickUs = micros() - tickStartUs;
-  if (tickUs > maxTickUs_) {
-    maxTickUs_ = tickUs;
-  }
-  if (nowMs - lastTickReportMs_ >= 10000) {
-    LOG_PRINTF("tick: max %lu.%lu ms in last 10s",
-               static_cast<unsigned long>(maxTickUs_ / 1000),
-               static_cast<unsigned long>((maxTickUs_ % 1000) / 100));
-    lastTickReportMs_ = nowMs;
-    maxTickUs_ = 0;
-  }
 }
 
 void ClockApplication::processButtonEvents() {

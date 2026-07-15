@@ -29,8 +29,6 @@ class ClockApplication {
   ConfigManager configManager_;  // Persistent clock and WiFi configuration.
   PageManager pageManager_;  // Builds paged button-information overlays.
   WifiConnectionManager wifiConnectionManager_;  // Station/AP network lifecycle.
-  uint32_t maxTickUs_ = 0;          // Longest tick() this report period.
-  uint32_t lastTickReportMs_ = 0;   // Last max-tick log time.
   uint32_t lastRtcHealthCheckMs_ = 0;  // Last RTC health-poll time.
   bool rtcWasHealthy_ = true;  // Health state used to detect RTC transitions.
   Mode lastLoggedMode_ = kModeClock;  // Mode in the last transition log.
