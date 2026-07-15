@@ -24,7 +24,6 @@ enum class Field : uint8_t {
 enum class Shape : uint8_t {
   kBlank,           // "    "
   kNumber,          // "  47" - right-justified
-  kNumberBlankZero, // like kNumber, but blank when the value is 0
   kLabel,           // value + unit letter, right-packed: " 5 d", "45 d", "456d"
   kLabelBlankZero,  // like kLabel, but the value is blanked when 0: "   h"
   kColon,           // " 9:05" - left blank-padded, right zero-padded
@@ -56,14 +55,14 @@ using F = Field;
 const FormatSpec kCountingFormats[] = {
   {"dd D |  hh:mm |  ss:u", {{S::kLabel, F::kDays},           {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
   {"dd D |  hh:mm |    ss", {{S::kLabel, F::kDays},           {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {"dd D |  hh  H | mm:ss", {{S::kLabel, F::kDays},           {S::kLabelBlankZero, F::kHours},          {S::kColon, F::kMinutes, F::kSeconds}}},
-  {"dd D |  hh  H |  mm N", {{S::kLabel, F::kDays},           {S::kLabelBlankZero, F::kHours},          {S::kLabel, F::kMinutes}}},
+  {"dd D |  hh  H | mm:ss", {{S::kLabel, F::kDays},           {S::kLabel, F::kHours},                   {S::kColon, F::kMinutes, F::kSeconds}}},
+  {"dd D |  hh  H |  mm N", {{S::kLabel, F::kDays},           {S::kLabel, F::kHours},                   {S::kLabel, F::kMinutes}}},
   {"  dd |  hh:mm |  ss:u", {{S::kNumber, F::kDays},          {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
   {"  dd |  hh:mm |    ss", {{S::kNumber, F::kDays},          {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {"  dd |     hh | mm:ss", {{S::kNumber, F::kDays},          {S::kNumberBlankZero, F::kHours},         {S::kColon, F::kMinutes, F::kSeconds}}},
-  {"  dd |     hh |    mm", {{S::kNumber, F::kDays},          {S::kNumberBlankZero, F::kHours},         {S::kNumber, F::kMinutes}}},
-  {"hh H |   mm N |  ss:u", {{S::kLabelBlankZero, F::kHours}, {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"hh H |   mm N |    ss", {{S::kLabelBlankZero, F::kHours}, {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
+  {"  dd |     hh | mm:ss", {{S::kNumber, F::kDays},          {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
+  {"  dd |     hh |    mm", {{S::kNumber, F::kDays},          {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
+  {"hh H |   mm N |  ss:u", {{S::kLabel, F::kHours},          {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"hh H |   mm N |    ss", {{S::kLabel, F::kHours},          {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
   {" hhh |     mm |  ss:u", {{S::kNumber, F::kTotalHours},    {S::kNumber, F::kMinutes},                {S::kColonTenths, F::kSeconds, F::kTenths}}},
   {" hhh |     mm |    ss", {{S::kNumber, F::kTotalHours},    {S::kNumber, F::kMinutes},                {S::kNumber, F::kSeconds}}},
   {"     | hhh:mm |  ss:u", {{S::kBlank},                     {S::kColon, F::kTotalHours, F::kMinutes}, {S::kColonTenths, F::kSeconds, F::kTenths}}},
@@ -168,10 +167,6 @@ void renderPanel(const PanelSpec& spec, const RenderValues& v, char* out) {
     case Shape::kNumber:
       snprintf(out, kDisplayFramePanelSize, "%4d", a);
       break;
-    case Shape::kNumberBlankZero:
-      if (a == 0) snprintf(out, kDisplayFramePanelSize, "    ");
-      else snprintf(out, kDisplayFramePanelSize, "%4d", a);
-      break;
     case Shape::kLabel:
       formatLabeled(out, a, labelFor(spec.a), false);
       break;
@@ -226,6 +221,27 @@ const FormatSpec& resolveCountingOverflow(const FormatSpec& format,
         samePanel(candidate.panels[2], format.panels[2])) {
       return candidate;
     }
+  }
+  return format;
+}
+
+// True when every value field the panel reads is zero, so the panel carries
+// no information during a countdown/countup.
+bool panelValueIsZero(const PanelSpec& spec, const RenderValues& v) {
+  if (spec.shape == Shape::kBlank) return true;
+  return (fieldValue(spec.a, v) == 0) && (fieldValue(spec.b, v) == 0);
+}
+
+// Counting formats hide leading zero panels: panel 0 blanks when zero, and
+// panel 1 blanks only when it is zero and panel 0 is already blank. The last
+// panel always renders so the most active unit stays visible. Once a panel is
+// visible, everything to its right shows real values, zeros included.
+FormatSpec suppressLeadingZeroPanels(FormatSpec format,
+                                     const RenderValues& v) {
+  if (!panelValueIsZero(format.panels[0], v)) return format;
+  format.panels[0] = {S::kBlank, F::kNone, F::kNone};
+  if (panelValueIsZero(format.panels[1], v)) {
+    format.panels[1] = {S::kBlank, F::kNone, F::kNone};
   }
   return format;
 }
@@ -305,8 +321,10 @@ DisplayFormatInfo displayFormatInfo(FormatGroup group, uint8_t index) {
 DisplayFrame renderCountingFormat(uint8_t index, long totalSeconds,
                                   uint8_t tenths) {
   const RenderValues values = valuesFromDuration(totalSeconds, tenths);
-  const FormatSpec& format = resolveCountingOverflow(
-      safeFormat(kFmtGroupCountdown, index), values.totalHours);
+  const FormatSpec format = suppressLeadingZeroPanels(
+      resolveCountingOverflow(safeFormat(kFmtGroupCountdown, index),
+                              values.totalHours),
+      values);
   return renderPanels(format, values);
 }
 
