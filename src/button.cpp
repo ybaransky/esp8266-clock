@@ -49,7 +49,7 @@ public:
   }
 
   void handleAction(const char *message, ButtonEvent event = ButtonEvent::kNone) {
-    LOG_PRINTF("%s\n", message);
+    LOG_PRINTF("%s", message);
     if (event != ButtonEvent::kNone) {
       enqueueEvent(event);
     }

@@ -44,6 +44,26 @@
 <div class="actions"><button class="secondary" onclick="testMsg('y',true)">Test Friday Sunset</button></div>
 
 <hr>
+<h2>Trading Open Text</h2>
+<label>Blinks for 5 seconds when Trading mode reaches 9:30 AM live</label>
+<div class="row">
+  <input id="o1" maxlength="4" placeholder="R1" oninput="nextPanel(this,'o2')">
+  <input id="o2" maxlength="4" placeholder="R2" oninput="nextPanel(this,'o3')">
+  <input id="o3" maxlength="4" placeholder="R3" oninput="trimPanel(this)">
+</div>
+<div class="actions"><button class="secondary" onclick="testMsg('o',true)">Test Trading Open</button></div>
+
+<hr>
+<h2>Trading Close Text</h2>
+<label>Blinks for 5 seconds when Trading mode reaches 4:00 PM live</label>
+<div class="row">
+  <input id="c1" maxlength="4" placeholder="R1" oninput="nextPanel(this,'c2')">
+  <input id="c2" maxlength="4" placeholder="R2" oninput="nextPanel(this,'c3')">
+  <input id="c3" maxlength="4" placeholder="R3" oninput="trimPanel(this)">
+</div>
+<div class="actions"><button class="secondary" onclick="testMsg('c',true)">Test Trading Close</button></div>
+
+<hr>
 <div class="actions"><button onclick="save()">Save Messages</button></div>
 <div id="st"></div>
 <p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
@@ -79,6 +99,8 @@ api('/api/config').then(function (d) {
   split('s', messages.splash || '', 'display.messages.splash');
   split('f', messages.final || '', 'display.messages.final');
   split('y', messages.fridaySunset || '', 'display.messages.fridaySunset');
+  split('o', messages.tradingOpen || '', 'display.messages.tradingOpen');
+  split('c', messages.tradingClose || '', 'display.messages.tradingClose');
 }).catch(function () { setStatus('Load failed'); });
 
 function testMsg(prefix, blink) {
@@ -106,7 +128,13 @@ function save() {
   fetch('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      display: { messages: { splash: msg('s'), final: msg('f'), fridaySunset: msg('y') } }
+      display: { messages: {
+        splash: msg('s'),
+        final: msg('f'),
+        fridaySunset: msg('y'),
+        tradingOpen: msg('o'),
+        tradingClose: msg('c')
+      } }
     })
   }).then(function (r) { return r.json(); }).then(function (d) {
     setStatus(d.message || d.error);

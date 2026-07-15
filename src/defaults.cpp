@@ -10,6 +10,8 @@ constexpr const char* kDefaultCountupDatetime   = "now";
 constexpr const char* kDefaultSplashMessage       = "    YuriCloc";
 constexpr const char* kDefaultFinalMessage        = "    Good Luc";
 constexpr const char* kDefaultFridaySunsetMessage = "     SUN SET";
+constexpr const char* kDefaultTradingOpenMessage  = "        OPEN";
+constexpr const char* kDefaultTradingCloseMessage = "        CLSE";
 
 }  // namespace
 
@@ -22,6 +24,7 @@ ClockConfig defaultClockConfig() {
     s.friday.clockFmt             = 7;
     s.friday.toFridaySunsetFmt    = 0;
     s.friday.toSaturdaySunsetFmt  = 0;
+    s.trading.format              = 0;
     s.display.brightness = 3;
     snprintf(s.countdown.end, sizeof(s.countdown.end), "%s", kDefaultCountdownDatetime);
     snprintf(s.countup.start, sizeof(s.countup.start), "%s", kDefaultCountupDatetime);
@@ -29,6 +32,10 @@ ClockConfig defaultClockConfig() {
     snprintf(s.messages.final, sizeof(s.messages.final), "%s", kDefaultFinalMessage);
     snprintf(s.messages.fridaySunset, sizeof(s.messages.fridaySunset),
              "%s", kDefaultFridaySunsetMessage);
+    snprintf(s.messages.tradingOpen, sizeof(s.messages.tradingOpen),
+             "%s", kDefaultTradingOpenMessage);
+    snprintf(s.messages.tradingClose, sizeof(s.messages.tradingClose),
+             "%s", kDefaultTradingCloseMessage);
     s.locations = {};
     s.timezone.name[0] = '\0';
     s.timezone.utcOffsetMinutes = 0;

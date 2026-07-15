@@ -16,6 +16,7 @@
   <option value="1">Countup</option>
   <option value="2">Clock</option>
   <option value="3">Friday</option>
+  <option value="4">Trading</option>
 </select></label>
 
 <div id="cd">
@@ -46,6 +47,13 @@
   <label>Format<select id="fsat"></select></label>
 </div>
 
+<div id="trade">
+  <hr>
+  <h3>Trading Countdown</h3>
+  <p>Counts down to the next weekday 9:30am open or 4:00pm close Eastern time, whichever is closest.</p>
+  <label>Format<select id="ftrade"></select></label>
+</div>
+
 <div id="hours" class="choices">
   <span>Hour format</span>
   <label><input type="radio" name="hour" id="h24"> 24h</label>
@@ -67,7 +75,8 @@ function sections() {
   $('cu').hidden = m != 1;
   $('ck').hidden = m != 2;
   $('fri').hidden = m != 3;
-  $('hours').hidden = m < 2;
+  $('trade').hidden = m != 4;
+  $('hours').hidden = (m != 2) && (m != 3);
 }
 sections();
 
@@ -103,20 +112,28 @@ function previewBrightness(value) {
 }
 
 var formats;
-api('/api/formats').then(function (f) {
+api('/api/formats').catch(function (e) {
+  throw new Error('/api/formats: ' + e.message);
+}).then(function (f) {
   formats = f || {};
-  return api('/api/config');
+  return api('/api/config').catch(function (e) {
+    throw new Error('/api/config: ' + e.message);
+  });
 }).then(function (d) {
   var display = d.display || {}, modes = display.modes || {};
   var cd = modes.countdown || {}, cu = modes.countup || {};
   var ck = modes.clock || {}, fri = modes.friday || {};
+  var trading = modes.trading || {};
   options('fcd', formats.countdown, cd.format);
   options('fcu', formats.countup, cu.format);
   options('fck', formats.clock, ck.format);
   options('ffck', formats.clock, fri.clockFormat);
   options('ffri', formats.countdown, fri.toFridaySunsetFormat);
   options('fsat', formats.countdown, fri.toSaturdaySunsetFormat);
-  $('mode').value = { countdown: 0, countup: 1, clock: 2, friday: 3 }[display.activeMode] || 0;
+  options('ftrade', formats.countdown, trading.format);
+  $('mode').value = {
+    countdown: 0, countup: 1, clock: 2, friday: 3, trading: 4
+  }[display.activeMode] || 0;
   $('end').value = local(cd.end);
   $('start').value = local(cu.start);
   $('br').value = display.brightness == null ? 4 : display.brightness;
@@ -127,7 +144,7 @@ api('/api/formats').then(function (f) {
 }).catch(function (e) { setStatus('API failed: ' + e.message); });
 
 function save() {
-  var names = ['countdown', 'countup', 'clock', 'friday'];
+  var names = ['countdown', 'countup', 'clock', 'friday', 'trading'];
   var body = {
     display: {
       activeMode: names[+$('mode').value],
@@ -141,14 +158,17 @@ function save() {
           clockFormat: +$('ffck').value,
           toFridaySunsetFormat: +$('ffri').value,
           toSaturdaySunsetFormat: +$('fsat').value
-        }
+        },
+        trading: { format: +$('ftrade').value }
       }
     }
   };
   if (!$('end').value) delete body.display.modes.countdown.end;
   apiPost('/api/config', body).then(function (d) {
     setStatus(d.message || d.error || 'Saved');
-  }).catch(function (e) { setStatus('API failed: ' + e.message); });
+  }).catch(function (e) {
+    setStatus('Save failed at /api/config: ' + e.message);
+  });
 }
 </script>
 </body>

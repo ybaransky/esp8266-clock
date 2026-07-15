@@ -31,9 +31,9 @@ class RtcService;
 
 // What content is currently the "normal" thing to render - i.e. what the
 // active Mode resolves to right now. For Countdown/Countup/Clock modes this
-// never changes on its own. Friday mode is the one case where it varies
-// over time: FridayModeController recomputes it as its phase changes and
-// pushes the update via DisplayManager::setView().
+// never changes on its own. Friday and Trading modes vary over time: their
+// schedule controllers recompute the view as each phase changes and push the
+// update via DisplayManager::setView().
 enum class View : uint8_t {
   kClock,
   kCountdown,
@@ -98,6 +98,7 @@ struct OverlayState {
   bool blink = false;             // True when output alternates blank/on.
   bool chainFinalMessage = false; // On expiry, show the final message instead
                                   // of the base view (demo's second phase).
+  bool demoSequence = false;      // True for both phases of the demo overlay.
   char message[64] = "";          // kMessage text; unused otherwise.
   PagedDisplayPayload paged;      // kPagedMessage pages; unused otherwise.
   OverlayTransition transition;  // Automatic expiration policy.
@@ -135,15 +136,16 @@ class DisplayManager {
   // Name of whatever is actually on the segments right now: the overlay's
   // name if one is active, otherwise the base view's name. For logging.
   const char* renderedName() const;
+  bool demoActive() const { return hasOverlay() && overlay_.demoSequence; }
 
-  // The persistent mode from config (kModeCountdown/Countup/Clock/Friday).
+  // The persistent mode from config.
   Mode activeMode() const { return settings_.activeMode; }
 
   // The View backing the base view (i.e. baseView_, not whatever overlay -
   // if any - is currently covering it, so a splash/info/demo overlay never
-  // counts as a view change). Fixed by activeMode() for the three
-  // non-Friday modes; Friday mode is the one case where it varies over
-  // time, as FridayModeController recomputes it and calls setView().
+  // counts as a view change). Fixed by activeMode() for countdown, countup,
+  // and clock modes; Friday and Trading schedule controllers vary it over
+  // time by calling setView().
   View activeView() const { return baseView_.view; }
 
  private:

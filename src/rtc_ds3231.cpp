@@ -71,7 +71,7 @@ private:
   }
 
   static void logRtcTime(const char *label, const DateTime &timeValue) {
-    LOG_PRINTF("%s %04d-%02d-%02d %02d:%02d:%02d\n",
+    LOG_PRINTF("%s %04d-%02d-%02d %02d:%02d:%02d",
                label,
                timeValue.year(), timeValue.month(), timeValue.day(),
                timeValue.hour(), timeValue.minute(), timeValue.second());
@@ -79,7 +79,7 @@ private:
 
   void adjustWithLog(const DateTime &newTime, const char *reason) {
     const DateTime oldTime = rtc_.now();
-    LOG_PRINTF("Adjusting time (%s)\n", reason);
+    LOG_PRINTF("Adjusting time (%s)", reason);
     logRtcTime("Old:", oldTime);
 
     rtc_.adjust(newTime);
@@ -107,7 +107,7 @@ private:
     if (!isLikelyInvalidTime(now)) return;
 
     status_.lowBattery = true;
-    LOG_PRINTF("WARNING: RTC time looks invalid: %04d-%02d-%02d %02d:%02d:%02d\n",
+    LOG_PRINTF("WARNING: RTC time looks invalid: %04d-%02d-%02d %02d:%02d:%02d",
                now.year(), now.month(), now.day(),
                now.hour(), now.minute(), now.second());
   }
@@ -157,7 +157,7 @@ DateTime RtcService::getNow()         { return rtc.now(); }
 // The SQW pin ticks once per RTC second, driven by the same crystal as the
 // DS3231's internal clock registers. rtcConsumeSqwPulse() uses that edge to
 // advance cachedNow_ by one second in software instead of re-reading the
-// clock over I2C every time — see rtcGetNowCached() below. This is what lets
+// clock over I2C every time â€” see rtcGetNowCached() below. This is what lets
 // display rendering gets second-resolution time at
 // effectively zero I2C cost instead of one I2C transaction per read.
 //
@@ -214,7 +214,7 @@ static void IRAM_ATTR onRtcSqwPulse() {
 
 static void warnIfSqwSharesInternalLed() {
   if (Hardware::Pins::RTC_SQW != Hardware::Pins::INTERNAL_LED) return;
-  LOG_PRINTF("WARNING: SQW shares GPIO%u with INTERNAL_LED; DS3231 SQW may blink the onboard LED\n",
+  LOG_PRINTF("WARNING: SQW shares GPIO%u with INTERNAL_LED; DS3231 SQW may blink the onboard LED",
              Hardware::Pins::RTC_SQW);
 }
 
@@ -246,7 +246,7 @@ static void logSqwHealthIfNeeded(uint32_t nowMs) {
   }
 
   sqw.lastHealthLogMs = nowMs;
-  LOG_PRINTF("SQW health: no pulse on GPIO%u for %lu ms, pin=%s, isrCount=%lu\n",
+  LOG_PRINTF("SQW health: no pulse on GPIO%u for %lu ms, pin=%s, isrCount=%lu",
              Hardware::Pins::RTC_SQW,
              static_cast<unsigned long>(nowMs - referenceMs),
              digitalRead(Hardware::Pins::RTC_SQW) == HIGH ? "HIGH" : "LOW",
@@ -278,8 +278,8 @@ static bool consumeAcceptedSqwPulse() {
 }
 
 // True when a SQW pulse has been seen recently enough to trust sqw.cachedNow.
-// Shared by rtcIsHealthy() (user-facing "no rtc" banner) and
-// rtcGetNowCached() (falls back to a live I2C read when this is false).
+// Shared by RtcService::isHealthy() (user-facing "no rtc" banner) and
+// RtcService::getNowCached() (falls back to a live I2C read when this is false).
 static bool sqwPulseIsFresh() {
   if (!sqw.processingStarted) return false;
   const uint32_t lastEventMs = sqw.sawPulse ? sqw.lastPulseAtMs : sqw.processingStartedAtMs;
@@ -306,13 +306,13 @@ void RtcService::beginSqwProcessing() {
 
   const int interruptNumber = digitalPinToInterrupt(Hardware::Pins::RTC_SQW);
   if (interruptNumber == NOT_AN_INTERRUPT) {
-    LOG_PRINTF("WARNING: GPIO%u does not support attachInterrupt; SQW pulse tracking disabled\n",
+    LOG_PRINTF("WARNING: GPIO%u does not support attachInterrupt; SQW pulse tracking disabled",
                Hardware::Pins::RTC_SQW);
     return;
   }
 
   attachInterrupt(interruptNumber, onRtcSqwPulse, RISING);
-  LOG_PRINTF("SQW interrupt attached on GPIO%u interrupt=%d (RISING, INPUT_PULLUP, initial=%s)\n",
+  LOG_PRINTF("SQW interrupt attached on GPIO%u interrupt=%d (RISING, INPUT_PULLUP, initial=%s)",
              Hardware::Pins::RTC_SQW,
              interruptNumber,
              initialLevel == HIGH ? "HIGH" : "LOW");

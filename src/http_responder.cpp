@@ -86,8 +86,9 @@ void HttpResponder::logCompletion(uint32_t elapsedUs) {
   const bool truncated = actualTxKnown_ && lastActualTxBytes_ != lastTxBytes_;
   const uint8_t apStations =
       (WiFi.getMode() & WIFI_AP) ? WiFi.softAPgetStationNum() : 0;
+  // Peak cont-stack usage lands on this line too, via the LOG_PRINTF suffix.
   LOG_PRINTF("%s%s%s %s <- %s => %d tx=%s rx=%s time=%lu ms "
-             "heap=%u maxblk=%u frag=%u%% sta=%u%s\n",
+             "heap=%u maxblk=%u frag=%u%% sta=%u%s",
              truncated ? "TRUNCATED " : "",
              lastStatus_ >= 400 ? "ERROR " : "",
              methodName(lastMethod_),
@@ -103,7 +104,7 @@ void HttpResponder::logCompletion(uint32_t elapsedUs) {
              apStations,
              clientGoneAfterSend_ ? " client=gone" : "");
   if (truncated) {
-    LOG_PRINTF("TRUNCATED detail: wrote %u of %u body bytes to %s\n",
+    LOG_PRINTF("TRUNCATED detail: wrote %u of %u body bytes to %s",
                static_cast<unsigned>(lastActualTxBytes_),
                static_cast<unsigned>(lastTxBytes_),
                lastClientIp_);

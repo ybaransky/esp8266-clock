@@ -45,7 +45,7 @@ bool ConfigManager::readAll(DeviceConfig& config) {
     const DeserializationError error = deserializeJson(doc, file);
     file.close();
     if (error) {
-        LOG_PRINTF("Complete config read failed: %s bytes=%u time=%.2f ms\n",
+        LOG_PRINTF("Complete config read failed: %s bytes=%u time=%.2f ms",
                    error.c_str(), static_cast<unsigned>(bytes),
                    (micros() - startedUs) / 1000.0f);
         return false;
@@ -54,10 +54,10 @@ bool ConfigManager::readAll(DeviceConfig& config) {
         applyJsonToClockConfig(doc.as<JsonVariantConst>(), config.clock);
     applyJsonToWifiConfig(doc.as<JsonVariantConst>(), config.wifi);
     if (validationError != nullptr) {
-        LOG_PRINTF("Complete config has invalid values: %s\n", validationError);
+        LOG_PRINTF("Complete config has invalid values: %s", validationError);
     }
-    config.clock = sanitizeClockConfig(config.clock);
-    LOG_PRINTF("Complete config read: bytes=%u time=%.2f ms\n",
+    sanitizeClockConfig(config.clock);
+    LOG_PRINTF("Complete config read: bytes=%u time=%.2f ms",
                static_cast<unsigned>(bytes),
                (micros() - startedUs) / 1000.0f);
     return true;
@@ -67,13 +67,15 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
     const uint32_t startedUs = micros();
     if (!storageManager.ensureMounted(context)) return false;
     JsonDocument doc;
-    serializeClockConfig(doc, sanitizeClockConfig(config.clock));
+    // Callers guarantee config.clock is sanitized (defaults, loaded config,
+    // or a save path that sanitized in place) - no extra copy at this depth.
+    serializeClockConfig(doc, config.clock);
     serializeWifiConfig(doc, config.wifi);
 
     STORAGE.remove(kConfigTmpPath);
     File file = STORAGE.open(kConfigTmpPath, "w");
     if (!file) {
-        LOG_PRINTF("Complete config write failed: cannot open temp file context=%s\n", context);
+        LOG_PRINTF("Complete config write failed: cannot open temp file context=%s", context);
         return false;
     }
     const size_t bytes = serializeJson(doc, file);
@@ -81,7 +83,7 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
     file.close();
     if (bytes == 0) {
         STORAGE.remove(kConfigTmpPath);
-        LOG_PRINTF("Complete config write failed: serialization context=%s\n", context);
+        LOG_PRINTF("Complete config write failed: serialization context=%s", context);
         return false;
     }
 
@@ -91,7 +93,7 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
     verifyFile.close();
     if (verifyError) {
         STORAGE.remove(kConfigTmpPath);
-        LOG_PRINTF("Complete config verification failed: %s context=%s\n",
+        LOG_PRINTF("Complete config verification failed: %s context=%s",
                    verifyError.c_str(), context);
         return false;
     }
@@ -100,18 +102,18 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
     const bool hadOriginal = STORAGE.exists(kConfigPath);
     if (hadOriginal && !STORAGE.rename(kConfigPath, kConfigBackupPath)) {
         STORAGE.remove(kConfigTmpPath);
-        LOG_PRINTF("Complete config write failed: cannot create backup context=%s\n", context);
+        LOG_PRINTF("Complete config write failed: cannot create backup context=%s", context);
         return false;
     }
     if (!STORAGE.rename(kConfigTmpPath, kConfigPath)) {
         if (hadOriginal) STORAGE.rename(kConfigBackupPath, kConfigPath);
         STORAGE.remove(kConfigTmpPath);
-        LOG_PRINTF("Complete config write failed: cannot install temp file context=%s\n", context);
+        LOG_PRINTF("Complete config write failed: cannot install temp file context=%s", context);
         return false;
     }
     STORAGE.remove(kConfigBackupPath);
     const uint32_t elapsedMs = (micros() - startedUs + 500U) / 1000U;
-    LOG_PRINTF("Complete config write: bytes=%u time=%lu ms context=%s\n",
+    LOG_PRINTF("Complete config write: bytes=%u time=%lu ms context=%s",
                static_cast<unsigned>(bytes),
                static_cast<unsigned long>(elapsedMs), context);
     return true;
@@ -139,7 +141,8 @@ ClockConfig ConfigManager::loadClockConfig() {
 bool ConfigManager::saveClockConfig(const ClockConfig& cfg) {
     ensureLoaded();
     DeviceConfig next = current_;
-    next.clock = sanitizeClockConfig(cfg);
+    next.clock = cfg;
+    sanitizeClockConfig(next.clock);
     if (!writeAll(next, "save clock config")) return false;
     current_ = next;
     return true;
@@ -147,37 +150,42 @@ bool ConfigManager::saveClockConfig(const ClockConfig& cfg) {
 
 bool ConfigManager::saveConfig(const ClockConfig& clock, const WifiConfig& wifi) {
     ensureLoaded();
-    DeviceConfig next{sanitizeClockConfig(clock), wifi};
+    DeviceConfig next{clock, wifi};
+    sanitizeClockConfig(next.clock);
     if (!writeAll(next, "save complete config")) return false;
     current_ = next;
     return true;
 }
 
-ClockConfig ConfigManager::sanitizeClockConfig(const ClockConfig& cfg) const {
+void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
     const ClockConfig defaults = defaultClockConfig();
-    ClockConfig clean = cfg;
-    clean.activeMode   = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
-    clean.countdown.format = sanitizeFormatIndex(
+    cfg.activeMode   = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
+    cfg.countdown.format = sanitizeFormatIndex(
         kFmtGroupCountdown, cfg.countdown.format, defaults.countdown.format);
-    clean.countup.format = sanitizeFormatIndex(
+    cfg.countup.format = sanitizeFormatIndex(
         kFmtGroupCountUp, cfg.countup.format, defaults.countup.format);
-    clean.display.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.display.clockFmt,     defaults.display.clockFmt);
-    clean.friday.clockFmt = sanitizeFormatIndex(
+    cfg.display.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.display.clockFmt,     defaults.display.clockFmt);
+    cfg.friday.clockFmt = sanitizeFormatIndex(
         kFmtGroupClock, cfg.friday.clockFmt, defaults.friday.clockFmt);
-    clean.friday.toFridaySunsetFmt = sanitizeFormatIndex(
+    cfg.friday.toFridaySunsetFmt = sanitizeFormatIndex(
         kFmtGroupCountdown, cfg.friday.toFridaySunsetFmt,
         defaults.friday.toFridaySunsetFmt);
-    clean.friday.toSaturdaySunsetFmt = sanitizeFormatIndex(
+    cfg.friday.toSaturdaySunsetFmt = sanitizeFormatIndex(
         kFmtGroupCountdown, cfg.friday.toSaturdaySunsetFmt,
         defaults.friday.toSaturdaySunsetFmt);
-    clean.display.brightness = sanitizeBrightness(cfg.display.brightness);
-    clean.timezone.utcOffsetMinutes =
+    cfg.trading.format = sanitizeFormatIndex(
+        kFmtGroupCountdown, cfg.trading.format, defaults.trading.format);
+    cfg.display.brightness = sanitizeBrightness(cfg.display.brightness);
+    cfg.timezone.utcOffsetMinutes =
         sanitizeUtcOffsetMinutes(cfg.timezone.utcOffsetMinutes);
-    sanitizeDisplayMessage(cfg.messages.splash, clean.messages.splash, sizeof(clean.messages.splash));
-    sanitizeDisplayMessage(cfg.messages.final, clean.messages.final, sizeof(clean.messages.final));
-    sanitizeDisplayMessage(cfg.messages.fridaySunset, clean.messages.fridaySunset,
-                           sizeof(clean.messages.fridaySunset));
-    sanitizePrintableText(cfg.timezone.name, clean.timezone.name,
-                          sizeof(clean.timezone.name));
-    return clean;
+    sanitizeDisplayMessage(cfg.messages.splash, cfg.messages.splash, sizeof(cfg.messages.splash));
+    sanitizeDisplayMessage(cfg.messages.final, cfg.messages.final, sizeof(cfg.messages.final));
+    sanitizeDisplayMessage(cfg.messages.fridaySunset, cfg.messages.fridaySunset,
+                           sizeof(cfg.messages.fridaySunset));
+    sanitizeDisplayMessage(cfg.messages.tradingOpen, cfg.messages.tradingOpen,
+                           sizeof(cfg.messages.tradingOpen));
+    sanitizeDisplayMessage(cfg.messages.tradingClose, cfg.messages.tradingClose,
+                           sizeof(cfg.messages.tradingClose));
+    sanitizePrintableText(cfg.timezone.name, cfg.timezone.name,
+                          sizeof(cfg.timezone.name));
 }

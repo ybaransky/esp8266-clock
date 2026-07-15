@@ -8,12 +8,12 @@ Function       | Pin | GPIO   | Notes
 DS3231 SCL     | D1  | GPIO5  | Hardware I2C
 DS3231 SDA     | D2  | GPIO4  | Hardware I2C
 Button         | D3  | GPIO0  | INPUT_PULLUP, don't press at boot
-TM1637 DIO[1]  | D4  | GPIO2  | Boot strap pin; TM1637 DIO should idle HIGH
-INERNAL LED		 | D4  | GPIO2  | gets dragged along
+TM1637 DIO[0]  | D4  | GPIO2  | Boot strap pin; TM1637 DIO should idle HIGH
+INTERNAL LED   | D4  | GPIO2  | gets dragged along
 
 TM1637 DIO[2]  | D0  | GPIO16 | No interrupts, but fine for DIO
 TM1637 ALL CLK | D5  | GPIO14 | Shared across all 3 displays
-TM1637 DIO[0]  | D6  | GPIO12 | Safe
+TM1637 DIO[1]  | D6  | GPIO12 | Safe
 DS3231 SQW     | D7  | GPIO13 | Interrupt capable, INPUT_PULLUP
 D8             | D8  | GPIO15 | Unused; must stay LOW at boot
 */
@@ -43,27 +43,16 @@ namespace Hardware {
 // I2C bus scanner
 // ---------------------------------------------------------------------------
 
-// Returns the addresses discovered by an I2C scan without exposing scanner storage.
-struct I2CScanResult {
-	const uint8_t *addresses;  // Addresses found during the last scan.
-	size_t count;              // Number of valid entries in addresses.
-};
-
-// Probes the I2C address range and retains results for later diagnostics.
+// Probes the I2C address range and logs each responding device by name.
 class I2CBusScanner {
 public:
 	void scan();
-	I2CScanResult lastResult() const;
 
 private:
 	static constexpr uint8_t FIRST_VALID_ADDRESS = 1;  // First non-reserved address scanned.
 	static constexpr uint8_t LAST_VALID_ADDRESS = 126;  // Last non-reserved address scanned.
-	static constexpr size_t ADDRESS_CAPACITY = LAST_VALID_ADDRESS;  // Maximum stored results.
 
 	static const char *deviceNameForAddress(uint8_t address);
-
-	uint8_t lastScanAddresses_[ADDRESS_CAPACITY] = {};  // Cached scan addresses.
-	size_t lastScanCount_ = 0;                           // Cached address count.
 };
 
 extern I2CBusScanner i2cBusScanner;

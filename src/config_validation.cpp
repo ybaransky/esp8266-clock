@@ -6,13 +6,14 @@ const char* modeName(Mode mode) {
     case kModeCountup:   return "countup";
     case kModeClock:     return "clock";
     case kModeFriday:    return "friday";
+    case kModeTrading:   return "trading";
   }
   return "countdown";
 }
 
 Mode sanitizeMode(int rawMode, Mode fallback) {
   if ((rawMode < static_cast<int>(kModeCountdown)) ||
-      (rawMode > static_cast<int>(kModeFriday))) {
+      (rawMode > static_cast<int>(kModeTrading))) {
     return fallback;
   }
   return static_cast<Mode>(rawMode);
@@ -36,6 +37,10 @@ bool modeFromName(const String& name, Mode* mode) {
   }
   if (name == "friday") {
     *mode = kModeFriday;
+    return true;
+  }
+  if (name == "trading") {
+    *mode = kModeTrading;
     return true;
   }
   return false;

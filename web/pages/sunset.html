@@ -71,16 +71,14 @@ function readOffset() {
   }
   return value;
 }
-function validZip(value) { return /^[0-9]{5}$/.test(value); }
-
 function getFromZipcode() {
   setStatus('');
   setResult('');
   var zip = $('zip').value;
   if (!validZip(zip)) { setStatus('ZIP code must be 5 digits'); return; }
   setStatus('Looking up...');
-  fetch('/api/zipcode/lookup?zip=' + encodeURIComponent(zip))
-    .then(function (r) { return r.json(); }).then(function (d) {
+  jsonFetch('/api/zipcode/lookup?zip=' + encodeURIComponent(zip))
+    .then(function (d) {
       if (d.error) { setStatus(d.error); return; }
       $('lat').value = Number(d.latitude).toFixed(6);
       $('lon').value = Number(d.longitude).toFixed(6);
@@ -110,7 +108,7 @@ function computeSunset() {
     setStatus(e.message);
     return;
   }
-  fetch('/api/config', {
+  jsonFetch('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       sunset: {
@@ -119,13 +117,13 @@ function computeSunset() {
         longitude: body.location.longitude
       }
     })
-  }).then(function (r) { return r.json(); }).then(function (saved) {
+  }).then(function (saved) {
     if (saved.error) throw new Error(saved.error);
-    return fetch('/api/sunset', {
+    return jsonFetch('/api/sunset', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-  }).then(function (r) { return r.json(); }).then(function (d) {
+  }).then(function (d) {
     if (d.error) { setStatus(d.error); return; }
     setResult(d.time);
   }).catch(function (e) { setStatus(e.message || 'Sunset calculation failed'); });

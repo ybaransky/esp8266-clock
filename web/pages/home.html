@@ -13,6 +13,7 @@
 <button id="mode-countdown" class="mode" onclick="setMode('countdown')">Countdown</button>
 <button id="mode-clock" class="mode" onclick="setMode('clock')">Clock</button>
 <button id="mode-countup" class="mode" onclick="setMode('countup')">Countup</button>
+<button id="mode-trading" class="mode" onclick="setMode('trading')">Trading</button>
 <button id="mode-friday" class="mode" onclick="setMode('friday')">Friday</button>
 <hr>
 <button id="mode-demo" class="mode" onclick="runDemo()">Demo</button>
@@ -25,19 +26,57 @@ var configuredMode = '';
 var demoTimer = null;
 
 function showMode(mode) {
-  ['countdown', 'clock', 'countup', 'friday', 'demo'].forEach(function (m) {
+  ['countdown', 'clock', 'countup', 'friday', 'trading', 'demo'].forEach(function (m) {
     $('mode-' + m).classList.toggle('current', m === mode);
   });
 }
 function showConfiguredMode() { showMode(configuredMode); }
 
-api('/api/status').then(function (d) {
+function applyDeviceStatus(d) {
   if (d.name) {
     document.title = d.name;
     $('apn').textContent = d.name;
   }
-  configuredMode = d.mode || '';
-  showConfiguredMode();
+  configuredMode = d.mode || configuredMode;
+  showMode(d.demoActive ? 'demo' : configuredMode);
+  return !!d.demoActive;
+}
+
+// Poll with a 3s abort: on the AP link a power-save phone radio can leave a
+// fetch hanging for minutes, which would stall the whole retry chain.
+function checkDemoStatus() {
+  var ctl = new AbortController();
+  var kill = setTimeout(function () { ctl.abort(); }, 3000);
+  api('/api/status', { signal: ctl.signal }).then(function (d) {
+    clearTimeout(kill);
+    if (applyDeviceStatus(d)) {
+      demoTimer = setTimeout(checkDemoStatus, 1000);
+      return;
+    }
+    demoTimer = null;
+    setStatus('Demo finished.', 5000);
+  }).catch(function () {
+    clearTimeout(kill);
+    demoTimer = setTimeout(checkDemoStatus, 1000);
+  });
+}
+
+function watchDemo() {
+  demoTimer = setTimeout(checkDemoStatus, 1000);
+}
+
+// Background tabs throttle timers (mobile browsers: down to one per minute),
+// so the poll chain can oversleep the demo's end. Resync the moment the page
+// is visible again.
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden && demoTimer) {
+    clearTimeout(demoTimer);
+    checkDemoStatus();
+  }
+});
+
+api('/api/status').then(function (d) {
+  if (applyDeviceStatus(d)) watchDemo();
 }).catch(function () { setStatus('Status load failed'); });
 
 function setMode(mode) {
@@ -58,12 +97,11 @@ function runDemo() {
   fetch('/api/demo/test', { method: 'POST' })
     .then(function (r) { return r.json(); }).then(function (d) {
       if (d.error) { setStatus(d.error); showConfiguredMode(); return; }
-      demoTimer = setTimeout(function () {
-        demoTimer = null;
-        setStatus('Demo finished.', 5000);
-        showConfiguredMode();
-      }, d.preview_ms || 10000);
-    }).catch(function () { setStatus('Demo failed'); showConfiguredMode(); });
+      watchDemo();
+    }).catch(function () {
+      setStatus('Demo status unavailable');
+      watchDemo();
+    });
 }
 </script>
 </body>

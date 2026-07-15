@@ -95,7 +95,7 @@ bool parseLocationRow(const char* row, ZipcodeLocation* location) {
 
 bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* path) {
   if (!isValidZipcode(zipcode) || (row == nullptr) || (rowSize == 0) || (path == nullptr)) {
-    LOG_PRINTF("Zipcode lookup invalid arguments: zip=\"%s\" row=%s rowSize=%u path=\"%s\"\n",
+    LOG_PRINTF("Zipcode lookup invalid arguments: zip=\"%s\" row=%s rowSize=%u path=\"%s\"",
                zipcode == nullptr ? "(null)" : zipcode,
                row == nullptr ? "null" : "set",
                static_cast<unsigned>(rowSize),
@@ -109,7 +109,7 @@ bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* 
 
   File file = STORAGE.open(path, "r");
   if (!file) {
-    LOG_PRINTF("Zipcode file not found: %s\n", path);
+    LOG_PRINTF("Zipcode file not found: %s", path);
     return false;
   }
 
@@ -128,7 +128,7 @@ bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* 
 
   file.close();
   row[0] = '\0';
-  LOG_PRINTF("Zipcode not found in %s: %s\n", path, zipcode);
+  LOG_PRINTF("Zipcode not found in %s: %s", path, zipcode);
   return false;
 }
 
@@ -136,7 +136,7 @@ bool findZipcodeRow(const char* zipcode, char* row, size_t rowSize, const char* 
 
 bool zipcodeLookupLocation(const char* zipcode, ZipcodeLocation* location, const char* path) {
   if (location == nullptr) {
-    LOG_PRINTF("Zipcode lookup failed: null output for zip=\"%s\"\n",
+    LOG_PRINTF("Zipcode lookup failed: null output for zip=\"%s\"",
                zipcode == nullptr ? "(null)" : zipcode);
     return false;
   }
@@ -147,7 +147,7 @@ bool zipcodeLookupLocation(const char* zipcode, ZipcodeLocation* location, const
   }
 
   if (!parseLocationRow(row, location)) {
-    LOG_PRINTF("Zipcode lookup failed: malformed row for zip=\"%s\": \"%s\"\n",
+    LOG_PRINTF("Zipcode lookup failed: malformed row for zip=\"%s\": \"%s\"",
                zipcode == nullptr ? "(null)" : zipcode,
                row);
     return false;

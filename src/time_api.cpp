@@ -12,7 +12,7 @@ bool TimeApi::parseJsonBody(JsonDocument& doc) {
   const DeserializationError error = deserializeJson(doc, server_.arg("plain"));
   if (!error) return true;
 
-  LOG_PRINTF("/api/time failed: invalid JSON: %s\n", error.c_str());
+  LOG_PRINTF("/api/time failed: invalid JSON: %s", error.c_str());
   responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
   return false;
 }
@@ -40,13 +40,13 @@ void TimeApi::handleTimeSync() {
   if ((year < 2020) || (year > 2099) || (month < 1) || (month > 12) ||
       (day < 1) || (day > 31) || (hour < 0) || (hour > 23) ||
       (minute < 0) || (minute > 59) || (second < 0) || (second > 59)) {
-    LOG_PRINTF("/api/time failed: invalid time %04d-%02d-%02d %02d:%02d:%02d\n",
+    LOG_PRINTF("/api/time failed: invalid time %04d-%02d-%02d %02d:%02d:%02d",
                year, month, day, hour, minute, second);
     responder_.sendJson(400, "{\"error\":\"Invalid time\"}");
     return;
   }
 
-  LOG_PRINTF("Browser time sync requested: %04d-%02d-%02d %02d:%02d:%02d\n",
+  LOG_PRINTF("Browser time sync requested: %04d-%02d-%02d %02d:%02d:%02d",
              year, month, day, hour, minute, second);
   clockController_.setTime(DateTime(year, month, day, hour, minute, second));
   responder_.sendJson(200, "{\"message\":\"RTC synced\"}");

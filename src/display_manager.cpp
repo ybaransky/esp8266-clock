@@ -127,6 +127,7 @@ void DisplayManager::showDemo() {
   OverlayState state;
   state.overlay = Overlay::kDemo;
   state.chainFinalMessage = true;
+  state.demoSequence = true;
   state.transition = {true, nowMs + kDemoCountdownMs};
 
   installOverlay(state, nowMs);
@@ -221,6 +222,13 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
       state.view = View::kClock;
       state.formatIndex = settings_.friday.clockFmt;
       break;
+    case kModeTrading:
+      // TradingModeController replaces this placeholder immediately after a
+      // config apply and then at each live open/close boundary.
+      state.view = View::kCountdown;
+      state.anchor = rtc_.getNowCached() + TimeSpan(1);
+      state.formatIndex = settings_.trading.format;
+      break;
   }
 
   return state;
@@ -262,7 +270,7 @@ const char* overlayName(Overlay overlay) {
 }
 
 void DisplayManager::logTransition(const char* from, const char* to, const char* reason) const {
-  LOG_PRINTF("display: %s -> %s (%s)\n", from, to, reason);
+  LOG_PRINTF("display: %s -> %s (%s)", from, to, reason);
 }
 
 void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
@@ -305,6 +313,7 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
   OverlayState state;
   state.overlay = Overlay::kMessage;
   state.blink = true;
+  state.demoSequence = true;
   copyMessage(state.message, settings_.messages.final);
   state.transition = {true, nowMs + kDemoMessageMs};
 

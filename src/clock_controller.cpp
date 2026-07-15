@@ -4,6 +4,7 @@
 #include "display_manager.h"
 #include "friday_mode.h"
 #include "rtc_ds3231.h"
+#include "trading_mode.h"
 
 // -----------------------------------------------------------------------------
 // ClockController
@@ -12,18 +13,22 @@
 void ClockController::applyConfig(const ClockConfig& config) {
   displayManager_.applySettings(config);
   fridayModeApplySettings(config);
+  tradingModeApplySettings(config);
+  tradingModeTick(rtc_.getNowCached(), displayManager_);
 }
 
 void ClockController::onSecondBoundary(const DateTime& now) {
   // Keep display rendering phase-locked to the accepted RTC SQW edge, then
-  // update Friday mode from the same cached wall-clock value.
+  // update scheduled modes from the same cached wall-clock value.
   displayManager_.notifySecondBoundary();
   fridayModeTick(now, displayManager_);
+  tradingModeTick(now, displayManager_);
 }
 
 void ClockController::setTime(const DateTime& now) {
   rtc_.setNow(now);
   fridayModeResetSunsetCache();
+  tradingModeResetSchedule();
 }
 
 void ClockController::setBrightness(uint8_t brightness) {
@@ -44,4 +49,8 @@ void ClockController::showSplash(const char* message) {
 
 Mode ClockController::activeMode() const {
   return displayManager_.activeMode();
+}
+
+bool ClockController::demoActive() const {
+  return displayManager_.demoActive();
 }

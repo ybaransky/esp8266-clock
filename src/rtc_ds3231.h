@@ -53,9 +53,9 @@ class RtcService {
 // nowMs % 1000 when SQW processing hasn't started or the pulse has gone
 // stale - same graceful degradation as rtcGetNowCached().
 
-// Second-resolution RTC time maintained by rtcConsumeSqwPulse(), at
+// Second-resolution RTC time maintained by consumeSqwPulse(), at
 // effectively zero I2C cost (advanced in software from the SQW pulse rather
-// than re-reading the chip). Automatically falls back to a live rtcGetNow()
+// than re-reading the chip). Automatically falls back to a live getNow()
 // read if the cache hasn't been seeded yet or the SQW pulse has gone stale
-// (see rtcIsHealthy()), so it degrades gracefully if SQW pulses stop.
+// (see isHealthy()), so it degrades gracefully if SQW pulses stop.
 // This is what display rendering uses.

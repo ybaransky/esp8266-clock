@@ -92,6 +92,9 @@ button.secondary:active { background: #246; }
   color: #fff;
   border-radius: 8px;
   text-decoration: none;
+  /* Anchors inherit the page's text-align (unlike real <button>s, which
+     center by default); declare it so .btn looks the same on every page. */
+  text-align: center;
   box-sizing: border-box;
   border: 0;
   cursor: pointer;
@@ -107,12 +110,6 @@ button.secondary:active { background: #246; }
   border-radius: 8px;
   padding: 12px;
   margin: 14px 0;
-}
-.box h2 {
-  margin: 0 0 10px;
-  text-align: center;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #333;
 }
 .grid {
   display: grid;

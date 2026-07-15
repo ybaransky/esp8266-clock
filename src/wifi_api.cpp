@@ -36,7 +36,7 @@ void WifiApi::handleConnect() {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, server_.arg("plain"));
   if (err) {
-    LOG_PRINTF("/api/wifi/connect failed: invalid JSON: %s\n", err.c_str());
+    LOG_PRINTF("/api/wifi/connect failed: invalid JSON: %s", err.c_str());
     responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
     return;
   }

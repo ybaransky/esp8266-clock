@@ -40,7 +40,7 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
       String ssid;
       String ip;
       networkGetInfo(ssid, ip);
-      LOG_PRINTF("Network SSID: %s\n", ssid.c_str());
+      LOG_PRINTF("Network SSID: %s", ssid.c_str());
       pageManager.showSsid(ssid);
       break;
     }
@@ -49,20 +49,20 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
       String ssid;
       String ip;
       networkGetInfo(ssid, ip);
-      LOG_PRINTF("Network IP: %s\n", ip.c_str());
+      LOG_PRINTF("Network IP: %s", ip.c_str());
       pageManager.showIpAddress(ip);
       break;
     }
 
     case ButtonEvent::kShowRtcStatus: {
       const RtcStatus status = rtc.getStatus();
-      LOG_PRINTF("present=%s powerLost=%s lowBattery=%s sqwConfigured=%s\n",
+      LOG_PRINTF("present=%s powerLost=%s lowBattery=%s sqwConfigured=%s",
                  status.present ? "yes" : "no",
                  status.powerLost ? "yes" : "no",
                  status.lowBattery ? "yes" : "no",
                  status.sqwConfigured ? "yes" : "no");
       if (!status.error.isEmpty()) {
-        LOG_PRINTF("error: %s\n", status.error.c_str());
+        LOG_PRINTF("error: %s", status.error.c_str());
       }
       break;
     }
@@ -86,13 +86,13 @@ ClockApplication::ClockApplication()
 void ClockApplication::begin() {
   Serial.begin(74880);
   delay(500);
-  LOG_PRINTF("Starting up...\n");
+  LOG_PRINTF("Starting up...");
   printDeviceInfo();
 
-  LOG_PRINTF("Built ========= %s %s ==========\n", __DATE__, __TIME__);
+  LOG_PRINTF("Built ========= %s %s ==========", __DATE__, __TIME__);
   Wire.begin(Hardware::Pins::I2C_SDA, Hardware::Pins::I2C_SCL);
   Wire.setClock(100000);
-  LOG_PRINTF("Initialized SDA=GPIO%u SCL=GPIO%u\n",
+  LOG_PRINTF("Initialized SDA=GPIO%u SCL=GPIO%u",
              Hardware::Pins::I2C_SDA,
              Hardware::Pins::I2C_SCL);
 
@@ -101,13 +101,13 @@ void ClockApplication::begin() {
   } else {
     const RtcStatus status = rtc_.getStatus();
     printRtcErrorBanner(status.error.c_str());
-    LOG_PRINTF("Init failed: %s\n", status.error.c_str());
+    LOG_PRINTF("Init failed: %s", status.error.c_str());
   }
   i2cBusScanner.scan();
 
   ClockConfig cs = configManager_.loadClockConfig();
   segmentDisplay_.begin(cs.display.brightness);
-  LOG_PRINTF("Mode %u, brightness %u\n",
+  LOG_PRINTF("Mode %u, brightness %u",
              (unsigned)cs.activeMode, cs.display.brightness);
 
   clockController_.applyConfig(cs);
@@ -140,7 +140,7 @@ void ClockApplication::tick(uint32_t nowMs) {
   if (rtc_.consumeSqwPulse()) {
     clockController_.onSecondBoundary(rtc_.getNowCached());
     if (rtc_.isLogIntervalDue()) {
-      LOG_PRINTF("SQW: mode=%s view=%s\n",
+      LOG_PRINTF("SQW: mode=%s view=%s",
                  modeName(displayManager_.activeMode()),
                  viewName(displayManager_.activeView()));
     }
@@ -157,7 +157,7 @@ void ClockApplication::tick(uint32_t nowMs) {
     maxTickUs_ = tickUs;
   }
   if (nowMs - lastTickReportMs_ >= 10000) {
-    LOG_PRINTF("tick: max %lu.%lu ms in last 10s\n",
+    LOG_PRINTF("tick: max %lu.%lu ms in last 10s",
                static_cast<unsigned long>(maxTickUs_ / 1000),
                static_cast<unsigned long>((maxTickUs_ % 1000) / 100));
     lastTickReportMs_ = nowMs;
@@ -192,7 +192,7 @@ void ClockApplication::logModeOrViewTransition() {
   const View view = displayManager_.activeView();
   if ((mode == lastLoggedMode_) && (view == lastLoggedView_)) return;
 
-  LOG_PRINTF("mode/view: %s/%s -> %s/%s\n",
+  LOG_PRINTF("mode/view: %s/%s -> %s/%s",
              modeName(lastLoggedMode_), viewName(lastLoggedView_),
              modeName(mode), viewName(view));
   lastLoggedMode_ = mode;

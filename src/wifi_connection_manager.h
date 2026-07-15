@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <IPAddress.h>
 
 #include "config.h"
 
@@ -26,6 +27,7 @@ class WifiConnectionManager {
   void begin(const WifiConfig& config);
   void tick();
   void onApClientConnected(const uint8_t* mac);
+  void onApClientDisconnected(const uint8_t* mac);
 
   WifiRuntimeStatus status() const;
   void scanNetworks(JsonDocument& doc);
@@ -44,4 +46,9 @@ class WifiConnectionManager {
   volatile bool apClientConnectedPending_ = false;  // Deferred AP-client log flag.
   uint8_t apClientMac_[6] = {};  // MAC used to find the DHCP-assigned client IP.
   uint32_t apClientLookupStartedMs_ = 0;  // Start time for deferred DHCP lookup.
+
+  volatile bool apClientDisconnectedPending_ = false;  // Deferred disconnect log flag.
+  uint8_t apDisconnectedMac_[6] = {};  // MAC reported by the disconnect event.
+  uint8_t lastClientMac_[6] = {};  // MAC of the most recently connected client.
+  IPAddress lastClientIp_;  // Its DHCP IP; names the client in the disconnect log.
 };

@@ -151,25 +151,16 @@ const char *I2CBusScanner::deviceNameForAddress(uint8_t address) {
 void I2CBusScanner::scan() {
   LOG_PRINTLN("Scanning I2C bus...");
   size_t found = 0;
-  lastScanCount_ = 0;
 
   for (uint8_t address = FIRST_VALID_ADDRESS; address <= LAST_VALID_ADDRESS; address++) {
     Wire.beginTransmission(address);
     if (Wire.endTransmission() == 0) {
-      LOG_PRINTF("Found device at 0x%02X: (%s)\n", address, deviceNameForAddress(address));
-      if (found < ADDRESS_CAPACITY) {
-        lastScanAddresses_[found] = address;
-      }
+      LOG_PRINTF("Found device at 0x%02X: (%s)", address, deviceNameForAddress(address));
       found++;
     }
   }
 
-  lastScanCount_ = (found < ADDRESS_CAPACITY) ? found : ADDRESS_CAPACITY;
-  LOG_PRINTF("Scan complete. %u device(s) found.\n", static_cast<unsigned>(found));
-}
-
-I2CScanResult I2CBusScanner::lastResult() const {
-  return {lastScanAddresses_, lastScanCount_};
+  LOG_PRINTF("Scan complete. %u device(s) found.", static_cast<unsigned>(found));
 }
 
 I2CBusScanner i2cBusScanner;
@@ -181,32 +172,32 @@ void printDeviceInfo() {
   const SketchInfo  sketch  = getSketchInfo();
   const StorageInfo storage = getStorageInfo();
 
-  LOG_PRINTF("Heap: free=%s  maxBlock=%s  frag=%u%%\n",
+  LOG_PRINTF("Heap: free=%s  maxBlock=%s  frag=%u%%",
              CommaNumber(heap.freeBytes).c_str(),
              CommaNumber(heap.maxFreeBlockBytes).c_str(),
              heap.fragmentationPct);
 
-  LOG_PRINTF("Flash: chipSize=%s  realSize=%s  speed=%sHz  mode=%s\n",
+  LOG_PRINTF("Flash: chipSize=%s  realSize=%s  speed=%sHz  mode=%s",
              CommaNumber(flash.chipSizeBytes).c_str(),
              CommaNumber(flash.realSizeBytes).c_str(),
              CommaNumber(flash.speedHz).c_str(),
              flashModeName(flash.mode));
 
-  LOG_PRINTF("Chip: id=0x%06X  cpu=%uMHz  sdk=%s  core=%s  resetReason=%s\n",
+  LOG_PRINTF("Chip: id=0x%06X  cpu=%uMHz  sdk=%s  core=%s  resetReason=%s",
              chip.chipId,
              chip.cpuFreqMHz,
              chip.sdkVersion.c_str(),
              chip.coreVersion.c_str(),
              chip.resetReason.c_str());
 
-  LOG_PRINTF("Sketch: size=%s  freeSpace=%s\n",
+  LOG_PRINTF("Sketch: size=%s  freeSpace=%s",
              CommaNumber(sketch.sizeBytes).c_str(),
              CommaNumber(sketch.freeSpaceBytes).c_str());
 
   if (!storage.mounted) {
-    LOG_PRINTF("Storage: LittleFS not mounted\n");
+    LOG_PRINTF("Storage: LittleFS not mounted");
   } else {
-    LOG_PRINTF("Storage: total=%s  used=%s  free=%s\n",
+    LOG_PRINTF("Storage: total=%s  used=%s  free=%s",
                CommaNumber(storage.totalBytes).c_str(),
                CommaNumber(storage.usedBytes).c_str(),
                CommaNumber(storage.totalBytes - storage.usedBytes).c_str());

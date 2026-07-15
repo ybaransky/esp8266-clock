@@ -24,6 +24,7 @@ class ClockController {
   void showInfo(const char* message, int32_t durationMs);
   void showSplash(const char* message);
   Mode activeMode() const;
+  bool demoActive() const;
 
  private:
   DisplayManager& displayManager_;  // Applies view, overlay, and brightness actions.

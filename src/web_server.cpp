@@ -156,7 +156,7 @@ class WebPortal {
     const uint32_t total = responder_.responseSequence();
     if ((total != lastTrafficTotal_) || (maxLoopGapMs_ > 50)) {
       LOG_PRINTF("web traffic: %lu responses (%lu probes, %lu redirects), "
-                 "max loop gap %lu ms in last 10s\n",
+                 "max loop gap %lu ms in last 10s",
                  static_cast<unsigned long>(total - lastTrafficTotal_),
                  static_cast<unsigned long>(probeCount_ - lastProbeCount_),
                  static_cast<unsigned long>(redirectCount_ - lastRedirectCount_),
@@ -193,7 +193,7 @@ class WebPortal {
         body.setCharAt(i, '.');
       }
     }
-    LOG_PRINTF("CLIENT %s: %s\n",
+    LOG_PRINTF("CLIENT %s: %s",
                server_.client().remoteIP().toString().c_str(), body.c_str());
     responder_.send(204, "text/plain", "");
   }
@@ -228,13 +228,14 @@ class WebPortal {
   static WebPortal* activePortal;  // Singleton bridge used by route callbacks.
 
  private:
-  // Dynamic values for the static home page: device name and configured mode.
+  // Dynamic values for the static home page: identity, mode, and demo state.
   void handleApiStatus() {
     String ssid, ip;
     getNetworkInfo(ssid, ip);
     JsonDocument doc;
     doc["name"] = ssid;
     doc["mode"] = modeName(clockController_.activeMode());
+    doc["demoActive"] = clockController_.demoActive();
     responder_.sendJsonDocument(200, doc);
   }
 

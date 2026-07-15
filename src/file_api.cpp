@@ -214,7 +214,7 @@ void FileApi::handleUploadData() {
     uploadError_ = false;
     const String path = uploadFilePath(upload.filename);
     if (path.isEmpty()) {
-      LOG_PRINTF("File upload failed: invalid name=\"%s\"\n", upload.filename.c_str());
+      LOG_PRINTF("File upload failed: invalid name=\"%s\"", upload.filename.c_str());
       uploadError_ = true;
       return;
     }
@@ -225,7 +225,7 @@ void FileApi::handleUploadData() {
     }
     uploadFile_ = STORAGE.open(path, "w");
     if (!uploadFile_) {
-      LOG_PRINTF("File upload failed: could not open %s for writing\n", path.c_str());
+      LOG_PRINTF("File upload failed: could not open %s for writing", path.c_str());
       uploadError_ = true;
       return;
     }
@@ -266,7 +266,7 @@ void FileApi::printConfigFileToSerial(File& file) {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, file);
   if (err) {
-    LOG_PRINTF("config.json parse error while viewing file: %s\n", err.c_str());
+    LOG_PRINTF("config.json parse error while viewing file: %s", err.c_str());
     return;
   }
   serializeJsonPretty(doc, Serial);

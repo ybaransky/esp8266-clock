@@ -102,8 +102,9 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 - `log.h` provides `LOG_PRINTLN(msg)` and `LOG_PRINTF(fmt, ...)` macros.
 - Each line is prefixed with `logCurrentTime()` and `logSourceName(__FILE__):__LINE__`.
 - Both macros keep their strings in **flash** (`PSTR` + `Serial.printf_P`). On the ESP8266 a plain string literal occupies RAM for the life of the program; moving the log strings to flash is what holds static RAM under 50% (OTA headroom). Consequences:
-  - `LOG_PRINTLN(msg)` and the `fmt` of `LOG_PRINTF` **must be string literals**. For a runtime string, use `LOG_PRINTF("%s\n", value)`.
+  - `LOG_PRINTLN(msg)` and the `fmt` of `LOG_PRINTF` **must be string literals**. For a runtime string, use `LOG_PRINTF("%s", value)`.
   - `LOG_PRINTLN` pastes its literal into the printf format, so a literal `%` must be written `%%`.
+- Each macro call emits exactly one line: the macro itself appends ` stack=<peak cont-stack bytes used, of 4096>` and the terminating newline, so **formats must not end with `\n`**.
 
 ### Display / mode architecture
 The display system has four layers:
@@ -131,7 +132,7 @@ The display system has four layers:
    - `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`, and `setBrightness()`.
    - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `FridayModeController` to switch phases.
    - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = FOREVER)`, `showPages(pages, count, ...)`, `clearOverlay()`.
-   - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday is the only mode whose view changes over time.
+   - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday and Trading modes update their views over time.
    - Clock colon blink toggles once per second (2-second full cycle); message/page blinking uses its own 500ms cadence. `DisplayFormatInfo::refreshRate` selects 100ms for tenths formats and 1s for the others.
    - Tenths values come from the injected RTC service's `msIntoSecond(nowMs)`, not `millis() % 1000`. `notifySecondBoundary()` invalidates the render throttle on each accepted SQW pulse. Demo tenths remain deadline-derived.
    - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
@@ -154,6 +155,13 @@ The display system has four layers:
 - Sunset targets are cached and recomputed at most once per week (when `fridayDateFor(now)` changes). `calculateSunset()` is **not** called on every tick.
 - `applySettings()` and `fridayModeResetSunsetCache()` (called after a browser time sync) invalidate the cache to force recomputation on the next tick.
 
+### Trading Mode
+- **`trading_mode.h/cpp`** owns the weekday 09:30-open / 16:00-close schedule and uses the RTC value as Eastern local wall-clock time.
+- Trading mode always installs `View::kCountdown` through `DisplayManager::setView()`; it reuses the counting format catalog and never adds a separate view or renderer.
+- Before 09:30 on a weekday it counts down to that opening; during trading hours it counts down to 16:00; after close and on weekends it counts down to the next weekday opening. Holidays and early closes are not modeled.
+- Boundary announcements follow the Friday-mode pattern: a live open-to-close phase crossing first installs the 16:00 countdown, then blinks `messages.tradingOpen` for 5s; a live close-to-open crossing installs the next opening countdown, then blinks `messages.tradingClose` for 5s.
+- Boot, config reload, and browser time synchronization reset the remembered Trading phase to `kNone`, and a crossing from `kNone` never announces - so those events cannot synthesize an open/close message.
+
 ### Input
 - **`button.h/cpp`**: `buttonBegin()`, `buttonTick()` (debounce), `buttonHasEvent()`, `buttonNextEvent()`.
   - `ButtonEvent` enum: `SHOW_SSID`, `SHOW_IP_ADDRESS`, `SHOW_RTC_STATUS`.
@@ -164,9 +172,9 @@ The display system has four layers:
   - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
 
 ### Storage / config
-- `ClockConfig` (in `config.h`) holds: `activeMode`; display, counting, Friday, message, and location groups; `timezone` with its IANA name and numeric UTC offset; and the persisted `dst` flag.
+- `ClockConfig` (in `config.h`) holds: `activeMode`; display, counting, Friday, Trading, message, and location groups; `timezone` with its IANA name and numeric UTC offset; and the persisted `dst` flag.
 - `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
-- `ClockConfig.messages` stores `splash`, `final`, and `fridaySunset`; they serialize under the unchanged `display.messages` JSON object and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Defaults live in `defaults.cpp` (`fridaySunset` defaults to `"     SUN SET"`).
+- `ClockConfig.messages` stores `splash`, `final`, `fridaySunset`, `tradingOpen`, and `tradingClose`; they serialize under `display.messages` and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Trading boundary defaults are `"OPEN"` and `"CLOSE"`.
 - `LocationInfo` contains `latitude`, `longitude`, and `zipcode[6]`. `ClockConfig.locations` keeps distinct `device` and `sunsetTest` values. `/config.json` retains separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.
 - `WifiConfig` holds: `staSsid`, `staPassword`, `apSsid`, `apPassword`.
 - **`config_serializer.h/cpp` is the only home of the JSON schema, in both directions.** Never spell out config field paths anywhere else.
@@ -187,9 +195,10 @@ The display system has four layers:
   - `web/common.js` owns the shared page helpers (`$`, `api`/`apiPost`, `setStatus`, error/slow-load beacons to `POST /api/client-log`, `reportFieldMismatch`, `setFieldFromConfig`); `web/common.css` is the single stylesheet. Both are served hash-versioned (`?v=`) with an immutable cache header, so each page transfers only its own small body; pages stay `no-cache`.
   - Runs `DNSServer` for captive portal only when in AP mode.
   - UI pages: `GET /`, `/settings`, `/files`, `/format`, `/time`, `/sunset`, `/messages`, `/location`, `/wifi`, `/view`.
-  - REST API: `GET /api/status` (device name + configured mode, for the home page), `POST /api/config`, `GET /api/config`, `GET /api/formats`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `POST /api/field-mismatch`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
+  - REST API: `GET /api/status` (device name, configured mode, and live demo state for the home page), `POST /api/config`, `GET /api/config`, `GET /api/formats`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `POST /api/field-mismatch`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
   - File management: `GET /api/files`, `GET|DELETE /api/file`, `POST /api/file/upload`.
   - AP-mode radio settings in `wifi_connection_manager.cpp` (11g phy mode, channel survey, 17 dBm TX) are evidence-backed fixes for transfer stalls with power-save phone clients; code comments record what was observed, including two settings that were tried and made things worse. Do not change them without new on-device evidence.
-- `POST /api/message/test` accepts an optional `"blink": true`, which previews via the blinking `showInfo(msg, 5000)` path instead of the static `showSplash()` - used by the `/messages` page's "Test Friday Sunset" button so the preview matches the real sunset behavior.
+  - **Never judge WiFi/page-load performance while the clock is USB-powered from the PC** (confirmed 2026-07-14): on the PC's USB port next to its 2.4 GHz Bluetooth radio, AP transfers to the phone degrade severely (truncated bodies, ~18 s for a 1.4 KB page) with identical firmware, healthy heap, and fast handlers; on its own power supply away from the PC, loads are fast. This matches the documented USB supply-droop behavior (TX spikes corrupt long frames; that is why TX power is 17 dBm). To separate device work from radio delivery: `time=` in the request log is device-side cost; the browser beacon's `dl=` is delivery time; `TRUNCATED wrote X of Y` means the client stopped ACKing mid-transfer.
+- `POST /api/message/test` accepts an optional `"blink": true`, which previews via the blinking `showInfo(msg, 5000)` path instead of the static `showSplash()` - used by Friday and Trading boundary-message previews so they match live behavior.
 - `/location` edits the persisted device `location`. `/sunset` edits/persists only the `sunset` test fields before posting to `/api/sunset`.
 - On `/time`, "Set Time from Browser" updates the RTC/config (and resets the Friday sunset cache) and mirrors the new browser-derived values into the Device fields after a successful save.

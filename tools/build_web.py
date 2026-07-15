@@ -30,14 +30,14 @@ def gzip_bytes(raw: bytes, label: str) -> bytes:
     return compressed
 
 
-assets = []  # (route, content_type, immutable, symbol, gzipped)
+assets = []  # (route, content_type, immutable, symbol, gzipped, source_filename)
 
 versions = {}
 for route, (filename, content_type) in SHARED.items():
     raw = (web_dir / filename).read_bytes()
     versions[route] = short_hash(raw)
     symbol = "WEB_" + filename.replace(".", "_").upper()
-    assets.append((route, content_type, True, symbol, gzip_bytes(raw, filename)))
+    assets.append((route, content_type, True, symbol, gzip_bytes(raw, filename), filename))
 
 for route, filename in PAGES.items():
     text = (web_dir / "pages" / filename).read_text(encoding="utf-8")
@@ -47,7 +47,7 @@ for route, filename in PAGES.items():
             raise RuntimeError(f"{filename} does not reference {shared_route}")
         text = text.replace(reference, f'"{shared_route}?v={version}"')
     symbol = "WEB_PAGE_" + filename.replace(".html", "").upper()
-    assets.append((route, "text/html", False, symbol, gzip_bytes(text.encode("utf-8"), filename)))
+    assets.append((route, "text/html", False, symbol, gzip_bytes(text.encode("utf-8"), filename), filename))
 
 lines = [
     "#pragma once",
@@ -62,13 +62,15 @@ lines = [
     "};",
     "",
 ]
-for route, content_type, immutable, symbol, gz in assets:
-    print(f"Web asset {route}: {len(gz)} bytes gzipped")
+for route, content_type, immutable, symbol, gz, source in assets:
+    # The root route is the only one whose source file isn't evident.
+    note = f" ({source})" if route == "/" else ""
+    print(f"Web asset {route}{note}: {len(gz)} bytes gzipped")
     values = ",".join(f"0x{value:02x}" for value in gz)
     lines.append(f"const uint8_t {symbol}[] PROGMEM = {{{values}}};")
 lines.append("")
 lines.append("const WebAsset kWebAssets[] = {")
-for route, content_type, immutable, symbol, gz in assets:
+for route, content_type, immutable, symbol, gz, source in assets:
     flag = "true" if immutable else "false"
     lines.append(f'  {{"{route}", "{content_type}", {flag}, {symbol}, sizeof({symbol})}},')
 lines.append("};")

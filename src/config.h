@@ -12,6 +12,7 @@ enum Mode : uint8_t {
   kModeCountup   = 1,
   kModeClock     = 2,
   kModeFriday    = 3,
+  kModeTrading   = 4,
 };
 
 // Stores the station and fallback access-point credentials used to configure WiFi.
@@ -55,17 +56,24 @@ struct FridayConfig {
   uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
 };
 
+// Stores the counting format used for Trading-mode boundary countdowns.
+struct TradingConfig {
+  uint8_t format;  // Selected counting-format index.
+};
+
 // Keeps the physical device location separate from sunset-page test input.
 struct LocationConfig {
   LocationInfo device;      // Physical clock location used by Friday mode.
   LocationInfo sunsetTest;  // Independent Sunset Calculator test input.
 };
 
-// Stores configurable text shown by startup, completion, and Friday overlays.
+// Stores configurable text shown by startup, completion, and scheduled overlays.
 struct MessageConfig {
   char splash[64];        // Startup message shown on the displays.
   char final[64];         // Message shown when countdown reaches zero.
   char fridaySunset[64];  // Blinked when Friday sunset is crossed live.
+  char tradingOpen[64];   // Blinked when Trading mode reaches 09:30 live.
+  char tradingClose[64];  // Blinked when Trading mode reaches 16:00 live.
 };
 
 // Stores the local timezone identity and the numeric offset used by sunset math.
@@ -78,6 +86,7 @@ struct TimezoneConfig {
 struct ClockConfig {
   Mode activeMode;  // Persistent mode restored after any temporary overlay.
   FridayConfig friday;  // Friday-mode phase formats.
+  TradingConfig trading;  // Trading-mode countdown format.
   MessageConfig messages;  // User-configurable display messages.
   LocationConfig locations;  // Device and sunset-test coordinates.
   TimezoneConfig timezone;  // Local timezone and UTC offset.
@@ -102,7 +111,10 @@ public:
     ClockConfig loadClockConfig();
     bool        saveClockConfig(const ClockConfig& cfg);
     bool        saveConfig(const ClockConfig& clock, const WifiConfig& wifi);
-    ClockConfig sanitizeClockConfig(const ClockConfig& cfg) const;
+    // Sanitizes cfg in place. ClockConfig is ~450 bytes, and the web handlers
+    // that save/apply configs run on the ESP8266's 4KB cont stack - returning
+    // by value here stacked enough extra copies to overflow it.
+    void        sanitizeClockConfig(ClockConfig& cfg) const;
 
 private:
     bool ensureLoaded();

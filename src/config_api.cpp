@@ -23,7 +23,7 @@ constexpr uint32_t kRebootDelayMs = 1500;
 bool ConfigApi::parseJsonBody(JsonDocument& doc, const char* route) {
   DeserializationError err = deserializeJson(doc, server_.arg("plain"));
   if (err) {
-    LOG_PRINTF("%s failed: invalid JSON: %s\n", route, err.c_str());
+    LOG_PRINTF("%s failed: invalid JSON: %s", route, err.c_str());
     responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
     return false;
   }
@@ -71,19 +71,20 @@ void ConfigApi::handleSetMode() {
   Mode nextMode;
   const String mode = doc["mode"] | "";
   if (!modeFromName(mode, &nextMode)) {
-    LOG_PRINTF("/api/mode failed: invalid mode=\"%s\"\n", mode.c_str());
+    LOG_PRINTF("/api/mode failed: invalid mode=\"%s\"", mode.c_str());
     responder_.sendJson(400, "{\"error\":\"Invalid mode\"}");
     return;
   }
 
   ClockConfig cfg = configManager_.loadClockConfig();
   cfg.activeMode = nextMode;
+  configManager_.sanitizeClockConfig(cfg);
   if (!configManager_.saveClockConfig(cfg)) {
     LOG_PRINTLN("/api/mode failed: complete config write failed");
     responder_.sendJson(500, "{\"error\":\"Configuration write failed\"}");
     return;
   }
-  clockController_.applyConfig(configManager_.sanitizeClockConfig(cfg));
+  clockController_.applyConfig(cfg);
   responder_.sendJson(200, "{\"message\":\"Mode changed\"}");
 }
 
@@ -131,7 +132,7 @@ void ConfigApi::handleSaveConfig() {
   ClockConfig clockConfig = configManager_.loadClockConfig();
   const char* error = applyJsonToClockConfig(payload, clockConfig);
   if (error != nullptr) {
-    LOG_PRINTF("/api/config rejected clock settings: %s\n", error);
+    LOG_PRINTF("/api/config rejected clock settings: %s", error);
     responder_.sendJson(400, error);
     return;
   }
@@ -142,7 +143,8 @@ void ConfigApi::handleSaveConfig() {
     responder_.sendJson(500, "{\"error\":\"Configuration write failed\"}");
     return;
   }
-  clockController_.applyConfig(configManager_.sanitizeClockConfig(clockConfig));
+  configManager_.sanitizeClockConfig(clockConfig);
+  clockController_.applyConfig(clockConfig);
 
   if (wifiChanged) {
     responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
@@ -163,7 +165,7 @@ void ConfigApi::handleFieldMismatch() {
   sanitizePrintableText(doc["acceptedValue"] | "", acceptedValue, sizeof(acceptedValue));
   sanitizePrintableText(doc["reason"]        | "", reason,        sizeof(reason));
 
-  LOG_PRINTF("FIELD MISMATCH page=\"%s\" field=\"%s\" config=\"%s\" accepted=\"%s\" reason=\"%s\"\n",
+  LOG_PRINTF("FIELD MISMATCH page=\"%s\" field=\"%s\" config=\"%s\" accepted=\"%s\" reason=\"%s\"",
              page, field, configValue, acceptedValue, reason);
   responder_.sendJson(200, "{\"message\":\"logged\"}");
 }
@@ -171,7 +173,7 @@ void ConfigApi::handleFieldMismatch() {
 void ConfigApi::populateConfigJson(JsonDocument& doc) {
   const ClockConfig clockConfig = configManager_.loadClockConfig();
   const WifiConfig  wifiConfig  = configManager_.loadWifiConfig();
-  LOG_PRINTF("/api/config response: mode=%s brightness=%u staSsid=\"%s\"\n",
+  LOG_PRINTF("/api/config response: mode=%s brightness=%u staSsid=\"%s\"",
              modeName(clockConfig.activeMode),
              clockConfig.display.brightness,
              wifiConfig.staSsid.c_str());

@@ -32,7 +32,10 @@ window.onerror = function (msg, src, line) {
       if (url.indexOf('/api/') === 0 && !r.ok) fail(url, 'HTTP ' + r.status);
       return r;
     }, function (e) {
-      if (url.indexOf('/api/') === 0) fail(url, e && e.message ? e.message : 'network error');
+      // Deliberate client-side aborts (poll timeouts) are not device failures.
+      if (url.indexOf('/api/') === 0 && !(e && e.name === 'AbortError')) {
+        fail(url, e && e.message ? e.message : 'network error');
+      }
       throw e;
     });
   };
@@ -92,6 +95,19 @@ function apiPost(url, body) {
     body: JSON.stringify(body)
   });
 }
+
+// fetch that parses the body even on HTTP errors, so server-provided
+// {"error": ...} messages reach the caller instead of a bare status code.
+function jsonFetch(url, options) {
+  return fetch(url, options).then(function (r) {
+    return r.json().then(function (d) {
+      if (!r.ok && !d.error) d.error = 'HTTP ' + r.status;
+      return d;
+    });
+  });
+}
+
+function validZip(value) { return /^[0-9]{5}$/.test(value); }
 
 // Tell the device when a config value could not be represented in a form
 // field, so silent browser-side value rejection shows up in the serial log.

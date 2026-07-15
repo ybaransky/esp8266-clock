@@ -16,6 +16,8 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   messages["splash"]       = String(clock.messages.splash);
   messages["final"]        = String(clock.messages.final);
   messages["fridaySunset"] = String(clock.messages.fridaySunset);
+  messages["tradingOpen"]  = String(clock.messages.tradingOpen);
+  messages["tradingClose"] = String(clock.messages.tradingClose);
 
   JsonObject modes = display["modes"].to<JsonObject>();
 
@@ -34,6 +36,9 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   friday["clockFormat"]            = clock.friday.clockFmt;
   friday["toFridaySunsetFormat"]   = clock.friday.toFridaySunsetFmt;
   friday["toSaturdaySunsetFormat"] = clock.friday.toSaturdaySunsetFmt;
+
+  JsonObject trading = modes["trading"].to<JsonObject>();
+  trading["format"] = clock.trading.format;
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
   timezone["name"] = String(clock.timezone.name);
@@ -116,6 +121,11 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
         modes["friday"]["toSaturdaySunsetFormat"].as<int>(),
         cfg.friday.toSaturdaySunsetFmt);
   }
+  if (!modes["trading"]["format"].isNull()) {
+    cfg.trading.format = sanitizeFormatIndex(
+        kFmtGroupCountdown, modes["trading"]["format"].as<int>(),
+        cfg.trading.format);
+  }
   if (!display["brightness"].isNull()) {
     cfg.display.brightness = sanitizeBrightness(display["brightness"].as<int>());
   }
@@ -147,6 +157,16 @@ void applyMessageFields(JsonVariantConst messages, ClockConfig& cfg) {
     sanitizeDisplayMessage(messages["fridaySunset"].as<const char*>(),
                            cfg.messages.fridaySunset,
                            sizeof(cfg.messages.fridaySunset));
+  }
+  if (!messages["tradingOpen"].isNull()) {
+    sanitizeDisplayMessage(messages["tradingOpen"].as<const char*>(),
+                           cfg.messages.tradingOpen,
+                           sizeof(cfg.messages.tradingOpen));
+  }
+  if (!messages["tradingClose"].isNull()) {
+    sanitizeDisplayMessage(messages["tradingClose"].as<const char*>(),
+                           cfg.messages.tradingClose,
+                           sizeof(cfg.messages.tradingClose));
   }
 }
 

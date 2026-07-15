@@ -39,17 +39,6 @@ function showSubstatus(id, msg, isError) {
 }
 function setLookupStatus(msg, isError) { showSubstatus('st-lookup', msg, isError); }
 
-// Parses the body even on HTTP errors so server-provided messages are shown.
-function jsonFetch(url, options) {
-  return fetch(url, options).then(function (r) {
-    return r.json().then(function (d) {
-      d._httpStatus = r.status;
-      if (!r.ok && !d.error) d.error = 'HTTP ' + r.status;
-      return d;
-    });
-  });
-}
-
 api('/api/config').then(function (d) {
   var location = d.location || {};
   setFieldFromConfig('location', 'zip', 'location.zipcode', location.zipcode, location.zipcode || '');
@@ -75,7 +64,6 @@ function validNumber(value, min, max) {
   var n = parseFloat(value);
   return isFinite(n) && n >= min && n <= max;
 }
-function validZip(value) { return /^[0-9]{5}$/.test(value); }
 
 function computeZip() {
   var zip = $('zip').value;

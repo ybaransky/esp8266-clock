@@ -67,7 +67,7 @@ class FridayModeController {
         now, cachedFridaySunset_, cachedSaturdaySunset_, settings_);
 
     if (result.phase == currentPhase_) return;
-    LOG_PRINTF("friday mode: phase -> %s\n", fridayPhaseName(result.phase));
+    LOG_PRINTF("friday mode: phase -> %s", fridayPhaseName(result.phase));
 
     // Only a live kToFridaySunset -> kToSaturdaySunset crossing announces
     // sunset. Arriving at kToSaturdaySunset from kNone (boot or a config
@@ -111,7 +111,7 @@ class FridayModeController {
                        settings_.timezone.utcOffsetMinutes};
     cachedFridaySunset_   = calculateSunset(fridayDate,   loc);
     cachedSaturdaySunset_ = calculateSunset(saturdayDate, loc);
-    LOG_PRINTF("friday mode: recomputed sunsets for %04d-%02d-%02d\n",
+    LOG_PRINTF("friday mode: recomputed sunsets for %04d-%02d-%02d",
                fridayDate.year(), fridayDate.month(), fridayDate.day());
   }
 

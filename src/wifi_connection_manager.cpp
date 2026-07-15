@@ -14,6 +14,7 @@ constexpr uint16_t kStationConnectPollMs = 250;
 constexpr uint32_t kApClientIpTimeoutMs = 10000;
 
 WiFiEventHandler apStationConnectedHandler;
+WiFiEventHandler apStationDisconnectedHandler;
 WifiConnectionManager* gInstance = nullptr;
 
 bool isSecureNetwork(uint8_t encryptionType) {
@@ -26,6 +27,18 @@ void onApStationConnected(const WiFiEventSoftAPModeStationConnected& event) {
   if (gInstance) {
     gInstance->onApClientConnected(event.mac);
   }
+}
+
+void onApStationDisconnected(const WiFiEventSoftAPModeStationDisconnected& event) {
+  // Same deferral rule as onApStationConnected.
+  if (gInstance) {
+    gInstance->onApClientDisconnected(event.mac);
+  }
+}
+
+void formatMac(const uint8_t mac[6], char out[18]) {
+  snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 }  // namespace
@@ -43,7 +56,7 @@ void WifiConnectionManager::begin(const WifiConfig& config) {
   if (!config_.staSsid.isEmpty() &&
       tryStationConnect(config_.staSsid, config_.staPassword)) {
     mode_ = WifiMode::kStation;
-    LOG_PRINTF("STA \"%s\" connected  IP: %s\n",
+    LOG_PRINTF("STA \"%s\" connected  IP: %s",
                config_.staSsid.c_str(),
                WiFi.localIP().toString().c_str());
     return;
@@ -58,7 +71,27 @@ void WifiConnectionManager::onApClientConnected(const uint8_t* mac) {
   apClientConnectedPending_ = true;
 }
 
+void WifiConnectionManager::onApClientDisconnected(const uint8_t* mac) {
+  memcpy(apDisconnectedMac_, mac, 6);
+  apClientDisconnectedPending_ = true;
+}
+
 void WifiConnectionManager::tick() {
+  if (apClientDisconnectedPending_) {
+    apClientDisconnectedPending_ = false;
+    char mac[18];
+    formatMac(apDisconnectedMac_, mac);
+    // The station is already gone from the SDK's list, so its IP can only
+    // come from the mapping remembered at connect time.
+    if ((memcmp(apDisconnectedMac_, lastClientMac_, sizeof(lastClientMac_)) == 0) &&
+        lastClientIp_.isSet()) {
+      LOG_PRINTF("AP client disconnected  IP: %s  MAC: %s",
+                 lastClientIp_.toString().c_str(), mac);
+    } else {
+      LOG_PRINTF("AP client disconnected  MAC: %s", mac);
+    }
+  }
+
   if (!apClientConnectedPending_) return;
 
   station_info* station = wifi_softap_get_station_info();
@@ -67,7 +100,9 @@ void WifiConnectionManager::tick() {
     if (memcmp(current->bssid, apClientMac_, sizeof(apClientMac_)) != 0) continue;
     const IPAddress ip(current->ip);
     if (ip != IPAddress(0, 0, 0, 0)) {
-      LOG_PRINTF("AP client connected  IP: %s\n", ip.toString().c_str());
+      LOG_PRINTF("AP client connected  IP: %s", ip.toString().c_str());
+      memcpy(lastClientMac_, apClientMac_, sizeof(lastClientMac_));
+      lastClientIp_ = ip;
       apClientConnectedPending_ = false;
     }
     break;
@@ -136,7 +171,7 @@ bool WifiConnectionManager::connectAndSave(ConfigManager& configManager,
 }
 
 bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& password) {
-  LOG_PRINTF("Connecting to STA \"%s\"...\n", ssid.c_str());
+  LOG_PRINTF("Connecting to STA \"%s\"...", ssid.c_str());
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid.c_str(), password.c_str());
 
@@ -150,7 +185,7 @@ bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& 
     return true;
   }
 
-  LOG_PRINTF("STA connect failed, status=%d\n", static_cast<int>(WiFi.status()));
+  LOG_PRINTF("STA connect failed, status=%d", static_cast<int>(WiFi.status()));
   WiFi.disconnect();
   return false;
 }
@@ -184,7 +219,7 @@ uint8_t WifiConnectionManager::pickLeastCongestedChannel() {
   for (size_t c = 1; c < 3; ++c) {
     if (scores[c] < scores[best]) best = c;
   }
-  LOG_PRINTF("AP channel survey (%d networks): ch1=%ld ch6=%ld ch11=%ld -> channel %u\n",
+  LOG_PRINTF("AP channel survey (%d networks): ch1=%ld ch6=%ld ch11=%ld -> channel %u",
              count,
              static_cast<long>(scores[0]),
              static_cast<long>(scores[1]),
@@ -218,10 +253,12 @@ void WifiConnectionManager::startAccessPoint() {
     yield();
   }
 
-  LOG_PRINTF("AP \"%s\" started  IP: %s\n",
+  LOG_PRINTF("AP \"%s\" started  IP: %s",
              config_.apSsid.c_str(),
              WiFi.softAPIP().toString().c_str());
 
   apStationConnectedHandler =
       WiFi.onSoftAPModeStationConnected(onApStationConnected);
+  apStationDisconnectedHandler =
+      WiFi.onSoftAPModeStationDisconnected(onApStationDisconnected);
 }

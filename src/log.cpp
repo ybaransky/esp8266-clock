@@ -1,5 +1,6 @@
 #include "log.h"
 
+#include <cont.h>
 #include <string.h>
 
 namespace {
@@ -55,4 +56,8 @@ const char* logCurrentTime() {
 
 void logSetTimeProvider(LogTimeProvider provider) {
   timeProvider = provider;
+}
+
+unsigned logStackUsed() {
+  return static_cast<unsigned>(CONT_STACKSIZE - ESP.getFreeContStack());
 }
