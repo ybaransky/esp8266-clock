@@ -48,6 +48,9 @@ struct FormatSpec {
 using S = Shape;
 using F = Field;
 
+// panel[0] is the leftmost panel, panel[2] is the rightmost panel. The
+// label is a human-readable representation of the format, but it is not
+// machine-parsed. The panel shapes are the only source of truth for rendering.
 // RefreshRate and ColonAnimation are derived from the panel shapes
 // (kColonTenths / kColonBlink), so a row's metadata can never drift from what
 // it renders. The hhh:mm overflow fallback is resolved semantically in
@@ -140,8 +143,8 @@ const char* dayOfWeekAbbreviation(int dayOfWeek) {
   return dayOfWeek >= 0 && dayOfWeek < 7 ? kNames[dayOfWeek] : "   ";
 }
 
-// Right-packed value + unit letter. The label hugs the value and is dropped
-// entirely when the value needs all four digits: " 5 d", "45 d", "456d", "4567".
+// Right-packed value + unit letter. The label is dropped entirely once the
+// value reaches three digits: " 5 d", "45 d", " 456", "4567".
 void formatLabeled(char* out, int value, char label, bool blankIfZero) {
   value = constrain(value, 0, 9999);
   if (blankIfZero && (value == 0)) {
@@ -150,8 +153,6 @@ void formatLabeled(char* out, int value, char label, bool blankIfZero) {
     snprintf(out, kDisplayFramePanelSize, " %d %c", value, label);
   } else if (value < 100) {
     snprintf(out, kDisplayFramePanelSize, "%2d %c", value, label);
-  } else if (value < 1000) {
-    snprintf(out, kDisplayFramePanelSize, "%3d%c", value, label);
   } else {
     snprintf(out, kDisplayFramePanelSize, "%4d", value);
   }
