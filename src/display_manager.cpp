@@ -15,6 +15,7 @@ constexpr uint32_t kColonBlinkMs = 1000;
 constexpr uint32_t kSplashDurationMs = 5000;
 constexpr uint32_t kDemoCountdownMs = 5000;
 constexpr uint32_t kDemoMessageMs = 5000;
+constexpr long kLongRangeSeconds = 24L * 3600L;
 
 DateTime parseDateTime(const char* s) {
   int y = 2000, mo = 1, d = 1, h = 0, mi = 0, sec = 0;
@@ -228,6 +229,7 @@ ViewState DisplayManager::viewForMode(Mode mode) const {
       state.view = View::kCountdown;
       state.anchor = rtc_.getNowCached() + TimeSpan(1);
       state.formatIndex = settings_.trading.format;
+      state.longFormatIndex = settings_.trading.formatOver24;
       break;
   }
 
@@ -327,6 +329,20 @@ void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
       : parseDateTime(config.countup.start);
 }
 
+// Selects the counting format for the base view's current duration. Evaluated
+// fresh on every render (and for the render cadence), so the display switches
+// to the long-range format at >= 24h remaining/elapsed and reverts on its own
+// the moment the duration drops below 24h - no crossing state is kept.
+uint8_t DisplayManager::activeCountingFormatIndex() const {
+  if (baseView_.longFormatIndex == kSameFormat) return baseView_.formatIndex;
+  const long nowUnix = static_cast<long>(rtc_.getNowCached().unixtime());
+  const long anchorUnix = static_cast<long>(baseView_.anchor.unixtime());
+  const long secs = (baseView_.view == View::kCountup) ? (nowUnix - anchorUnix)
+                                                       : (anchorUnix - nowUnix);
+  return (secs >= kLongRangeSeconds) ? baseView_.longFormatIndex
+                                     : baseView_.formatIndex;
+}
+
 uint32_t DisplayManager::refreshInterval() const {
   if (hasOverlay()) {
     switch (overlay_.overlay) {
@@ -344,13 +360,13 @@ uint32_t DisplayManager::refreshInterval() const {
 
   switch (baseView_.view) {
     case View::kCountdown:
-      return displayFormatInfo(kFmtGroupCountdown, baseView_.formatIndex).refreshRate ==
-                     RefreshRate::kOneTenth
+      return displayFormatInfo(kFmtGroupCountdown, activeCountingFormatIndex())
+                     .refreshRate == RefreshRate::kOneTenth
                  ? kTenthMs
                  : kSecondMs;
     case View::kCountup:
-      return displayFormatInfo(kFmtGroupCountUp, baseView_.formatIndex).refreshRate ==
-                     RefreshRate::kOneTenth
+      return displayFormatInfo(kFmtGroupCountUp, activeCountingFormatIndex())
+                     .refreshRate == RefreshRate::kOneTenth
                  ? kTenthMs
                  : kSecondMs;
     case View::kClock:
@@ -416,7 +432,7 @@ void DisplayManager::renderClock(uint32_t nowMs, bool force) {
 void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const uint8_t formatIndex = baseView_.formatIndex;
+  const uint8_t formatIndex = activeCountingFormatIndex();
   const DateTime now = rtc_.getNowCached();
   const long secs = static_cast<long>(baseView_.anchor.unixtime()) -
                     static_cast<long>(now.unixtime());
@@ -446,7 +462,7 @@ void DisplayManager::renderCountdown(uint32_t nowMs, bool force) {
 void DisplayManager::renderCountup(uint32_t nowMs, bool force) {
   if (!renderElapsed(nowMs, force)) return;
 
-  const uint8_t formatIndex = baseView_.formatIndex;
+  const uint8_t formatIndex = activeCountingFormatIndex();
   const DateTime now = rtc_.getNowCached();
   const long secs = static_cast<long>(now.unixtime()) -
                     static_cast<long>(baseView_.anchor.unixtime());

@@ -52,6 +52,7 @@
   <h3>Trading Countdown</h3>
   <p>Counts down to the next weekday 9:30am open or 4:00pm close Eastern time, whichever is closest.</p>
   <label>Format<select id="ftrade"></select></label>
+  <label>Format over 24h (e.g. weekends)<select id="ftrade24"></select></label>
 </div>
 
 <div id="hours" class="choices">
@@ -90,6 +91,18 @@ function options(id, labels, selected) {
     el.appendChild(o);
   });
   el.value = selected == null ? 0 : selected;
+}
+
+// Matches kSameFormat in config.h: no secondary format selected.
+var SAME_FORMAT = 255;
+function optionsWithSame(id, labels, selected) {
+  options(id, labels, selected);
+  var el = $(id);
+  var o = document.createElement('option');
+  o.value = SAME_FORMAT;
+  o.textContent = 'Same as normal format';
+  el.insertBefore(o, el.firstChild);
+  el.value = selected == null ? SAME_FORMAT : selected;
 }
 
 // Config stores "YYYY-MM-DD hh:mm:ss" (or "now"); datetime-local wants a "T".
@@ -131,6 +144,7 @@ api('/api/formats').catch(function (e) {
   options('ffri', formats.countdown, fri.toFridaySunsetFormat);
   options('fsat', formats.countdown, fri.toSaturdaySunsetFormat);
   options('ftrade', formats.countdown, trading.format);
+  optionsWithSame('ftrade24', formats.countdown, trading.formatOver24);
   $('mode').value = {
     countdown: 0, countup: 1, clock: 2, friday: 3, trading: 4
   }[display.activeMode] || 0;
@@ -159,7 +173,10 @@ function save() {
           toFridaySunsetFormat: +$('ffri').value,
           toSaturdaySunsetFormat: +$('fsat').value
         },
-        trading: { format: +$('ftrade').value }
+        trading: {
+          format: +$('ftrade').value,
+          formatOver24: +$('ftrade24').value
+        }
       }
     }
   };

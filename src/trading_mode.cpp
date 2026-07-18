@@ -37,7 +37,7 @@ uint8_t daysUntilNextTradingDay(uint8_t dayOfWeek) {
 }
 
 TradingScheduleResult evaluateTradingSchedule(const DateTime& now,
-                                               uint8_t formatIndex) {
+                                               const TradingConfig& formats) {
   TradingScheduleResult result;
   const DateTime today(now.year(), now.month(), now.day(), 0, 0, 0);
   const uint32_t todayUnix = today.unixtime();
@@ -48,20 +48,21 @@ TradingScheduleResult evaluateTradingSchedule(const DateTime& now,
 
   if (isTradingWeekday(dayOfWeek) && (nowUnix < open.unixtime())) {
     result.phase = TradingPhase::kToOpen;
-    result.view = {View::kCountdown, open, formatIndex};
+    result.view = {View::kCountdown, open, formats.format, formats.formatOver24};
     return result;
   }
 
   if (isTradingWeekday(dayOfWeek) && (nowUnix < close.unixtime())) {
     result.phase = TradingPhase::kToClose;
-    result.view = {View::kCountdown, close, formatIndex};
+    result.view = {View::kCountdown, close, formats.format, formats.formatOver24};
     return result;
   }
 
   const uint8_t daysAhead = daysUntilNextTradingDay(dayOfWeek);
   const DateTime nextOpen(todayUnix + daysAhead * kSecondsPerDay + kOpenSeconds);
   result.phase = TradingPhase::kToOpen;
-  result.view = {View::kCountdown, nextOpen, formatIndex};
+  result.view = {View::kCountdown, nextOpen, formats.format,
+                 formats.formatOver24};
   return result;
 }
 
@@ -90,7 +91,7 @@ class TradingModeController {
     if (settings_.activeMode != kModeTrading) return;
 
     const TradingScheduleResult result =
-        evaluateTradingSchedule(now, settings_.trading.format);
+        evaluateTradingSchedule(now, settings_.trading);
     const uint32_t targetUnix = result.view.anchor.unixtime();
     if ((result.phase == currentPhase_) &&
         (targetUnix == currentTargetUnix_)) return;

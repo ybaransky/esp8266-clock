@@ -5,6 +5,9 @@
 
 static constexpr int32_t kForever = INT32_MAX;
 
+// Sentinel for optional secondary format indexes: use the primary format.
+static constexpr uint8_t kSameFormat = 0xFF;
+
 // Persistent setting selected by the user. This is distinct from the
 // currently rendered View and any temporary Overlay (see display_manager.h).
 enum Mode : uint8_t {
@@ -56,9 +59,10 @@ struct FridayConfig {
   uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
 };
 
-// Stores the counting format used for Trading-mode boundary countdowns.
+// Stores the counting formats used for Trading-mode boundary countdowns.
 struct TradingConfig {
-  uint8_t format;  // Selected counting-format index.
+  uint8_t format;        // Selected counting-format index.
+  uint8_t formatOver24;  // Format while >= 24h remain; kSameFormat = use format.
 };
 
 // Keeps the physical device location separate from sunset-page test input.

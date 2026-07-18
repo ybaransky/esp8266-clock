@@ -25,6 +25,7 @@ ClockConfig defaultClockConfig() {
     s.friday.toFridaySunsetFmt    = 0;
     s.friday.toSaturdaySunsetFmt  = 0;
     s.trading.format              = 0;
+    s.trading.formatOver24        = kSameFormat;
     s.display.brightness = 3;
     snprintf(s.countdown.end, sizeof(s.countdown.end), "%s", kDefaultCountdownDatetime);
     snprintf(s.countup.start, sizeof(s.countup.start), "%s", kDefaultCountupDatetime);

@@ -54,6 +54,14 @@ uint8_t sanitizeFormatIndex(FormatGroup group, int rawIndex, uint8_t fallback) {
   return index < displayFormatCount(group) ? index : fallback;
 }
 
+uint8_t sanitizeOptionalFormatIndex(FormatGroup group, int rawIndex,
+                                    uint8_t fallback) {
+  if ((rawIndex == kSameFormat) || (rawIndex == -1)) {
+    return kSameFormat;
+  }
+  return sanitizeFormatIndex(group, rawIndex, fallback);
+}
+
 uint8_t sanitizeBrightness(int rawBrightness) {
   return static_cast<uint8_t>(constrain(rawBrightness, 0, 7));
 }

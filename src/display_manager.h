@@ -45,6 +45,8 @@ struct ViewState {
   View view = View::kClock;  // Kind of base content to render.
   DateTime anchor;          // Countdown: end time. Countup: start time. Clock: unused.
   uint8_t formatIndex = 0;  // Index into the view's format table.
+  uint8_t longFormatIndex = kSameFormat;  // Counting format while the duration
+                                          // is >= 24h; kSameFormat disables.
 };
 
 // Short lowercase name for logging (e.g. "clock", "countdown").
@@ -159,6 +161,7 @@ class DisplayManager {
   void startDemoMessageOverlay(uint32_t nowMs);
 
   void updateCountupOrigin(const ClockConfig& config);
+  uint8_t activeCountingFormatIndex() const;
   uint32_t refreshInterval() const;
   bool renderElapsed(uint32_t nowMs, bool force = false);
   bool overlayExpired(uint32_t nowMs) const;

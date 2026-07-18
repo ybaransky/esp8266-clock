@@ -39,6 +39,7 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
 
   JsonObject trading = modes["trading"].to<JsonObject>();
   trading["format"] = clock.trading.format;
+  trading["formatOver24"] = clock.trading.formatOver24;
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
   timezone["name"] = String(clock.timezone.name);
@@ -125,6 +126,11 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
     cfg.trading.format = sanitizeFormatIndex(
         kFmtGroupCountdown, modes["trading"]["format"].as<int>(),
         cfg.trading.format);
+  }
+  if (!modes["trading"]["formatOver24"].isNull()) {
+    cfg.trading.formatOver24 = sanitizeOptionalFormatIndex(
+        kFmtGroupCountdown, modes["trading"]["formatOver24"].as<int>(),
+        cfg.trading.formatOver24);
   }
   if (!display["brightness"].isNull()) {
     cfg.display.brightness = sanitizeBrightness(display["brightness"].as<int>());

@@ -127,7 +127,7 @@ The display system has four layers:
 
 3. **`display_manager.h/cpp`** - application-owned `DisplayManager`; the single entry point for all display state.
    - The model: the persisted **Mode** resolves to a base **View** (`View::kClock/kCountdown/kCountup` - what content is currently rendered), optionally covered by a temporary **Overlay** (`Overlay::kDemo/kMessage/kPagedMessage`).
-   - `ViewState` is a plain struct: `{view, anchor, formatIndex}`. `anchor` is the countdown end time or countup start time; unused for clock. No unions.
+   - `ViewState` is a plain struct: `{view, anchor, formatIndex, longFormatIndex}`. `anchor` is the countdown end time or countup start time; unused for clock. No unions. `longFormatIndex` (default `kSameFormat` = disabled) selects an alternate counting format while the remaining/elapsed duration is >= 24h; `activeCountingFormatIndex()` resolves it fresh on every render (and for the refresh cadence), so the display reverts to `formatIndex` on its own when the duration drops below 24h - no crossing state is kept.
    - `OverlayState` is a plain struct: `{overlay, blink, chainFinalMessage, message[64], paged, transition}`. `chainFinalMessage` makes an expiring overlay chain into the blinking final message (the demo's second phase) instead of restoring the base view.
    - `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`, and `setBrightness()`.
    - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `FridayModeController` to switch phases.
@@ -158,6 +158,7 @@ The display system has four layers:
 ### Trading Mode
 - **`trading_mode.h/cpp`** owns the weekday 09:30-open / 16:00-close schedule and uses the RTC value as Eastern local wall-clock time.
 - Trading mode always installs `View::kCountdown` through `DisplayManager::setView()`; it reuses the counting format catalog and never adds a separate view or renderer.
+- `trading.formatOver24` (persisted; `kSameFormat`/255 = disabled) is passed to `ViewState.longFormatIndex` so weekend/overnight countdowns over 24h can render with a days-bearing format while the regular `trading.format` takes over below 24h.
 - Before 09:30 on a weekday it counts down to that opening; during trading hours it counts down to 16:00; after close and on weekends it counts down to the next weekday opening. Holidays and early closes are not modeled.
 - Boundary announcements follow the Friday-mode pattern: a live open-to-close phase crossing first installs the 16:00 countdown, then blinks `messages.tradingOpen` for 5s; a live close-to-open crossing installs the next opening countdown, then blinks `messages.tradingClose` for 5s.
 - Boot, config reload, and browser time synchronization reset the remembered Trading phase to `kNone`, and a crossing from `kNone` never announces - so those events cannot synthesize an open/close message.
