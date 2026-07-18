@@ -56,20 +56,22 @@ using F = Field;
 // it renders. The hhh:mm overflow fallback is resolved semantically in
 // resolveCountingOverflow(); no hardcoded indices.
 const FormatSpec kCountingFormats[] = {
-  {"dd D |  hh:mm |  ss:u", {{S::kLabel, F::kDays},           {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"dd D |  hh:mm |    ss", {{S::kLabel, F::kDays},           {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {"dd D |  hh  H | mm:ss", {{S::kLabel, F::kDays},           {S::kLabel, F::kHours},                   {S::kColon, F::kMinutes, F::kSeconds}}},
-  {"dd D |  hh  H |  mm N", {{S::kLabel, F::kDays},           {S::kLabel, F::kHours},                   {S::kLabel, F::kMinutes}}},
-  {"  dd |  hh:mm |  ss:u", {{S::kNumber, F::kDays},          {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"  dd |  hh:mm |    ss", {{S::kNumber, F::kDays},          {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {"  dd |     hh | mm:ss", {{S::kNumber, F::kDays},          {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
-  {"  dd |     hh |    mm", {{S::kNumber, F::kDays},          {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
-  {"hh H |   mm N |  ss:u", {{S::kLabel, F::kHours},          {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"hh H |   mm N |    ss", {{S::kLabel, F::kHours},          {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
-  {" hhh |     mm |  ss:u", {{S::kNumber, F::kTotalHours},    {S::kNumber, F::kMinutes},                {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {" hhh |     mm |    ss", {{S::kNumber, F::kTotalHours},    {S::kNumber, F::kMinutes},                {S::kNumber, F::kSeconds}}},
-  {"     | hhh:mm |  ss:u", {{S::kBlank},                     {S::kColon, F::kTotalHours, F::kMinutes}, {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"     | hhh:mm |    ss", {{S::kBlank},                     {S::kColon, F::kTotalHours, F::kMinutes}, {S::kNumber, F::kSeconds}}},
+  {" dd D |  hh:mm |  ss:u", {{S::kLabel, F::kDays},        {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {" dd D |  hh:mm |    ss", {{S::kLabel, F::kDays},        {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+  {" dd D |  hh  H | mm:ss", {{S::kLabel, F::kDays},        {S::kLabel, F::kHours},                   {S::kColon, F::kMinutes, F::kSeconds}}},
+  {" dd D |  hh  H |  mm N", {{S::kLabel, F::kDays},        {S::kLabel, F::kHours},                   {S::kLabel, F::kMinutes}}},
+  {"   dd |  hh:mm |  ss:u", {{S::kNumber, F::kDays},       {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"   dd |  hh:mm |    ss", {{S::kNumber, F::kDays},       {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+  {"   dd |     hh | mm:ss", {{S::kNumber, F::kDays},       {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
+  {"   dd |     hh |    mm", {{S::kNumber, F::kDays},       {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
+  {" hh H |   mm N |  ss:u", {{S::kLabel, F::kHours},       {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {" hh H |   mm N |    ss", {{S::kLabel, F::kHours},       {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
+  {"hhh H |   mm N |  ss:u", {{S::kLabel, F::kTotalHours},  {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"hhh H |   mm N |    ss", {{S::kLabel, F::kTotalHours},  {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
+  {"  hhh |     mm |  ss:u", {{S::kNumber, F::kTotalHours}, {S::kNumber, F::kMinutes},                {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"  hhh |     mm |    ss", {{S::kNumber, F::kTotalHours}, {S::kNumber, F::kMinutes},                {S::kNumber, F::kSeconds}}},
+  {"      | hhh:mm |  ss:u", {{S::kBlank},                  {S::kColon, F::kTotalHours, F::kMinutes}, {S::kColonTenths, F::kSeconds, F::kTenths}}},
+  {"      | hhh:mm |    ss", {{S::kBlank},                  {S::kColon, F::kTotalHours, F::kMinutes}, {S::kNumber, F::kSeconds}}},
 };
 
 const FormatSpec kClockFormats[] = {
@@ -132,6 +134,7 @@ char labelFor(Field field) {
   switch (field) {
     case Field::kDays: return 'd';
     case Field::kHours: return 'h';
+    case Field::kTotalHours: return 'h';
     case Field::kMinutes: return 'n';
     default: return ' ';
   }
