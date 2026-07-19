@@ -9,6 +9,7 @@
 #include "page_manager.h"
 #include "rtc_ds3231.h"
 #include "wifi_connection_manager.h"
+#include "web_server.h"
 
 // Owns the firmware services and coordinates their startup and per-loop work.
 class ClockApplication {
@@ -29,6 +30,7 @@ class ClockApplication {
   ConfigManager configManager_;  // Persistent clock and WiFi configuration.
   PageManager pageManager_;  // Builds paged button-information overlays.
   WifiConnectionManager wifiConnectionManager_;  // Station/AP network lifecycle.
+  WebPortal webPortal_;  // HTTP and captive-portal DNS service.
   uint32_t lastRtcHealthCheckMs_ = 0;  // Last RTC health-poll time.
   bool rtcWasHealthy_ = true;  // Health state used to detect RTC transitions.
   Mode lastLoggedMode_ = kModeClock;  // Mode in the last transition log.

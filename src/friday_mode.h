@@ -2,18 +2,34 @@
 
 #include <RTClib.h>
 #include "config.h"
+#include "schedule.h"
+#include "sunset_calculator.h"
 
 class DisplayManager;
 
-// Called by ClockController whenever the applied clock configuration changes.
-void fridayModeApplySettings(const ClockConfig& config);
+// Snapshot of only the configuration fields the Friday schedule consumes.
+// Copied from ClockConfig by applySettings() to avoid holding the full config.
+struct FridaySettings {
+  Mode activeMode = kModeClock;  // Gates ticking to kModeFriday.
+  FridayConfig formats{};  // Format index for each Friday phase.
+  Location location{};  // Device coordinates and UTC offset for sunset math.
+  char sunsetMessage[64] = "";  // Blinked on a live Friday-sunset crossing.
+};
 
-// Forces sunset targets to be recomputed on the next tick.
-// Called after RtcService::setNow() so a time change is reflected immediately.
-void fridayModeResetSunsetCache();
+// Computes Friday phases, caches weekly sunsets, and pushes view transitions.
+class FridayModeController {
+ public:
+  void applySettings(const ClockConfig& config);
+  void resetSunsetCache();
+  void tick(const DateTime& now, DisplayManager& displayManager);
 
-// Called every real RTC second (on each SQW pulse, via rtcConsumeSqwPulse())
-// from the main loop. Self-gates: does nothing unless
-// activeMode == kModeFriday, and short-circuits when the phase hasn't
-// changed since the last call.
-void fridayModeTick(const DateTime& now, DisplayManager& displayManager);
+ private:
+  static DateTime fridayDateFor(const DateTime& now);
+  void refreshSunsetCacheIfNeeded(const DateTime& now);
+
+  FridayPhase currentPhase_ = FridayPhase::kNone;  // Last phase applied.
+  FridaySettings settings_;  // Friday-relevant settings snapshot.
+  DateTime cachedFridayDate_;  // Reference Friday; invalid until first tick.
+  DateTime cachedFridaySunset_;  // Cached local Friday sunset.
+  DateTime cachedSaturdaySunset_;  // Cached local Saturday sunset.
+};

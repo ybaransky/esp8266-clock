@@ -94,7 +94,7 @@ There are no automated tests. Validation is done by flashing the firmware and ob
   - SQW processing uses `beginSqwProcessing()` and `consumeSqwPulse()`. Gate time-sensitive per-second logic on the latter.
   - `isLogIntervalDue()` is only for pacing the periodic log line and cache resync; never gate transitions on it.
   - `getNowCached()` provides second-resolution time at zero I2C cost and is required on the display-render path.
-  - `rtcIsHealthy()`: RTC present and SQW pulse arriving on schedule. Drives the "no rtc" overlay in `main.cpp`.
+  - `isHealthy()`: RTC present and SQW pulse arriving on schedule. Drives the "no rtc" overlay in `clock_application.cpp`.
   - `msIntoSecond(nowMs)` is clamped to 0-999 and phase-locked to the ISR timestamp. Never compute tenths from `millis() % 1000` directly.
 - For fatal exception debugging, keep exception decoding enabled and include decoded stack traces in reports.
 
@@ -107,31 +107,33 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 - Each macro call emits exactly one line and appends the terminating newline itself, so **formats must not end with `\n`**.
 
 ### Display / mode architecture
-The display system has four layers:
+The display system is layered as follows:
 
 1. **`display_format.h/cpp`** - the clock/counting format catalog and pure renderers (no I/O).
    - `config.h` owns the persisted `Mode` enum. `display_format.h` owns `FormatGroup`, `DisplayFormatInfo`, `displayFormatCount()`, `displayFormatInfo()`, `renderCountingFormat()`, and `renderClockFormat()`.
-   - The **single source of truth** is in `display_format.cpp`: each `FormatSpec` pairs its UI label, `RefreshRate`, and `ColonAnimation` with three direct panel-renderer functions and an optional explicit overflow fallback. Keep the scheduling metadata consistent with those renderers.
+   - The **single source of truth** is in `display_format.cpp`: each `FormatSpec` is `{label, PanelSpec panels[3]}`, where a `PanelSpec` is a declarative `{Shape, Field a, Field b}` triple (e.g. `kColon` + `kHours`/`kMinutes`). The label is human-readable only; the panel shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are **derived** from the panel shapes (`kColonTenths` / `kColonBlink`), so a row's scheduling metadata can never drift from what it renders.
    - Countdown and CountUp share `kCountingFormats`; the two modes cannot drift apart.
-   - `renderCountingFormat()` and `renderClockFormat()` return a complete `DisplayFrame`. Each catalog panel calls a small reusable `PanelRenderer` directly; there is no enum/switch interpreter.
+   - `renderCountingFormat()` and `renderClockFormat()` return a complete `DisplayFrame` by interpreting the panel shapes in `renderPanels()`.
    - Label tokens: counting uses `dd`/`hh`/`mm`/`ss`/`u` (tenths) and `hhh` (total hours = days*24+hours); clock uses `YYYY`/`MM`/`DD`/`DOW`/`hh`/`mm`/`ss`/`u`. `H` and `N` are labels rendered as lowercase `h`/`n`; `DOW` renders Sun/non/tu/uEd/thu/Fri/Sat (7-segment-safe forms).
-   - A semicolon in a clock label (`hh;mm`) marks a blinking colon; its `FormatSpec` uses `renderBlinkingHourMinute` and `ColonAnimation::kBlinking`. Fixed or absent colons use `ColonAnimation::kNone` because they require no animation scheduling.
-   - `hhh:mm` combined on one panel only works through 99:59; above 99 hours its `FormatSpec::overflowFallback` explicitly selects the matching split `hhh | mm` variant.
+   - A semicolon in a clock label (`hh;mm`) marks a blinking colon; its panel uses `Shape::kColonBlink`, which is what makes the format report `ColonAnimation::kBlinking`. Fixed or absent colons report `ColonAnimation::kNone` because they require no animation scheduling.
+   - `hhh:mm` combined on one panel only works through 99:59; above 99 hours `resolveCountingOverflow()` semantically selects the matching split `hhh | mm` variant (same seconds panel) - no hardcoded indices.
+   - Counting formats hide leading zero panels via `suppressLeadingZeroPanels()`: panel 0 blanks when zero, panel 1 only when panel 0 is already blank; the last panel always renders.
    - Numeric-only panels are right-justified across the four characters (`7` renders as `"   7"`). For colon formats, the value left of the colon is blank-padded, not zero-padded (` 9:05`). When a blinking colon is off, the time renders without a separator (` 905`) so all digits remain visible.
 
 2. **`display.h/cpp`** - `ClockApplication` owns `SegmentDisplay`, which wraps 3 `TM1637Display` objects and is attached to `DisplayManager` during startup.
-   - `begin(brightness)`, `setBrightness(0-7)`, `showPanels(r1, r2, r3)`, `blank()`.
+   - `begin(brightness)`, `setBrightness(0-7)`, `showFrame(frame)` (takes the 3-panel `DisplayFrame` from `display.h`), `blank()`.
    - Panel strings use `:` or `;` between the second and third visible slots as non-consuming markup for the panel's center colon. This hardware has no decimal points; `.` has no special rendering behavior.
    - Caches last-written segments per panel; skips hardware write on identical content.
    - ASCII-to-segment glyph mapping lives in `display.cpp` as `ASCII_SEGMENTS`; adjust that table when a letter does not display well on 7-segment hardware.
 
 3. **`display_manager.h/cpp`** - application-owned `DisplayManager`; the single entry point for all display state.
-   - The model: the persisted **Mode** resolves to a base **View** (`View::kClock/kCountdown/kCountup` - what content is currently rendered), optionally covered by a temporary **Overlay** (`Overlay::kDemo/kMessage/kPagedMessage`).
+   - The model: the persisted **Mode** resolves to a base **View** (`View::kClock/kCountdown/kCountup` - what content is currently rendered), optionally covered by a temporary **Overlay**. Explicit overlay phases distinguish splash, blinking message, countdown completion, demo countdown/final message, and pages.
    - `ViewState` is a plain struct: `{view, anchor, formatIndex, longFormatIndex}`. `anchor` is the countdown end time or countup start time; unused for clock. No unions. `longFormatIndex` (default `kSameFormat` = disabled) selects an alternate counting format while the remaining/elapsed duration is >= 24h; `activeCountingFormatIndex()` resolves it fresh on every render (and for the refresh cadence), so the display reverts to `formatIndex` on its own when the duration drops below 24h - no crossing state is kept.
-   - `OverlayState` is a plain struct: `{overlay, blink, chainFinalMessage, message[64], paged, transition}`. `chainFinalMessage` makes an expiring overlay chain into the blinking final message (the demo's second phase) instead of restoring the base view.
+   - `OverlayState` is a plain struct: `{overlay, message[64], paged, transition}`. Behavior is explicit in the `Overlay` value instead of boolean flag combinations; unused fields are ignored.
    - `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`, and `setBrightness()`.
    - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `FridayModeController` to switch phases.
-   - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = FOREVER)`, `showPages(pages, count, ...)`, `clearOverlay()`.
+   - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = kForever)`, `showPages(pages, count, ...)`, `clearOverlay()`.
+   - Overlay frames come from **`display_renderer.h/cpp`**: pure functions (`renderDemoDisplayFrame`, `renderMessageDisplayFrame`, `renderPageDisplayFrame`) that convert explicit data into a `DisplayFrame` with no I/O or scheduling.
    - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday and Trading modes update their views over time.
    - Clock colon blink toggles once per second (2-second full cycle); message/page blinking uses its own 500ms cadence. `DisplayFormatInfo::refreshRate` selects 100ms for tenths formats and 1s for the others.
    - Tenths values come from the injected RTC service's `msIntoSecond(nowMs)`, not `millis() % 1000`. `notifySecondBoundary()` invalidates the render throttle on each accepted SQW pulse. Demo tenths remain deadline-derived.
@@ -144,19 +146,20 @@ The display system has four layers:
  - This needs an accurate sunset calcualtor. I use https://github.com/jpb10/SolarCalculator.git calculator. NASA's calculator is at https://github.com/jpb10/SolarCalculator.git
  - **`sunset_calculator.h/cpp`**: `calculateSunset(localDate, location)` - uses SolarCalculator to return a `DateTime` for local sunset given a `Location` (lat/lon/UTC offset).
   - SolarCalculator returns UTC hours. The code derives the UTC calculation date from the requested local sunset date by anchoring at 18:00 local, converts the returned UTC sunset to a UTC `DateTime`, then applies `utcOffsetMinutes` once to return local time.
-- **`friday_mode.h/cpp`**: `FridayModeController` (internal singleton). Public API: `fridayModeApplySettings(config)`, `fridayModeTick(now)`, `fridayModeResetSunsetCache()`.
-- `fridayModeTick()` is called once per SQW second from `main.cpp`; self-gates - does nothing unless `activeMode == kModeFriday`, and short-circuits when the phase hasn't changed.
-- Phase logic (all times local, derived from `locations.device` + `timezone.utcOffsetMinutes`):
-  - **Clock phase**: Saturday sunset through Thursday midnight; also the default.
-  - **To Friday sunset**: Thursday midnight → Friday sunset.
+- **`schedule.h/cpp`** owns pure, Arduino-independent Friday/Trading boundary calculations and is covered by the native test environment.
+- **`friday_mode.h/cpp`**: application-owned `FridayModeController`; `ClockController` calls `applySettings()`, `tick(now, displayManager)`, and `resetSunsetCache()`.
+- `FridayModeController::tick()` is called once per SQW second by `ClockController`; it self-gates unless `activeMode == kModeFriday` and short-circuits when the phase is unchanged.
+- Phase logic (all times local, derived from `locations.device` + `timezone.utcOffsetMinutes`; `fridayDateFor(now)` anchors on midnight of the most recent Friday and only advances on Friday itself):
+  - **Clock phase**: Saturday sunset through Friday midnight; also the default.
+  - **To Friday sunset**: Friday midnight → Friday sunset.
   - **To Saturday sunset**: Friday sunset → Saturday sunset.
 - Each phase transition receives the application-owned `DisplayManager` explicitly and calls `setView()` with a `ViewState` built from `ClockConfig.friday`.
 - Crossing Friday sunset **live** (previous phase `kToFridaySunset` → `kToSaturdaySunset` while running) blinks `ClockConfig.messages.fridaySunset` for 5s via the supplied display manager, after the Saturday-sunset countdown becomes the base view. The previous-phase check is deliberate: arriving at `kToSaturdaySunset` from `kNone` must **not** fire the message.
 - Sunset targets are cached and recomputed at most once per week (when `fridayDateFor(now)` changes). `calculateSunset()` is **not** called on every tick.
-- `applySettings()` and `fridayModeResetSunsetCache()` (called after a browser time sync) invalidate the cache to force recomputation on the next tick.
+- `applySettings()` and `resetSunsetCache()` (called after a browser time sync) invalidate the cache to force recomputation on the next tick.
 
 ### Trading Mode
-- **`trading_mode.h/cpp`** owns the weekday 09:30-open / 16:00-close schedule and uses the RTC value as Eastern local wall-clock time.
+- **`trading_mode.h/cpp`** provides the application-owned `TradingModeController`; pure weekday 09:30-open / 16:00-close boundary math lives in `schedule.cpp`. The RTC value is Eastern local wall-clock time.
 - Trading mode always installs `View::kCountdown` through `DisplayManager::setView()`; it reuses the counting format catalog and never adds a separate view or renderer.
 - `trading.formatOver24` (persisted; `kSameFormat`/255 = disabled) is passed to `ViewState.longFormatIndex` so weekend/overnight countdowns over 24h can render with a days-bearing format while the regular `trading.format` takes over below 24h.
 - Before 09:30 on a weekday it counts down to that opening; during trading hours it counts down to 16:00; after close and on weekends it counts down to the next weekday opening. Holidays and early closes are not modeled.
@@ -165,7 +168,7 @@ The display system has four layers:
 
 ### Input
 - **`button.h/cpp`**: `buttonBegin()`, `buttonTick()` (debounce), `buttonHasEvent()`, `buttonNextEvent()`.
-  - `ButtonEvent` enum: `SHOW_SSID`, `SHOW_IP_ADDRESS`, `SHOW_RTC_STATUS`.
+  - `ButtonEvent` enum class: `kNone`, `kShowSsid`, `kShowIpAddress`, `kShowRtcStatus`.
 - **`page_manager.h/cpp`**: `ClockApplication` owns `PageManager` and injects its `DisplayManager` dependency. `showSsid(ssid)` and `showIpAddress(ip)` build `DisplayPage` arrays and hand them to `showPages()`.
 
 ### Geography
@@ -182,7 +185,8 @@ The display system has four layers:
   - Struct → JSON: `serializeClockConfig(doc, config)`, `serializeWifiConfig(doc, wifi)` (full, for disk), `serializeWifiStatus(doc, wifi)` (no station password, for HTTP responses).
   - JSON → struct: `applyJsonToClockConfig(root, cfg)` and `applyJsonToWifiConfig(root, wifi)` use **patch semantics** (absent fields untouched). Loading `/config.json` (base = defaults) and applying a `POST /api/config` payload (base = loaded config) are the same operation through the same function. `applyJsonToClockConfig` returns `nullptr` or a static error-JSON for the first invalid value; it keeps applying the remaining fields so one bad value can't wipe the rest of the file on load, and API callers discard the partial cfg on error.
 - `ClockApplication` owns `ConfigManager` and `WifiConnectionManager` and injects them into the web APIs. Configuration saves read the existing `/config.json`, patch their section, and atomically replace the file (tmp + rename), so the other section is preserved.
-- **`config_validation.h/cpp`** - sanitizers and conversions. Canonical home of `modeName(mode)` / `modeFromName(name, out)` / `sanitizeMode`, `sanitizeFormatIndex`, `sanitizeBrightness`, `sanitizeUtcOffsetMinutes`, `sanitizePrintableText`, `sanitizeDisplayMessage`. Do not redeclare these elsewhere.
+- **`storage_manager.h/cpp`** - `StorageManager::ensureMounted(context)` mounts LittleFS on demand with context-rich failure logging; use it instead of calling `LittleFS.begin()` directly.
+- **`config_validation.h/cpp`** - sanitizers and conversions. Canonical home of `modeName(mode)` / `modeFromName(name, out)` / `sanitizeMode`, `sanitizeFormatIndex`, `sanitizeOptionalFormatIndex` (also accepts `kSameFormat`/-1), `sanitizeBrightness`, `sanitizeUtcOffsetMinutes`, `sanitizePrintableText`, `sanitizeDisplayMessage`. Do not redeclare these elsewhere.
 
 ### Networking
 - **`wifi_connection_manager.h/cpp`**: application-owned `WifiConnectionManager`, injected into the web portal and `WifiApi`.
@@ -190,7 +194,7 @@ The display system has four layers:
   - `tick()`: handles deferred events (e.g. AP client connected logging).
   - `status()` returns `WifiRuntimeStatus` (mode, connected, ssid, ip, apSsid, apIp).
   - `scanNetworks(doc)`, `connectAndSave(ssid, password)` for web-driven network switching.
-- **`web_server.h/cpp`**: `webBegin()`, `webHandleClients()` (must be called every loop), `networkGetInfo(ssid, ip)`, `webScheduleReboot(delayMs)` (deferred reboot, gives the HTTP response time to flush).
+- **`web_server.h/cpp`**: application-owned `WebPortal`; `begin()`, `handleClients()` (called every loop), `getNetworkInfo()`, and `scheduleReboot()`.
   - `WebPortal` (internal) owns the `ESP8266WebServer`, `HttpResponder`, and the domain API handlers (`ConfigApi`, `TimeApi`, `LocationApi`, `FileApi`, `WifiApi`). Endpoint domains remain separate where they contain meaningful behavior.
   - **Every page is a static gzipped PROGMEM asset; all dynamic data flows through the JSON APIs.** Page sources live in `web/` (`pages/*.html`, `common.css`, `common.js`); `tools/build_web.py` (a PlatformIO pre-script) gzips them into a `kWebAssets` table that `WebPortal::begin()` registers in one loop. Never build HTML on the server. The route → file mapping lives only in `tools/web_manifest.py`, shared by the build and by `tools/dev_server.py` (edit-reload page development against a live device, no reflash).
   - `web/common.js` owns the shared page helpers (`$`, `api`/`apiPost`, `setStatus`, error/slow-load beacons to `POST /api/client-log`, `reportFieldMismatch`, `setFieldFromConfig`); `web/common.css` is the single stylesheet. Both are served hash-versioned (`?v=`) with an immutable cache header, so each page transfers only its own small body; pages stay `no-cache`.

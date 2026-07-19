@@ -148,7 +148,7 @@ void ConfigApi::handleSaveConfig() {
 
   if (wifiChanged) {
     responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
-    webScheduleReboot(kRebootDelayMs);
+    webPortal_.scheduleReboot(kRebootDelayMs);
   } else {
     responder_.sendJson(200, "{\"message\":\"Saved\"}");
   }

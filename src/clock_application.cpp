@@ -34,12 +34,12 @@ void printRtcErrorBanner(const char* detail) {
 }
 
 void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
-                       RtcService& rtc) {
+                       RtcService& rtc, const WebPortal& webPortal) {
   switch (event) {
     case ButtonEvent::kShowSsid: {
       String ssid;
       String ip;
-      networkGetInfo(ssid, ip);
+      webPortal.getNetworkInfo(ssid, ip);
       LOG_PRINTF("Network SSID: %s", ssid.c_str());
       pageManager.showSsid(ssid);
       break;
@@ -48,7 +48,7 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
     case ButtonEvent::kShowIpAddress: {
       String ssid;
       String ip;
-      networkGetInfo(ssid, ip);
+      webPortal.getNetworkInfo(ssid, ip);
       LOG_PRINTF("Network IP: %s", ip.c_str());
       pageManager.showIpAddress(ip);
       break;
@@ -81,7 +81,8 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
 ClockApplication::ClockApplication()
     : displayManager_(segmentDisplay_, rtc_),
       clockController_(displayManager_, rtc_),
-      pageManager_(displayManager_) {}
+      pageManager_(displayManager_),
+      webPortal_(clockController_, configManager_, wifiConnectionManager_, rtc_) {}
 
 void ClockApplication::begin() {
   Serial.begin(74880);
@@ -128,7 +129,7 @@ void ClockApplication::begin() {
 
   WifiConfig cfg = configManager_.loadWifiConfig();
   wifiConnectionManager_.begin(cfg);
-  webBegin(clockController_, configManager_, wifiConnectionManager_, rtc_);
+  webPortal_.begin();
 
   buttonBegin();
 }
@@ -149,12 +150,12 @@ void ClockApplication::tick(uint32_t nowMs) {
   checkRtcHealth(nowMs);
   displayManager_.tick(nowMs);
   wifiConnectionManager_.tick();
-  webHandleClients();
+  webPortal_.handleClients();
 }
 
 void ClockApplication::processButtonEvents() {
   while (buttonHasEvent()) {
-    handleButtonEvent(buttonNextEvent(), pageManager_, rtc_);
+    handleButtonEvent(buttonNextEvent(), pageManager_, rtc_, webPortal_);
   }
 }
 

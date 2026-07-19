@@ -50,6 +50,6 @@ void WifiApi::handleConnect() {
   }
 
   responder_.sendJson(200, "{\"message\":\"Saved - rebooting...\",\"reboot\":true}");
-  webScheduleReboot(kRebootDelayMs);
+  webPortal_.scheduleReboot(kRebootDelayMs);
 }
 

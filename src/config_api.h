@@ -10,17 +10,20 @@ struct ClockConfig;
 struct WifiConfig;
 class ClockController;
 class ConfigManager;
+class WebPortal;
 
 // Handles clock-configuration HTTP endpoints by validating input and invoking application actions.
 class ConfigApi {
  public:
   ConfigApi(ESP8266WebServer& server, HttpResponder& responder,
             ClockController& clockController,
-            ConfigManager& configManager)
+            ConfigManager& configManager,
+            WebPortal& webPortal)
       : server_(server),
         responder_(responder),
         clockController_(clockController),
-        configManager_(configManager) {}
+        configManager_(configManager),
+        webPortal_(webPortal) {}
 
   void handleDemoTest();
   void handleMessageTest();
@@ -41,4 +44,5 @@ class ConfigApi {
   HttpResponder& responder_;       // Sends JSON/HTML API responses.
   ClockController& clockController_;  // Executes application-level clock actions.
   ConfigManager& configManager_;      // Loads, validates, and saves configuration.
+  WebPortal& webPortal_;  // Schedules a reboot after WiFi changes.
 };

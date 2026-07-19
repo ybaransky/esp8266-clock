@@ -20,16 +20,21 @@ python tools/dev_server.py --device <clock-ip>   # edit web/ pages live, no refl
 
 ```
 main.cpp
-  ├── rtc_ds3231          – DS3231 driver; 1 Hz SQW interrupt drives the main tick, a
+  ├── rtc_ds3231          – DS3231 driver; 1 Hz SQW interrupt drives the main tick, an
   │                         application-owned RtcService, zero-I2C-cost cached time, and
   │                         an ISR-timestamped phase reference for tenths
-  ├── display (4 layers)
-  │     format            – format-string tables + FormatMetadata
-  │     display_format    – format catalog + direct panel renderers → DisplayFrame
+  ├── display (layered)
+  │     display_format    – declarative format catalog: FormatSpec = UI label + three
+  │                         PanelSpec {Shape, Field, Field} triples → DisplayFrame;
+  │                         RefreshRate/ColonAnimation are derived from the shapes
+  │     display_renderer  – pure demo/message/page frame renderers (no I/O)
   │     display           – ClockApplication-owned SegmentDisplay (TM1637 hardware)
   │     display_manager   – owned state, transitions, blink/colon cadence, and render policy
-  ├── friday_mode         – FridayMode controller and schedule policy; ticked every real SQW second via
+  ├── schedule            – pure Friday/Trading boundary math; desktop-testable, no Arduino I/O
+  ├── friday_mode         – application-owned FridayModeController; ticked every real SQW second via
   │                         RtcService::consumeSqwPulse(), NOT the throttled log pulse
+  ├── trading_mode        – application-owned TradingModeController; weekday schedule; same
+  │                         per-SQW-second tick contract as friday_mode
   ├── config              – ClockApplication-owned ConfigManager (/config.json on LittleFS)
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
   │     time_api          – RTC read and browser-time synchronization endpoints
@@ -37,7 +42,7 @@ main.cpp
   │     config_serializer – shared JSON schema (single source of field names)
   │     config_validation – sanitization; owns modeName/modeFromName helpers
   ├── wifi_connection_manager – ClockApplication-owned STA → AP fallback service
-  ├── web_server          – ESP8266WebServer; static gzipped pages + REST API
+  ├── web_server          – application-owned WebPortal; static gzipped pages + REST API
   │     ClockController   – application actions shared by the loop and web APIs
   │     web/              – page sources (pages/*.html, common.css, common.js);
   │                         tools/build_web.py packages them into flash, and
@@ -61,7 +66,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 | `kModeCountdown` | countdown | Counts down to a configured end datetime |
 | `kModeCountup`   | countup   | Counts up from a configured start datetime |
 | `kModeClock`     | clock     | Displays current time (24h or 12h per `clockUse12Hour`) |
-| `kModeFriday`    | friday    | Clock phase (Sun-Thu) → Fri midnight → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `messages.fridaySunset` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. |
+| `kModeFriday`    | friday    | Clock phase (Sat sunset → Fri midnight) → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `messages.fridaySunset` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. |
 | `kModeTrading`   | trading   | Counts down to the next weekday 09:30 open or 16:00 close in Eastern local time. Live crossings blink `messages.tradingOpen` or `messages.tradingClose` for 5s; boot/config-save/time-sync arrival does not. Holidays and early closes are not modeled. |
 
 ## 12-hour clock mode
@@ -81,19 +86,20 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 
 ## Critical invariants
 
-- **`ViewPayload`/`OverlayPayload` are unions** — only the member matching `ViewState::view` / `OverlayState::overlay` is valid. Never read a different union member.
-- **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` keeps its UI label, `RefreshRate`, `ColonAnimation`, three direct panel renderers, and optional overflow fallback together. Countdown and countup intentionally share `kCountingFormats`. Keep the scheduling metadata consistent with the selected panel renderers.
+- **`ViewState`/`OverlayState` are plain structs, not unions** — fields unused by the active view/overlay (e.g. `anchor` for clock, `message` for a paged overlay) are simply ignored. Do not reintroduce the old union-payload design.
+- **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` is a UI label plus three declarative `PanelSpec` shapes; the shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are derived from the shapes (they cannot drift), and the `hhh:mm` overflow fallback is resolved semantically by `resolveCountingOverflow()` — no hardcoded indices. Countdown and countup intentionally share `kCountingFormats`.
+- **Schedule math stays pure** — `schedule.h/cpp` contains Arduino-independent Friday/Trading boundary calculations. Controllers own cache/transition state and perform display actions; keep RTC, display, logging, and sunset I/O out of the pure schedule module.
 - **Intentional token/render differences are required** — UI format tokens are intentionally different from rendered 7-segment labels, and the custom day abbreviations in `dayOfWeekAbbreviation()` are intentional. Do not normalize these unless explicitly requested.
 - **The TM1637 panels have a center colon but no decimals** — `:`/`;` in a panel string are non-consuming colon markup handled by `renderPanelSegments()`. Do not add decimal-point parsing or use `.` as a separator.
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.
 - **Device location vs `sunsetTest`** — `ClockConfig.locations.device` is the physical device location used by friday_mode; `ClockConfig.locations.sunsetTest` is the Sunset Calculator page's test input. Do not substitute one for the other.
-- **`webHandleClients()` must be called every `loop()` iteration** — skipping it stalls the web server and DNS.
+- **`WebPortal::handleClients()` must be called every `loop()` iteration** — skipping it stalls the web server and DNS.
 - **Never build HTML on the server** — every page is a static gzipped PROGMEM asset generated from `web/` by `tools/build_web.py`; dynamic data flows through the JSON APIs (the home page uses `GET /api/status` for configured mode and live demo state). Add or rename routes only in `tools/web_manifest.py`. Shared page helpers belong in `web/common.js`, styles in `web/common.css` (both served hash-versioned and immutable).
 - **AP-mode radio settings are evidence-backed** — the 11g phy mode, channel survey, and 17 dBm TX power in `wifi_connection_manager.cpp` fix observed transfer stalls with power-save phone clients; comments there record what was tried and what made things worse. Do not change them without new on-device evidence.
 - **WiFi performance is only meaningful on the clock's own power supply** — confirmed 2026-07-14: USB-powered from the PC (supply droop + the PC's 2.4 GHz Bluetooth inches away), AP page transfers truncate or take ~18 s for 1.4 KB while device-side handling stays fast and heap healthy; on its own supply away from the PC the same firmware loads fast. Expect degraded AP throughput during USB bench debugging and do not chase it as a firmware bug. Discriminators: request-log `time=` = device-side cost, browser beacon `dl=` = radio delivery, `TRUNCATED wrote X of Y` = client stopped ACKing mid-transfer.
 - **GPIO15 must stay LOW at boot** — do not add any pull-up on D8.
 - **`setView()` vs `applySettings()`** — use `setView()` to update the base view without disturbing an active overlay (e.g. from the Friday or Trading controller). Use `applySettings()` only for full config reloads (it resets colon state and re-evaluates the full mode). Don't reintroduce a "previous state" snapshot to restore when an overlay clears — that pattern (the old `defaultState_`/`currentState_`/`previousState_` model) is what caused a real bug where a boot splash restored a stale pre-Friday-correction view instead of the live one. The current model has no snapshot: clearing an overlay just re-renders whatever `baseView_` currently is.
 - **`RtcService::getNow()` vs `getNowCached()`** — `getNow()` is a live I2C read; `getNowCached()` is advanced by SQW pulses with a live-read fallback if pulses go stale. `DisplayManager` uses the cached version; do not replace it with live reads on the hot render path.
-- **LOG macros require string literals** — `LOG_PRINTLN`/`LOG_PRINTF` keep their strings in flash (`PSTR` + `printf_P`) to hold static RAM under 50% for OTA. For a runtime string use `LOG_PRINTF("%s\n", value)`; a literal `%` in a `LOG_PRINTLN` message must be `%%` (it is pasted into the printf format).
+- **LOG macros require string literals** — `LOG_PRINTLN`/`LOG_PRINTF` keep their strings in flash (`PSTR` + `printf_P`) to hold static RAM under 50% for OTA. For a runtime string use `LOG_PRINTF("%s", value)`; a literal `%` in a `LOG_PRINTLN` message must be `%%` (it is pasted into the printf format). Each call appends its own newline, so formats must **not** end with `\n`.
 - **Tenths are phase-locked to the RTC second** — compute them from `RtcService::msIntoSecond(nowMs)`, never `millis() % 1000`. `ClockController` notifies the display manager on each accepted SQW pulse.
 - **`RtcService::consumeSqwPulse()` vs `isLogIntervalDue()`** — `consumeSqwPulse()` fires every real RTC second; `isLogIntervalDue()` is only true on `:00`/`:30` boundaries and only paces logging. Time-sensitive logic such as Friday and Trading phase transitions must gate on the real pulse.

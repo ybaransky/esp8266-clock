@@ -3,14 +3,15 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
+#include "friday_mode.h"
+#include "trading_mode.h"
+
 struct ClockConfig;
 enum Mode : uint8_t;
 class DisplayManager;
 class RtcService;
 
-// Coordinates application-level clock actions. Hardware and feature modules
-// remain unchanged for now; this boundary lets callers stop coordinating them
-// independently as the architecture is migrated incrementally.
+// Coordinates application actions shared by the main loop and web APIs.
 class ClockController {
  public:
   ClockController(DisplayManager& displayManager, RtcService& rtc)
@@ -29,4 +30,6 @@ class ClockController {
  private:
   DisplayManager& displayManager_;  // Applies view, overlay, and brightness actions.
   RtcService& rtc_;  // Reads and updates the hardware clock.
+  FridayModeController fridayMode_;  // Owns Friday schedule state and cache.
+  TradingModeController tradingMode_;  // Owns Trading schedule state.
 };

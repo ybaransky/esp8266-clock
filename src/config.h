@@ -54,7 +54,7 @@ struct CountupConfig {
 
 // Stores the format selected for each phase of the Friday schedule.
 struct FridayConfig {
-  uint8_t clockFmt;             // Clock phase (Sun midnight through Fri midnight).
+  uint8_t clockFmt;             // Clock phase (Saturday sunset through Friday midnight).
   uint8_t toFridaySunsetFmt;    // Friday-midnight to Friday-sunset countdown.
   uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
 };

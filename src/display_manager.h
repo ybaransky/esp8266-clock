@@ -28,6 +28,7 @@ class DisplayScheduler {
 
 class SegmentDisplay;
 class RtcService;
+struct DisplayFrame;
 
 // What content is currently the "normal" thing to render - i.e. what the
 // active Mode resolves to right now. For Countdown/Countup/Clock modes this
@@ -60,8 +61,11 @@ const char* viewName(View view);
 // keep in sync or let go stale.
 enum class Overlay : uint8_t {
   kNone,
-  kDemo,  // Countdown driven by a transition deadline rather than a DateTime end time.
-  kMessage,
+  kSplash,
+  kBlinkingMessage,
+  kCountdownComplete,
+  kDemoCountdown,
+  kDemoFinalMessage,
   kPagedMessage,
 };
 
@@ -97,13 +101,23 @@ struct OverlayTransition {
 // Owns the payload and lifecycle flags for the currently installed overlay.
 struct OverlayState {
   Overlay overlay = Overlay::kNone;  // Active overlay type.
-  bool blink = false;             // True when output alternates blank/on.
-  bool chainFinalMessage = false; // On expiry, show the final message instead
-                                  // of the base view (demo's second phase).
-  bool demoSequence = false;      // True for both phases of the demo overlay.
-  char message[64] = "";          // kMessage text; unused otherwise.
+  char message[64] = "";          // Text for message overlays; unused otherwise.
   PagedDisplayPayload paged;      // kPagedMessage pages; unused otherwise.
   OverlayTransition transition;  // Automatic expiration policy.
+};
+
+// Snapshot of only the configuration fields display rendering consumes.
+// Copied from ClockConfig by applySettings() to avoid holding the full config.
+struct DisplaySettings {
+  Mode activeMode = kModeClock;  // Persisted mode driving the base view.
+  DisplayConfig display{};  // Clock format, brightness, and 12-hour flag.
+  CountdownConfig countdown{};  // Countdown target and format.
+  uint8_t countupFormat = 0;  // Count-up counting-format index.
+  uint8_t fridayClockFmt = 0;  // Initial clock format for Friday mode.
+  TradingConfig trading{};  // Trading-mode placeholder countdown formats.
+  char finalMessage[64] = "";  // Shown on countdown completion and demo end.
+
+  static DisplaySettings fromConfig(const ClockConfig& config);
 };
 
 // Resolves configured modes into base views and renders temporary overlays above them.
@@ -138,7 +152,7 @@ class DisplayManager {
   // Name of whatever is actually on the segments right now: the overlay's
   // name if one is active, otherwise the base view's name. For logging.
   const char* renderedName() const;
-  bool demoActive() const { return hasOverlay() && overlay_.demoSequence; }
+  bool demoActive() const;
 
   // The persistent mode from config.
   Mode activeMode() const { return settings_.activeMode; }
@@ -165,17 +179,20 @@ class DisplayManager {
   uint32_t refreshInterval() const;
   bool renderElapsed(uint32_t nowMs, bool force = false);
   bool overlayExpired(uint32_t nowMs) const;
+  bool overlayBlinks() const;
   bool hasOverlay() const { return overlay_.overlay != Overlay::kNone; }
 
   void render(uint32_t nowMs, bool force = false);
-  void renderClock(uint32_t nowMs, bool force);
-  void renderCountdown(uint32_t nowMs, bool force);
-  void renderCountup(uint32_t nowMs, bool force);
-  void renderDemo(uint32_t nowMs, bool force);
-  void renderMessage(uint32_t nowMs, bool force);
-  void renderPagedMessage(uint32_t nowMs, bool force);
+  bool buildClockFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
+  bool buildCountdownFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
+  bool buildCountupFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
+  bool buildDemoFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
+  bool buildMessageFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
+  bool buildPagedMessageFrame(uint32_t nowMs, bool force,
+                              DisplayFrame& frame);
 
-  ClockConfig settings_ = defaultClockConfig();  // Persisted display settings currently applied.
+  DisplaySettings settings_ =
+      DisplaySettings::fromConfig(defaultClockConfig());  // Applied settings snapshot.
   ViewState baseView_;                           // What to show when no overlay is active.
   OverlayState overlay_;                         // kNone unless an overlay is active.
 
