@@ -6,9 +6,54 @@
 <link rel="stylesheet" href="/common.css">
 <script src="/common.js"></script>
 <title>Format Settings</title>
+<style>
+#helpBtn {
+  margin: 0 0 0 8px; padding: 2px 11px; font-size: .6em;
+  background: #357; border-radius: 50%; vertical-align: middle;
+}
+#help {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(0, 0, 0, .6);
+  overflow-y: auto; padding: 24px 18px;
+  box-sizing: border-box; cursor: pointer;
+}
+#help[hidden] { display: none; }
+#help .card {
+  background: #1b1b1b; border: 1px solid #333; border-radius: 8px;
+  max-width: 460px; margin: 0 auto; padding: 4px 18px 12px;
+}
+#help ul { padding-left: 20px; margin: 6px 0; }
+#help li { font-size: .9em; line-height: 1.5; color: #bbb; margin: 4px 0; }
+#help b { font-family: monospace; color: #eee; }
+#help .close { text-align: center; color: #777; font-size: .85em; margin: 10px 0 4px; }
+</style>
 </head>
 <body>
-<h1>Format Settings</h1>
+<h1>Format Settings <button id="helpBtn" onclick="$('help').hidden = false">?</button></h1>
+
+<div id="help" hidden onclick="this.hidden = true">
+  <div class="card">
+    <h2>Display Format Guide</h2>
+    <p>Each format has three sections &mdash; left | middle | right &mdash; one per display.</p>
+    <ul>
+      <li><b>dd</b> &mdash; whole days</li>
+      <li><b>hh</b> &mdash; hours within a day (0&ndash;23)</li>
+      <li><b>hhh</b> &mdash; total hours; never wraps into days (a 30&#8209;hour countdown shows 30)</li>
+      <li><b>mm</b> / <b>ss</b> &mdash; minutes / seconds</li>
+      <li><b>u</b> &mdash; tenths of a second</li>
+      <li><b>D H N</b> &mdash; unit letters for days, hours, minutes; rendered lowercase on the
+        display as <b>d</b>, <b>h</b>, <b>n</b> (n because a 7&#8209;segment m isn't readable)</li>
+    </ul>
+    <h2>Overflow</h2>
+    <ul>
+      <li>A value needing 3+ digits drops its unit letter to make room: <b>45 d</b> &rarr; <b>456</b>.</li>
+      <li><b>hhh:mm</b> in one section fits up to 99:59; above that it switches to the split
+        <b>hhh | mm</b> layout automatically.</li>
+      <li>Leading sections that would show only zeros stay blank until needed.</li>
+    </ul>
+    <p class="close">Tap anywhere to close.</p>
+  </div>
+</div>
 
 <label>Mode
 <select id="mode" onchange="sections()">
