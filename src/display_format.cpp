@@ -142,7 +142,7 @@ char labelFor(Field field) {
 
 const char* dayOfWeekAbbreviation(int dayOfWeek) {
   static const char* const kNames[] = {
-      "Sun", "non", "tu", "uEd", "thu", "Fri", "Sat"};
+      "Sun", "NNon", "tu", "UUEd", "thu", "Fri", "Sat"};
   return dayOfWeek >= 0 && dayOfWeek < 7 ? kNames[dayOfWeek] : "   ";
 }
 
