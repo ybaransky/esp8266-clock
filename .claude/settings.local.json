@@ -19,7 +19,9 @@
       "Bash(gcc --version)",
       "Bash(python \"C:\\\\Users\\\\YBARAN~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-ybaransky-Documents-Projects-esp8266-clock\\\\c62b328d-a331-4173-824e-458d14acac6e\\\\scratchpad\\\\diff_formats.py\")",
       "Bash(ls ~/.platformio/penv/Scripts/ | grep -iE '^\\(pio|platformio|python\\)')",
-      "Read(//c/Users/ybaransky/.platformio/penv/Scripts/**)"
+      "Read(//c/Users/ybaransky/.platformio/penv/Scripts/**)",
+      "Bash(git -C \"c:\\\\Users\\\\ybara\\\\Documents\\\\Projects\\\\esp8266-clock\" show --stat fe41d86)",
+      "Bash(git -C \"c:\\\\Users\\\\ybara\\\\Documents\\\\Projects\\\\esp8266-clock\" show fe41d86)"
     ],
     "additionalDirectories": [
       "C:\\Users\\ybara\\AppData\\Local\\Temp\\claude\\c--Users-ybara-Documents-Projects-esp8266-clock\\9f188f3c-4575-42f0-9bf4-89132e05a130\\scratchpad"
