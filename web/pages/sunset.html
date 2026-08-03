@@ -6,9 +6,60 @@
 <link rel="stylesheet" href="/common.css">
 <script src="/common.js"></script>
 <title>Sunset Calculator</title>
+<style>
+#helpBtn {
+  margin: 0 0 0 8px; padding: 2px 11px; font-size: .6em;
+  background: #357; border-radius: 50%; vertical-align: middle;
+}
+#help {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(0, 0, 0, .6);
+  overflow-y: auto; padding: 24px 18px;
+  box-sizing: border-box; cursor: pointer;
+}
+#help[hidden] { display: none; }
+#help .card {
+  background: #1b1b1b; border: 1px solid #333; border-radius: 8px;
+  max-width: 560px; margin: 0 auto; padding: 4px 18px 12px;
+}
+#help p { line-height: 1.5; color: #bbb; }
+#help ul { padding-left: 20px; margin: 6px 0; }
+#help li { font-size: .9em; line-height: 1.5; color: #bbb; margin: 4px 0; }
+#help b { color: #eee; }
+#help a { color: #8af; }
+#help .close { text-align: center; color: #777; font-size: .85em; margin: 10px 0 4px; }
+</style>
 </head>
 <body>
-<h1>Sunset Calculator</h1>
+<h1>Sunset Calculator <button id="helpBtn" onclick="$('help').hidden = false">?</button></h1>
+
+<div id="help" hidden onclick="this.hidden = true">
+  <div class="card">
+    <h2>Source</h2>
+    <p>
+      NOAA's Solar Calculator
+      (<a href="https://gml.noaa.gov/grad/solcalc/" target="_blank" rel="noopener noreferrer">gml.noaa.gov/grad/solcalc</a>)
+      is used as a behavioral reference.
+      The underlying ephemeris formulas follow Jean Meeus, <i>Astronomical Algorithms</i> (2nd ed., 1998),
+      implemented via the SolarCalculator library
+      (<a href="https://github.com/jpb10/SolarCalculator" target="_blank" rel="noopener noreferrer">github.com/jpb10/SolarCalculator</a>).
+      This firmware path is tuned for single-precision floating-point arithmetic on embedded hardware.
+    </p>
+    <p>
+      The reported sunset is the instant the solar upper limb crosses the apparent horizon,
+      using the standard atmospheric refraction assumption baked into the model.
+      Civil, nautical, and astronomical twilight are out of scope for this calculation.
+    </p>
+
+    <h2>Accuracy &amp; limitations</h2>
+    <ul>
+      <li>Meeus characterizes sunrise/sunset accuracy at approximately minute-level resolution.</li>
+      <li>Refraction is parameterized as a fixed standard value; real conditions vary with pressure, temperature, and observer altitude.</li>
+      <li>The geometric horizon is assumed at sea level, with no topographic or line-of-sight obstruction corrections (for example, terrain or buildings).</li>
+    </ul>
+    <p class="close">Tap anywhere to close.</p>
+  </div>
+</div>
 
 <div class="box">
   <table class="timetable locationTable">

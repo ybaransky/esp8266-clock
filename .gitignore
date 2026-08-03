@@ -74,4 +74,8 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
 tools/__pycache__/web_manifest.cpython-311.pyc
