@@ -82,7 +82,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - Fallback behavior is deterministic:
   - invalid coordinates -> local `18:00:00`
   - NaN sunset from SolarCalculator -> local `18:00:00`
-- `dst` is persisted/echoed by APIs but sunset math is driven only by numeric `ClockConfig.timezone.utcOffsetMinutes`.
+- Sunset math is driven by numeric `ClockConfig.timezone.utcOffsetMinutes`; the timezone name is informational and supports browser synchronization.
 
 ## Critical invariants
 

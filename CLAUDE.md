@@ -173,10 +173,10 @@ The display system is layered as follows:
 
 ### Geography
 - **`zipcode.h/cpp`**: `zipcodeLookupLocation(zipcode, &out, path)` - searches `/zipcodes.txt` on LittleFS; `isValidZipcode(zipcode)`. This table is not very accurate unfortunatly, but close enough.
-  - The `dst` flag is persisted and echoed by APIs, but sunset math uses only numeric `utcOffsetMinutes`.
+  - Sunset math uses only numeric `utcOffsetMinutes`; the timezone name is persisted for browser/UI context.
 
 ### Storage / config
-- `ClockConfig` (in `config.h`) holds: `activeMode`; display, counting, Friday, Trading, message, and location groups; `timezone` with its IANA name and numeric UTC offset; and the persisted `dst` flag.
+- `ClockConfig` (in `config.h`) holds: `activeMode`; display, counting, Friday, Trading, message, and location groups; and `timezone` with its IANA name and numeric UTC offset.
 - `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
 - `ClockConfig.messages` stores `splash`, `final`, `fridaySunset`, `tradingOpen`, and `tradingClose`; they serialize under `display.messages` and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Trading boundary defaults are `"OPEN"` and `"CLOSE"`.
 - `ClockConfig.trading` contains its normal/over-24h formats and a `TradingSchedule`. JSON stores `display.modes.trading.intervalCount` plus both entries in `intervals`, even when only session 1 is enabled, so disabling session 2 does not discard its configured times. Older array-only JSON remains readable: its array length becomes the enabled count.

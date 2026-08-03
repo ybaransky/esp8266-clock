@@ -83,7 +83,6 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
   timezone["name"] = String(clock.timezone.name);
   timezone["utcOffsetMinutes"] = clock.timezone.utcOffsetMinutes;
-  doc["time"]["dst"]         = clock.dst;
 
   JsonObject location = doc["location"].to<JsonObject>();
   location["zipcode"]   = String(clock.locations.device.zipcode);
@@ -275,9 +274,6 @@ void applyTimezoneFields(JsonVariantConst time, ClockConfig& cfg) {
   if (!timezone["utcOffsetMinutes"].isNull()) {
     cfg.timezone.utcOffsetMinutes =
         sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
-  }
-  if (!time["dst"].isNull()) {
-    cfg.dst = time["dst"].as<bool>();
   }
 }
 

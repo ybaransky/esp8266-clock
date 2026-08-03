@@ -15,7 +15,7 @@
     <span class="label">Time</span><span class="value" id="bt">--</span>
     <span class="label">Date</span><span class="value" id="bd">--</span>
     <span class="label">Timezone</span><span class="value" id="bz">--</span>
-    <span class="label">UTC offset / DST</span><span class="value" id="bo">--</span>
+    <span class="label">UTC offset</span><span class="value" id="bo">--</span>
   </div>
   <button onclick="fromBrowser()">Set Time from Browser</button>
 </div>
@@ -26,7 +26,6 @@
     <span class="label">Date</span><input type="date" id="date">
     <span class="label">Timezone</span><input id="zone" maxlength="39">
     <span class="label">UTC offset</span><input type="number" min="-840" max="840" id="offset">
-    <span class="label">DST</span><input type="checkbox" id="dst">
   </div>
   <button onclick="explicitTime()">Set Time Explicitly</button>
 </div>
@@ -41,19 +40,12 @@ function zone() {
   catch (e) { return 'UTC'; }
 }
 function offset() { return -new Date().getTimezoneOffset(); }
-function isDst(now) {
-  var y = now.getFullYear();
-  var jan = new Date(y, 0, 1).getTimezoneOffset();
-  var jul = new Date(y, 6, 1).getTimezoneOffset();
-  return now.getTimezoneOffset() < Math.max(jan, jul);
-}
-
 function show() {
   var n = new Date();
   $('bt').textContent = pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds());
   $('bd').textContent = n.toLocaleDateString();
   $('bz').textContent = zone();
-  $('bo').textContent = offset() + ' / ' + (isDst(n) ? 'true' : 'false');
+  $('bo').textContent = offset();
 }
 show();
 setInterval(show, 1000);
@@ -66,10 +58,9 @@ api('/api/time').then(function (t) {
   var time = c.time || {}, tz = time.timezone || {};
   $('zone').value = tz.name || zone();
   $('offset').value = tz.utcOffsetMinutes == null ? offset() : tz.utcOffsetMinutes;
-  $('dst').checked = !!time.dst;
 }).catch(function (e) { setStatus('API failed: ' + e.message); });
 
-function sync(date, time, zoneName, utcOffset, dst) {
+function sync(date, time, zoneName, utcOffset) {
   utcOffset = +utcOffset;
   if (!date || !time || utcOffset < -840 || utcOffset > 840) {
     setStatus('Date, time, and valid offset are required');
@@ -81,7 +72,7 @@ function sync(date, time, zoneName, utcOffset, dst) {
     hour: +t[0], minute: +t[1], second: +(t[2] || 0)
   }).then(function () {
     return apiPost('/api/config', {
-      time: { timezone: { name: zoneName, utcOffsetMinutes: utcOffset }, dst: !!dst }
+      time: { timezone: { name: zoneName, utcOffsetMinutes: utcOffset } }
     });
   }).then(function (result) {
     setStatus(result.message || 'Saved');
@@ -92,10 +83,10 @@ function fromBrowser() {
   var n = new Date();
   sync(n.getFullYear() + '-' + pad(n.getMonth() + 1) + '-' + pad(n.getDate()),
        pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds()),
-       zone(), offset(), isDst(n));
+       zone(), offset());
 }
 function explicitTime() {
-  sync($('date').value, $('time').value, $('zone').value, $('offset').value, $('dst').checked);
+  sync($('date').value, $('time').value, $('zone').value, $('offset').value);
 }
 </script>
 </body>

@@ -75,10 +75,10 @@
 
 <div class="box">
   <table class="timetable">
-    <colgroup><col class="rowLabel"><col><col class="dstLabelCol"><col class="dstValueCol"></colgroup>
-    <tr><td class="label">Date</td><td colspan="3"><input type="date" id="date"></td></tr>
-    <tr><td class="label">Timezone</td><td colspan="3"><input type="text" id="timezone" maxlength="39"></td></tr>
-    <tr><td class="label">UTC offset</td><td><input type="number" id="offset" min="-840" max="840" step="1"></td><td class="label">DST</td><td><input type="checkbox" id="dst"></td></tr>
+    <colgroup><col class="rowLabel"><col></colgroup>
+    <tr><td class="label">Date</td><td><input type="date" id="date"></td></tr>
+    <tr><td class="label">Timezone</td><td><input type="text" id="timezone" maxlength="39"></td></tr>
+    <tr><td class="label">UTC offset</td><td><input type="number" id="offset" min="-840" max="840" step="1"></td></tr>
   </table>
 </div>
 
@@ -104,7 +104,6 @@ function loadInitialValues() {
     $('timezone').value = timezone.name || '';
     $('offset').value = timezone.utcOffsetMinutes !== undefined
         ? timezone.utcOffsetMinutes : browserOffsetMinutes();
-    $('dst').checked = !!time.dst;
   }).catch(function () { setStatus('Load failed'); });
 }
 
@@ -151,8 +150,7 @@ function computeSunset() {
       time: {
         date: $('date').value,
         time: '00:00:00',
-        timezone: { name: $('timezone').value, utcOffsetMinutes: readOffset() },
-        dst: $('dst').checked
+        timezone: { name: $('timezone').value, utcOffsetMinutes: readOffset() }
       }
     };
   } catch (e) {

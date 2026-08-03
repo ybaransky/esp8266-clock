@@ -97,7 +97,6 @@ struct ClockConfig {
   MessageConfig messages;  // User-configurable display messages.
   LocationConfig locations;  // Device and sunset-test coordinates.
   TimezoneConfig timezone;  // Local timezone and UTC offset.
-  bool dst;  // Persisted browser DST flag; numeric offset drives sunset math.
   DisplayConfig display;  // Clock rendering and hardware brightness settings.
   CountdownConfig countdown;  // Countdown target and format.
   CountupConfig countup;  // Count-up origin and format.

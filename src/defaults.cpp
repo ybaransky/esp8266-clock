@@ -43,7 +43,6 @@ ClockConfig defaultClockConfig() {
     s.locations = {};
     s.timezone.name[0] = '\0';
     s.timezone.utcOffsetMinutes = 0;
-    s.dst = false;
     s.display.clockUse12Hour = false;
     return s;
 }

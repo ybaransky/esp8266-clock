@@ -102,10 +102,9 @@ void LocationApi::handleSunset() {
   const float longitude = doc["location"]["longitude"] | NAN;
   const char* dateTextArg = doc["time"]["date"] | "";
   const char* timeTextArg = doc["time"]["time"] | "";
-  LOG_PRINTF("/api/sunset request: raw date=\"%s\" raw time=\"%s\" lat=%.6f lon=%.6f offset=%d dst=%s",
+  LOG_PRINTF("/api/sunset request: raw date=\"%s\" raw time=\"%s\" lat=%.6f lon=%.6f offset=%d",
              dateTextArg, timeTextArg, latitude, longitude,
-             doc["time"]["timezone"]["utcOffsetMinutes"] | 0,
-             (doc["time"]["dst"] | false) ? "true" : "false");
+             doc["time"]["timezone"]["utcOffsetMinutes"] | 0);
 
   if (!isfinite(latitude) || (latitude < -90.0f) || (latitude > 90.0f) ||
       !isfinite(longitude) || (longitude < -180.0f) || (longitude > 180.0f)) {
@@ -139,7 +138,6 @@ void LocationApi::handleSunset() {
   char timezone[40];
   sanitizePrintableText(doc["time"]["timezone"]["name"] | "",
                         timezone, sizeof(timezone));
-  const bool dst = doc["time"]["dst"] | false;
   const Location location{latitude, longitude,
                           static_cast<int16_t>(utcOffsetMinutes)};
   const DateTime calculatorDate(year, month, day, 0, 0, 0);
@@ -150,9 +148,8 @@ void LocationApi::handleSunset() {
   LOG_PRINTF("Sunset calculator response: localSunset=%04d-%02d-%02d %02d:%02d:%02d",
              sunset.year(), sunset.month(), sunset.day(),
              sunset.hour(), sunset.minute(), sunset.second());
-  LOG_PRINTF("/api/sunset success: lat=%.6f lon=%.6f date=%04d-%02d-%02d offset=%d dst=%s sunset=%02d:%02d:%02d",
+  LOG_PRINTF("/api/sunset success: lat=%.6f lon=%.6f date=%04d-%02d-%02d offset=%d sunset=%02d:%02d:%02d",
              latitude, longitude, year, month, day, utcOffsetMinutes,
-             dst ? "true" : "false",
              sunset.hour(), sunset.minute(), sunset.second());
 
   char dateText[16], timeText[12], dateTimeText[28];
@@ -168,6 +165,5 @@ void LocationApi::handleSunset() {
   response["dateTime"] = dateTimeText;
   response["timezone"] = timezone;
   response["utcOffsetMinutes"] = utcOffsetMinutes;
-  response["dst"] = dst;
   responder_.sendJsonDocument(200, response);
 }

@@ -136,8 +136,6 @@ button.secondary:active { background: #246; }
 .timetable tr:last-child td { border-bottom: 0; }
 .timetable th { color: #8af; font-size: 1.1em; font-weight: normal; text-align: center; }
 .timetable .rowLabel { width: 34%; }
-.timetable .dstLabelCol { width: 15%; }
-.timetable .dstValueCol { width: 16%; }
 .timetable .label { color: #aaa; text-align: right; white-space: nowrap; }
 .timetable input { font-family: monospace; text-align: center; margin-top: 0; }
 .timetable input[type=checkbox] { display: block; margin: 0 auto; }

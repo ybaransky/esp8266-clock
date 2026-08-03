@@ -24,8 +24,7 @@
     "timezone": {
       "name": "America/New_York",
       "utcOffsetMinutes": -240
-    },
-    "dst": true
+    }
   },
   "location": {
     "zipcode": "07452",
