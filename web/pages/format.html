@@ -26,6 +26,11 @@
 #help li { font-size: .9em; line-height: 1.5; color: #bbb; margin: 4px 0; }
 #help b { font-family: monospace; color: #eee; }
 #help .close { text-align: center; color: #777; font-size: .85em; margin: 10px 0 4px; }
+.session { padding: 10px 12px 14px; margin-top: 12px; }
+.session h3 { margin-top: 0; }
+.sessionTimes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.sessionToggle { color: #eee; }
+.sessionToggle input { margin-right: 7px; }
 </style>
 </head>
 <body>
@@ -95,7 +100,22 @@
 <div id="trade">
   <hr>
   <h3>Trading Countdown</h3>
-  <p>Counts down to the next weekday 9:30am open or 4:00pm close Eastern time, whichever is closest.</p>
+  <p>Counts down to each weekday session start and stop in the clock's local time.</p>
+  <div class="box session">
+    <h3>Trading session 1</h3>
+    <div class="sessionTimes">
+      <label>Start<input type="time" id="tradeStart1" step="60" required></label>
+      <label>Stop<input type="time" id="tradeStop1" step="60" required></label>
+    </div>
+  </div>
+  <label class="sessionToggle"><input type="checkbox" id="tradeEnable2" onchange="toggleTrade2()"> Enable second trading session</label>
+  <div class="box session" id="tradeSession2">
+    <h3>Trading session 2</h3>
+    <div class="sessionTimes">
+      <label>Start<input type="time" id="tradeStart2" step="60" required></label>
+      <label>Stop<input type="time" id="tradeStop2" step="60" required></label>
+    </div>
+  </div>
   <label>Format<select id="ftrade"></select></label>
   <label>Format over 24h (e.g. weekends)<select id="ftrade24"></select></label>
 </div>
@@ -125,6 +145,13 @@ function sections() {
   $('hours').hidden = (m != 2) && (m != 3);
 }
 sections();
+
+function toggleTrade2() {
+  var enabled = $('tradeEnable2').checked;
+  $('tradeSession2').hidden = !enabled;
+  $('tradeStart2').disabled = !enabled;
+  $('tradeStop2').disabled = !enabled;
+}
 
 function options(id, labels, selected) {
   var el = $(id);
@@ -190,6 +217,15 @@ api('/api/formats').catch(function (e) {
   options('fsat', formats.countdown, fri.toSaturdaySunsetFormat);
   options('ftrade', formats.countdown, trading.format);
   optionsWithSame('ftrade24', formats.countdown, trading.formatOver24);
+  var intervals = trading.intervals || [];
+  var first = intervals[0] || {};
+  var second = intervals[1] || {};
+  setFieldFromConfig('/format', 'tradeStart1', 'display.modes.trading.intervals[0].start', first.start, first.start);
+  setFieldFromConfig('/format', 'tradeStop1', 'display.modes.trading.intervals[0].stop', first.stop, first.stop);
+  setFieldFromConfig('/format', 'tradeStart2', 'display.modes.trading.intervals[1].start', second.start, second.start);
+  setFieldFromConfig('/format', 'tradeStop2', 'display.modes.trading.intervals[1].stop', second.stop, second.stop);
+  $('tradeEnable2').checked = +(trading.intervalCount || 1) > 1;
+  toggleTrade2();
   $('mode').value = {
     countdown: 0, countup: 1, clock: 2, friday: 3, trading: 4
   }[display.activeMode] || 0;
@@ -203,6 +239,26 @@ api('/api/formats').catch(function (e) {
 }).catch(function (e) { setStatus('API failed: ' + e.message); });
 
 function save() {
+  var intervals = [
+    { start: $('tradeStart1').value, stop: $('tradeStop1').value },
+    { start: $('tradeStart2').value, stop: $('tradeStop2').value }
+  ];
+  if (!intervals[0].start || !intervals[0].stop ||
+      intervals[0].start >= intervals[0].stop) {
+    setStatus('Session 1 start must be before its stop');
+    return;
+  }
+  if ($('tradeEnable2').checked) {
+    var second = intervals[1];
+    if (!second.start || !second.stop || second.start >= second.stop) {
+      setStatus('Session 2 start must be before its stop');
+      return;
+    }
+    if (intervals[0].stop >= second.start) {
+      setStatus('Session 1 must stop before session 2 starts');
+      return;
+    }
+  }
   var names = ['countdown', 'countup', 'clock', 'friday', 'trading'];
   var body = {
     display: {
@@ -220,16 +276,22 @@ function save() {
         },
         trading: {
           format: +$('ftrade').value,
-          formatOver24: +$('ftrade24').value
+          formatOver24: +$('ftrade24').value,
+          intervalCount: $('tradeEnable2').checked ? 2 : 1,
+          intervals: intervals
         }
       }
     }
   };
   if (!$('end').value) delete body.display.modes.countdown.end;
-  apiPost('/api/config', body).then(function (d) {
-    setStatus(d.message || d.error || 'Saved');
+  jsonFetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (d) {
+    setStatus(d.error || d.message || 'Saved');
   }).catch(function (e) {
-    setStatus('Save failed at /api/config: ' + e.message);
+    setStatus('Save failed: ' + e.message);
   });
 }
 </script>

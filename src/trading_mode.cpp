@@ -13,14 +13,14 @@ struct TradingScheduleResult {
 };
 
 TradingScheduleResult evaluateTradingSchedule(const DateTime& now,
-                                               const TradingConfig& formats) {
+                                               const TradingConfig& config) {
   TradingScheduleResult result;
   const DateTime today(now.year(), now.month(), now.day(), 0, 0, 0);
   const TradingBoundary boundary = evaluateTradingBoundary(
-      now.unixtime(), today.unixtime(), now.dayOfTheWeek());
+      now.unixtime(), today.unixtime(), now.dayOfTheWeek(), config.schedule);
   result.phase = boundary.phase;
-  result.view = {View::kCountdown, DateTime(boundary.targetUnix), formats.format,
-                 formats.formatOver24};
+  result.view = {View::kCountdown, DateTime(boundary.targetUnix), config.format,
+                 config.formatOver24};
   return result;
 }
 
@@ -36,7 +36,7 @@ const char* tradingPhaseName(TradingPhase phase) {
 
 void TradingModeController::applySettings(const ClockConfig& config) {
   settings_.activeMode = config.activeMode;
-  settings_.formats = config.trading;
+  settings_.config = config.trading;
   strlcpy(settings_.openMessage, config.messages.tradingOpen,
           sizeof(settings_.openMessage));
   strlcpy(settings_.closeMessage, config.messages.tradingClose,
@@ -54,7 +54,7 @@ void TradingModeController::tick(const DateTime& now,
   if (settings_.activeMode != kModeTrading) return;
 
   const TradingScheduleResult result =
-      evaluateTradingSchedule(now, settings_.formats);
+      evaluateTradingSchedule(now, settings_.config);
   const uint32_t targetUnix = result.view.anchor.unixtime();
   if ((result.phase == currentPhase_) &&
       (targetUnix == currentTargetUnix_)) return;

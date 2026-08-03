@@ -3,8 +3,6 @@
 namespace {
 
 constexpr uint32_t kSecondsPerDay = 86400UL;
-constexpr uint32_t kOpenSeconds = 9UL * 3600UL + 30UL * 60UL;
-constexpr uint32_t kCloseSeconds = 16UL * 3600UL;
 
 bool isTradingWeekday(uint8_t dayOfWeek) {
   return (dayOfWeek >= 1) && (dayOfWeek <= 5);
@@ -37,20 +35,42 @@ uint32_t mostRecentFridayMidnight(uint32_t todayMidnightUnix,
   return todayMidnightUnix - daysSinceFriday * kSecondsPerDay;
 }
 
+bool isValidTradingSchedule(const TradingSchedule& schedule) {
+  if ((schedule.intervalCount < 1) ||
+      (schedule.intervalCount > kMaxTradingIntervals)) {
+    return false;
+  }
+  for (uint8_t i = 0; i < kMaxTradingIntervals; ++i) {
+    const TradingInterval& interval = schedule.intervals[i];
+    if ((interval.startMinute >= 1440) || (interval.stopMinute >= 1440) ||
+        (interval.startMinute >= interval.stopMinute)) {
+      return false;
+    }
+    if ((i > 0) && (i < schedule.intervalCount) &&
+        (schedule.intervals[i - 1].stopMinute >= interval.startMinute)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 TradingBoundary evaluateTradingBoundary(uint32_t nowUnix,
                                         uint32_t todayMidnightUnix,
-                                        uint8_t dayOfWeek) {
-  const uint32_t openUnix = todayMidnightUnix + kOpenSeconds;
-  const uint32_t closeUnix = todayMidnightUnix + kCloseSeconds;
-
-  if (isTradingWeekday(dayOfWeek) && (nowUnix < openUnix)) {
-    return {TradingPhase::kToOpen, openUnix};
-  }
-  if (isTradingWeekday(dayOfWeek) && (nowUnix < closeUnix)) {
-    return {TradingPhase::kToClose, closeUnix};
+                                        uint8_t dayOfWeek,
+                                        const TradingSchedule& schedule) {
+  if (isTradingWeekday(dayOfWeek)) {
+    for (uint8_t i = 0; i < schedule.intervalCount; ++i) {
+      const uint32_t openUnix =
+          todayMidnightUnix + schedule.intervals[i].startMinute * 60UL;
+      const uint32_t closeUnix =
+          todayMidnightUnix + schedule.intervals[i].stopMinute * 60UL;
+      if (nowUnix < openUnix) return {TradingPhase::kToOpen, openUnix};
+      if (nowUnix < closeUnix) return {TradingPhase::kToClose, closeUnix};
+    }
   }
 
   const uint8_t daysAhead = daysUntilNextTradingDay(dayOfWeek);
   return {TradingPhase::kToOpen,
-          todayMidnightUnix + daysAhead * kSecondsPerDay + kOpenSeconds};
+          todayMidnightUnix + daysAhead * kSecondsPerDay +
+              schedule.intervals[0].startMinute * 60UL};
 }

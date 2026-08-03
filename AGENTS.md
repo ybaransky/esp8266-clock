@@ -30,10 +30,10 @@ main.cpp
   │     display_renderer  – pure demo/message/page frame renderers (no I/O)
   │     display           – ClockApplication-owned SegmentDisplay (TM1637 hardware)
   │     display_manager   – owned state, transitions, blink/colon cadence, and render policy
-  ├── schedule            – pure Friday/Trading boundary math; desktop-testable, no Arduino I/O
+  ├── schedule            – pure Friday/Trading boundary math; no Arduino I/O
   ├── friday_mode         – application-owned FridayModeController; ticked every real SQW second via
   │                         RtcService::consumeSqwPulse(), NOT the throttled log pulse
-  ├── trading_mode        – application-owned TradingModeController; weekday schedule; same
+  ├── trading_mode        – application-owned TradingModeController; 1–2 weekday sessions; same
   │                         per-SQW-second tick contract as friday_mode
   ├── config              – ClockApplication-owned ConfigManager (/config.json on LittleFS)
   │     config_api        – REST endpoint handlers (ConfigApi) for /api/config and friends
@@ -67,7 +67,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 | `kModeCountup`   | countup   | Counts up from a configured start datetime |
 | `kModeClock`     | clock     | Displays current time (24h or 12h per `clockUse12Hour`) |
 | `kModeFriday`    | friday    | Clock phase (Sat sunset → Fri midnight) → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `messages.fridaySunset` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. |
-| `kModeTrading`   | trading   | Counts down to the next weekday 09:30 open or 16:00 close in Eastern local time. Live crossings blink `messages.tradingOpen` or `messages.tradingClose` for 5s; boot/config-save/time-sync arrival does not. Holidays and early closes are not modeled. |
+| `kModeTrading`   | trading   | Counts down through one or two configured weekday trading sessions in local wall-clock time: each enabled start, each stop, then session 1 on the next weekday. Live crossings blink `messages.tradingOpen` or `messages.tradingClose` for 5s; boot/config-save/time-sync arrival does not. Holidays and early closes are not modeled. |
 
 ## 12-hour clock mode
 
@@ -89,6 +89,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - **`ViewState`/`OverlayState` are plain structs, not unions** — fields unused by the active view/overlay (e.g. `anchor` for clock, `message` for a paged overlay) are simply ignored. Do not reintroduce the old union-payload design.
 - **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` is a UI label plus three declarative `PanelSpec` shapes; the shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are derived from the shapes (they cannot drift), and the `hhh:mm` overflow fallback is resolved semantically by `resolveCountingOverflow()` — no hardcoded indices. Countdown and countup intentionally share `kCountingFormats`.
 - **Schedule math stays pure** — `schedule.h/cpp` contains Arduino-independent Friday/Trading boundary calculations. Controllers own cache/transition state and perform display actions; keep RTC, display, logging, and sunset I/O out of the pure schedule module.
+- **Trading schedule shape** — `TradingSchedule` is a fixed-capacity array of two `TradingInterval` values plus `intervalCount`. Session 1 is always enabled. Both slots persist even when session 2 is disabled; enabled sessions must be ordered, non-overlapping, and separated by a gap. `isValidTradingSchedule()` owns these pure invariants.
 - **Intentional token/render differences are required** — UI format tokens are intentionally different from rendered 7-segment labels, and the custom day abbreviations in `dayOfWeekAbbreviation()` are intentional. Do not normalize these unless explicitly requested.
 - **The TM1637 panels have a center colon but no decimals** — `:`/`;` in a panel string are non-consuming colon markup handled by `renderPanelSegments()`. Do not add decimal-point parsing or use `.` as a separator.
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.

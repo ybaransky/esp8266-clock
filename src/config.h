@@ -1,6 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
+#include "schedule.h"
+
 #define STORAGE LittleFS
 
 static constexpr int32_t kForever = INT32_MAX;
@@ -59,10 +61,11 @@ struct FridayConfig {
   uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
 };
 
-// Stores the counting formats used for Trading-mode boundary countdowns.
+// Stores Trading-mode presentation and its local-time session schedule.
 struct TradingConfig {
   uint8_t format;        // Selected counting-format index.
   uint8_t formatOver24;  // Format while >= 24h remain; kSameFormat = use format.
+  TradingSchedule schedule;  // Enabled count plus both retained session slots.
 };
 
 // Keeps the physical device location separate from sunset-page test input.
@@ -76,8 +79,8 @@ struct MessageConfig {
   char splash[64];        // Startup message shown on the displays.
   char final[64];         // Message shown when countdown reaches zero.
   char fridaySunset[64];  // Blinked when Friday sunset is crossed live.
-  char tradingOpen[64];   // Blinked when Trading mode reaches 09:30 live.
-  char tradingClose[64];  // Blinked when Trading mode reaches 16:00 live.
+  char tradingOpen[64];   // Blinked when a Trading session starts live.
+  char tradingClose[64];  // Blinked when a Trading session stops live.
 };
 
 // Stores the local timezone identity and the numeric offset used by sunset math.

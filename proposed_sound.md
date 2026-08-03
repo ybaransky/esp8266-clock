@@ -5,7 +5,8 @@ Status: **proposal** — not implemented. Written 2026-07-15.
 ## Goal
 
 Sound a short beep when Friday or Trading mode crosses a phase boundary
-**live** (Friday sunset arrives; market opens; market closes) — the same
+**live** (Friday sunset arrives; any configured trading session starts or
+stops) — the same
 moments that currently blink `messages.fridaySunset`, `messages.tradingOpen`,
 and `messages.tradingClose` on the display. Boot, config reload, and browser
 time sync must never produce a sound, for the same reason those events never
@@ -71,6 +72,9 @@ Follows the existing module conventions (`button.h/cpp` is the template).
 
 ### New module: `beeper.h/cpp`
 
+Consistent with current application ownership, this should be an
+application-owned `Beeper` object rather than a stateful global service.
+
 ```cpp
 enum class BeepPattern : uint8_t {
   kFridaySunset,   // two rising notes
@@ -78,9 +82,12 @@ enum class BeepPattern : uint8_t {
   kTradingClose,   // two low beeps
 };
 
-void beeperBegin();                 // pinMode + ensure silent
-void beeperTick(uint32_t nowMs);    // advances the active pattern; no-op when idle
-void beeperPlay(BeepPattern p);     // starts a pattern (replaces any active one)
+class Beeper {
+ public:
+  void begin();
+  void tick(uint32_t nowMs);
+  void play(BeepPattern pattern);
+};
 ```
 
 Internally a small non-blocking state machine: a pattern is a short table of
@@ -92,14 +99,14 @@ to catch stalls).
 
 ### Hook points
 
-Call `beeperPlay()` inside the **live-crossing branches** of
+Call `Beeper::play()` from the **live-crossing branches** of
 `friday_mode.cpp` and `trading_mode.cpp` — the same branches that call the
 display manager's blinking `showInfo()` with the boundary message:
 
 - Friday mode, `kToFridaySunset → kToSaturdaySunset` live crossing →
   `beeperPlay(BeepPattern::kFridaySunset)`.
-- Trading mode, live open crossing → `kTradingOpen`; live close crossing →
-  `kTradingClose`.
+- Trading mode, any live session-start crossing → `kTradingOpen`; any live
+  session-stop crossing → `kTradingClose`.
 
 Placing the beep beside the message means it **inherits the `kNone` guard
 for free**: crossings arriving from phase `kNone` (boot, config reload,
@@ -111,8 +118,9 @@ every web preview.
 
 ### Main loop
 
-`beeperTick(nowMs)` slots into `ClockApplication::tick()` alongside
-`buttonTick()`.
+`ClockApplication` owns the beeper, calls `beeper.tick(nowMs)` alongside
+`buttonTick()`, and supplies the dependency to whichever coordinator emits
+the live boundary event.
 
 ## Follow-ups worth considering (not in v1)
 

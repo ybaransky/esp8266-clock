@@ -1,19 +1,43 @@
-i am building a clock-like device that displays on a 3 4-segement displays. it has advanced modes, each of which consists of a combination of base modes. it also has the concept of a single primary mode, which the device must always be in.
+# Friday Mode
 
-the base modes are as follows:
-- COUTDOWN: this is a clock which counts down to a user specified target time. the format (days, hours, seconds, tenths, ...0) is defined in a format section. when it hits its target it just displays 0 time.
-- COUNTUP: this is a clock that counts up starting from a user specified start time. it has a seperate format specification
-- CLOCK: this is a regular clock with its own format
-- MESSAGE: this displays a message. the message could be too long to fit in the existing 3 segements so then it becomes a series of panels, one after another with a N second delay between them. the format of these messages can have different segemetns blinking.
+This document describes the implemented Friday mode. The authoritative module
+and invariant reference is [CLAUDE.md](CLAUDE.md).
 
-the advanced modes are a combination of these base modes
-- splash: this displays a MESSAGE and after some seconds transitions to the primary mode
-- message: this displays a MESSAGE for some amount of time (which could be forever). it can also blink.
-- countdown: this displays the COUNTDOWN mode and when it counts down to 0, it then displays a blinking MESSAGE forever.
-- countup: this is displays the COUNTUP mode
-- clock: this is jsut in the CLOCK mode.
-- demo: this is a special case of the countdown mode with the expiration time to be 5 seconds from now, then transitions to a blinking message for 5 seconds.
-- friday: the base mode this is in depends on the day of week. between sunset saturday to the start of friday it is in clock mode, from the start of friday to sunset friday itnisin COUNTDOWN mode with target time the sunset time, then it resets the expiration time to saturday sunset, and then it starts again.
+## Behavior
 
+Friday mode resolves the persisted mode into one of three base views:
 
- 
+1. Saturday sunset through Friday midnight: normal clock view.
+2. Friday midnight through Friday sunset: countdown to Friday sunset.
+3. Friday sunset through Saturday sunset: countdown to Saturday sunset.
+
+At Saturday sunset the cycle returns to the clock view. All dates and targets
+are local wall-clock values from the DS3231.
+
+## Ownership
+
+- `schedule.h/cpp` owns pure Friday phase and date-boundary calculations.
+- `sunset_calculator.h/cpp` calculates local sunset from coordinates and the
+  configured numeric UTC offset.
+- `FridayModeController` owns cached sunset targets and remembered phase.
+- `ClockController` applies configuration and ticks Friday mode on every
+  accepted 1 Hz RTC SQW pulse.
+- `DisplayManager` owns the base view and any temporary overlay.
+
+The controller changes normal content with `DisplayManager::setView()`. It does
+not clear or replace an active overlay; the new base view becomes visible when
+that overlay ends.
+
+## Live transition message
+
+Crossing Friday sunset while the firmware is already running installs the
+Saturday-sunset countdown and then blinks `messages.fridaySunset` for five
+seconds. Boot, configuration reload, and browser time synchronization reset
+the remembered phase to `kNone`, so merely arriving in that phase never
+synthesizes a transition message.
+
+## Location and cache
+
+Friday mode uses `ClockConfig.locations.device`, never the Sunset Calculator
+page's `locations.sunsetTest`. Sunset targets are cached by Friday date and are
+invalidated by configuration changes or RTC synchronization.

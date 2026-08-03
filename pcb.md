@@ -146,13 +146,19 @@ _________________
 
 ## Pin Map
 
+Authoritative firmware source: `src/hardware.h`.
+
 | Pin | GPIO   | Connection           |
 |-----|--------|----------------------|
+| D0  | GPIO16 | TM1637 DIO #3        |
 | D1  | GPIO5  | DS3231 SCL           |
 | D2  | GPIO4  | DS3231 SDA           |
-| D5  | GPIO14 | DS3231 SQW           |
-| D6  | GPIO12 | TM1637 CLK (shared)  |
-| D7  | GPIO13 | TM1637 DIO #1        |
-| D0  | GPIO16 | TM1637 DIO #2        |
-| D8  | GPIO15 | TM1637 DIO #3        |
-| D3  | GPIO0  | Button Interrupt     |
+| D3  | GPIO0  | Debounced button     |
+| D4  | GPIO2  | TM1637 DIO #1 / LED  |
+| D5  | GPIO14 | TM1637 CLK (shared)  |
+| D6  | GPIO12 | TM1637 DIO #2        |
+| D7  | GPIO13 | DS3231 SQW (1 Hz)    |
+| D8  | GPIO15 | Unused; keep LOW at boot |
+
+GPIO0 and GPIO2 must remain HIGH during boot. GPIO15 must remain LOW; do not
+add a pull-up or connect it to a circuit that can drive it high during reset.

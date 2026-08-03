@@ -21,9 +21,13 @@ window.onerror = function (msg, src, line) {
   var origFetch = window.fetch;
   function fail(url, reason) {
     if (url !== '/api/client-log') clog({ fetch: url, err: String(reason).slice(0, 80) });
+    var st = document.getElementById('st');
+    var previous = st ? st.textContent : null;
     setTimeout(function () {
-      var st = document.getElementById('st');
-      if (st) st.textContent = 'API failed: ' + url + ' (' + reason + ')';
+      // Preserve a more specific error installed by the request's own handler.
+      if (st && st.textContent === previous) {
+        st.textContent = 'API failed: ' + url + ' (' + reason + ')';
+      }
     }, 0);
   }
   window.fetch = function (input, options) {

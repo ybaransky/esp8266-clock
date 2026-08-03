@@ -178,6 +178,9 @@ void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
     cfg.trading.formatOver24 = sanitizeOptionalFormatIndex(
         kFmtGroupCountdown, cfg.trading.formatOver24,
         defaults.trading.formatOver24);
+    if (!isValidTradingSchedule(cfg.trading.schedule)) {
+      cfg.trading.schedule = defaults.trading.schedule;
+    }
     cfg.display.brightness = sanitizeBrightness(cfg.display.brightness);
     cfg.timezone.utcOffsetMinutes =
         sanitizeUtcOffsetMinutes(cfg.timezone.utcOffsetMinutes);

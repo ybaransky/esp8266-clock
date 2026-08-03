@@ -26,6 +26,9 @@ ClockConfig defaultClockConfig() {
     s.friday.toSaturdaySunsetFmt  = 0;
     s.trading.format              = 0;
     s.trading.formatOver24        = kSameFormat;
+    s.trading.schedule.intervalCount = 1;
+    s.trading.schedule.intervals[0]  = {9 * 60 + 30, 16 * 60};
+    s.trading.schedule.intervals[1]  = {17 * 60, 18 * 60};
     s.display.brightness = 3;
     snprintf(s.countdown.end, sizeof(s.countdown.end), "%s", kDefaultCountdownDatetime);
     snprintf(s.countup.start, sizeof(s.countup.start), "%s", kDefaultCountupDatetime);

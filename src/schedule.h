@@ -15,6 +15,21 @@ enum class TradingPhase : uint8_t {
   kToClose,
 };
 
+static constexpr uint8_t kMaxTradingIntervals = 2;
+
+// A same-day Trading session expressed as minutes after local midnight.
+struct TradingInterval {
+  uint16_t startMinute = 0;
+  uint16_t stopMinute = 0;
+};
+
+// Fixed-capacity set of enabled Trading sessions. Entries at and above
+// intervalCount retain their configured values but are not scheduled.
+struct TradingSchedule {
+  uint8_t intervalCount = 1;
+  TradingInterval intervals[kMaxTradingIntervals]{};
+};
+
 // Describes the next Trading boundary using local wall-clock Unix seconds.
 struct TradingBoundary {
   TradingPhase phase = TradingPhase::kToOpen;  // Boundary being approached.
@@ -27,6 +42,8 @@ FridayPhase evaluateFridayPhase(uint32_t nowUnix,
                                 uint32_t saturdaySunsetUnix);
 uint32_t mostRecentFridayMidnight(uint32_t todayMidnightUnix,
                                   uint8_t dayOfWeek);
+bool isValidTradingSchedule(const TradingSchedule& schedule);
 TradingBoundary evaluateTradingBoundary(uint32_t nowUnix,
                                         uint32_t todayMidnightUnix,
-                                        uint8_t dayOfWeek);
+                                        uint8_t dayOfWeek,
+                                        const TradingSchedule& schedule);

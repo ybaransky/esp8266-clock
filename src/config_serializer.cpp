@@ -6,6 +6,36 @@
 #include "config_validation.h"
 #include "zipcode.h"
 
+namespace {
+
+String formatTimeOfDay(uint16_t minute) {
+  const uint8_t hour = minute / 60U;
+  const uint8_t min = minute % 60U;
+  char value[6] = {static_cast<char>('0' + hour / 10U),
+                   static_cast<char>('0' + hour % 10U), ':',
+                   static_cast<char>('0' + min / 10U),
+                   static_cast<char>('0' + min % 10U), '\0'};
+  return String(value);
+}
+
+bool parseTimeOfDay(const char* value, uint16_t* minute) {
+  if ((value == nullptr) || (minute == nullptr) ||
+      (strlen(value) != 5) || (value[2] != ':') ||
+      (value[0] < '0') || (value[0] > '9') ||
+      (value[1] < '0') || (value[1] > '9') ||
+      (value[3] < '0') || (value[3] > '9') ||
+      (value[4] < '0') || (value[4] > '9')) {
+    return false;
+  }
+  const uint8_t hour = (value[0] - '0') * 10 + (value[1] - '0');
+  const uint8_t min = (value[3] - '0') * 10 + (value[4] - '0');
+  if ((hour > 23) || (min > 59)) return false;
+  *minute = hour * 60U + min;
+  return true;
+}
+
+}  // namespace
+
 void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject display = doc["display"].to<JsonObject>();
   display["activeMode"]  = modeName(clock.activeMode);
@@ -40,6 +70,15 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject trading = modes["trading"].to<JsonObject>();
   trading["format"] = clock.trading.format;
   trading["formatOver24"] = clock.trading.formatOver24;
+  trading["intervalCount"] = clock.trading.schedule.intervalCount;
+  JsonArray intervals = trading["intervals"].to<JsonArray>();
+  for (uint8_t i = 0; i < kMaxTradingIntervals; ++i) {
+    JsonObject interval = intervals.add<JsonObject>();
+    interval["start"] =
+        formatTimeOfDay(clock.trading.schedule.intervals[i].startMinute);
+    interval["stop"] =
+        formatTimeOfDay(clock.trading.schedule.intervals[i].stopMinute);
+  }
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
   timezone["name"] = String(clock.timezone.name);
@@ -148,6 +187,39 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
   }
 }
 
+bool applyTradingSchedule(JsonVariantConst trading, ClockConfig& cfg) {
+  const bool hasIntervals = !trading["intervals"].isNull();
+  const bool hasCount = !trading["intervalCount"].isNull();
+  if (!hasIntervals && !hasCount) return true;
+  TradingSchedule candidate = cfg.trading.schedule;
+  if (hasIntervals) {
+    JsonArrayConst intervals = trading["intervals"].as<JsonArrayConst>();
+    if ((intervals.size() < 1) || (intervals.size() > kMaxTradingIntervals)) {
+      return false;
+    }
+    if (!hasCount) candidate.intervalCount = intervals.size();  // Legacy JSON.
+    for (uint8_t i = 0; i < intervals.size(); ++i) {
+      JsonObjectConst interval = intervals[i].as<JsonObjectConst>();
+      const char* start = interval["start"].as<const char*>();
+      const char* stop = interval["stop"].as<const char*>();
+      if (!parseTimeOfDay(start, &candidate.intervals[i].startMinute) ||
+          !parseTimeOfDay(stop, &candidate.intervals[i].stopMinute)) {
+        return false;
+      }
+    }
+  }
+  if (hasCount) {
+    const int intervalCount = trading["intervalCount"].as<int>();
+    if ((intervalCount < 1) || (intervalCount > kMaxTradingIntervals)) {
+      return false;
+    }
+    candidate.intervalCount = intervalCount;
+  }
+  if (!isValidTradingSchedule(candidate)) return false;
+  cfg.trading.schedule = candidate;
+  return true;
+}
+
 void applyMessageFields(JsonVariantConst messages, ClockConfig& cfg) {
   if (!messages["splash"].isNull()) {
     sanitizeDisplayMessage(messages["splash"].as<const char*>(),
@@ -229,6 +301,10 @@ const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
   }
 
   applyFormatFields(display, display["modes"], cfg);
+  if (!applyTradingSchedule(display["modes"]["trading"], cfg) &&
+      (error == nullptr)) {
+    error = "{\"error\":\"Trading sessions must be valid, ordered, and separated\"}";
+  }
   applyMessageFields(display["messages"], cfg);
 
   const bool locationOk =

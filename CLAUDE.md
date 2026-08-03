@@ -131,7 +131,7 @@ The display system is layered as follows:
    - `ViewState` is a plain struct: `{view, anchor, formatIndex, longFormatIndex}`. `anchor` is the countdown end time or countup start time; unused for clock. No unions. `longFormatIndex` (default `kSameFormat` = disabled) selects an alternate counting format while the remaining/elapsed duration is >= 24h; `activeCountingFormatIndex()` resolves it fresh on every render (and for the refresh cadence), so the display reverts to `formatIndex` on its own when the duration drops below 24h - no crossing state is kept.
    - `OverlayState` is a plain struct: `{overlay, message[64], paged, transition}`. Behavior is explicit in the `Overlay` value instead of boolean flag combinations; unused fields are ignored.
    - `applySettings(config)` (hot-reload, no reboot), `tick(nowMs)`, and `setBrightness()`.
-   - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `FridayModeController` to switch phases.
+   - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `FridayModeController` and `TradingModeController` to switch phases.
    - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = kForever)`, `showPages(pages, count, ...)`, `clearOverlay()`.
    - Overlay frames come from **`display_renderer.h/cpp`**: pure functions (`renderDemoDisplayFrame`, `renderMessageDisplayFrame`, `renderPageDisplayFrame`) that convert explicit data into a `DisplayFrame` with no I/O or scheduling.
    - `activeMode()` is the persisted mode; `activeView()` is the base view (never an overlay). Friday and Trading modes update their views over time.
@@ -139,14 +139,14 @@ The display system is layered as follows:
    - Tenths values come from the injected RTC service's `msIntoSecond(nowMs)`, not `millis() % 1000`. `notifySecondBoundary()` invalidates the render throttle on each accepted SQW pulse. Demo tenths remain deadline-derived.
    - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
 
-4. **`clock_controller.h/cpp`** - coordinates application actions. It applies configuration to the owned `DisplayManager` and Friday mode, handles second boundaries, and exposes display previews to web APIs.
+4. **`clock_controller.h/cpp`** - coordinates application actions. It applies configuration to the owned `DisplayManager`, Friday controller, and Trading controller; ticks both scheduled modes on real SQW boundaries; resets their cached/remembered schedule state after time synchronization; and exposes display previews to web APIs.
 5. **`time_api.h/cpp`** - owns `GET /api/time` and `POST /api/time`; reads through `RtcService` and synchronizes through `ClockController`.
 
 ### Friday Mode
  - This needs an accurate sunset calcualtor. I use https://github.com/jpb10/SolarCalculator.git calculator. NASA's calculator is at https://github.com/jpb10/SolarCalculator.git
  - **`sunset_calculator.h/cpp`**: `calculateSunset(localDate, location)` - uses SolarCalculator to return a `DateTime` for local sunset given a `Location` (lat/lon/UTC offset).
   - SolarCalculator returns UTC hours. The code derives the UTC calculation date from the requested local sunset date by anchoring at 18:00 local, converts the returned UTC sunset to a UTC `DateTime`, then applies `utcOffsetMinutes` once to return local time.
-- **`schedule.h/cpp`** owns pure, Arduino-independent Friday/Trading boundary calculations and is covered by the native test environment.
+- **`schedule.h/cpp`** owns pure, Arduino-independent Friday/Trading boundary calculations. `TradingSchedule` contains two retained interval slots plus `intervalCount`; `isValidTradingSchedule()` validates the fixed-capacity schedule without config, RTC, or display dependencies.
 - **`friday_mode.h/cpp`**: application-owned `FridayModeController`; `ClockController` calls `applySettings()`, `tick(now, displayManager)`, and `resetSunsetCache()`.
 - `FridayModeController::tick()` is called once per SQW second by `ClockController`; it self-gates unless `activeMode == kModeFriday` and short-circuits when the phase is unchanged.
 - Phase logic (all times local, derived from `locations.device` + `timezone.utcOffsetMinutes`; `fridayDateFor(now)` anchors on midnight of the most recent Friday and only advances on Friday itself):
@@ -159,11 +159,11 @@ The display system is layered as follows:
 - `applySettings()` and `resetSunsetCache()` (called after a browser time sync) invalidate the cache to force recomputation on the next tick.
 
 ### Trading Mode
-- **`trading_mode.h/cpp`** provides the application-owned `TradingModeController`; pure weekday 09:30-open / 16:00-close boundary math lives in `schedule.cpp`. The RTC value is Eastern local wall-clock time.
+- **`trading_mode.h/cpp`** provides the application-owned `TradingModeController`; pure weekday boundary math for one or two configured, ordered sessions lives in `schedule.cpp`. Session times and the RTC value are local wall-clock time.
 - Trading mode always installs `View::kCountdown` through `DisplayManager::setView()`; it reuses the counting format catalog and never adds a separate view or renderer.
 - `trading.formatOver24` (persisted; `kSameFormat`/255 = disabled) is passed to `ViewState.longFormatIndex` so weekend/overnight countdowns over 24h can render with a days-bearing format while the regular `trading.format` takes over below 24h.
-- Before 09:30 on a weekday it counts down to that opening; during trading hours it counts down to 16:00; after close and on weekends it counts down to the next weekday opening. Holidays and early closes are not modeled.
-- Boundary announcements follow the Friday-mode pattern: a live open-to-close phase crossing first installs the 16:00 countdown, then blinks `messages.tradingOpen` for 5s; a live close-to-open crossing installs the next opening countdown, then blinks `messages.tradingClose` for 5s.
+- Trading session 1 is always enabled; session 2 is optional. `TradingSchedule` retains both fixed session slots plus `intervalCount`, so disabling session 2 does not discard its times. The controller counts down through each enabled start and stop, then targets session 1 on the next weekday. Enabled sessions must be ordered, non-overlapping, and separated by a gap. Holidays and early closes are not modeled.
+- Boundary announcements follow the Friday-mode pattern: a live open-to-close phase crossing first installs that session's stop countdown, then blinks `messages.tradingOpen` for 5s; a live close-to-open crossing installs the next session/weekday start countdown, then blinks `messages.tradingClose` for 5s.
 - Boot, config reload, and browser time synchronization reset the remembered Trading phase to `kNone`, and a crossing from `kNone` never announces - so those events cannot synthesize an open/close message.
 
 ### Input
@@ -179,6 +179,7 @@ The display system is layered as follows:
 - `ClockConfig` (in `config.h`) holds: `activeMode`; display, counting, Friday, Trading, message, and location groups; `timezone` with its IANA name and numeric UTC offset; and the persisted `dst` flag.
 - `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
 - `ClockConfig.messages` stores `splash`, `final`, `fridaySunset`, `tradingOpen`, and `tradingClose`; they serialize under `display.messages` and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Trading boundary defaults are `"OPEN"` and `"CLOSE"`.
+- `ClockConfig.trading` contains its normal/over-24h formats and a `TradingSchedule`. JSON stores `display.modes.trading.intervalCount` plus both entries in `intervals`, even when only session 1 is enabled, so disabling session 2 does not discard its configured times. Older array-only JSON remains readable: its array length becomes the enabled count.
 - `LocationInfo` contains `latitude`, `longitude`, and `zipcode[6]`. `ClockConfig.locations` keeps distinct `device` and `sunsetTest` values. `/config.json` retains separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.
 - `WifiConfig` holds: `staSsid`, `staPassword`, `apSsid`, `apPassword`.
 - **`config_serializer.h/cpp` is the only home of the JSON schema, in both directions.** Never spell out config field paths anywhere else.
@@ -206,4 +207,4 @@ The display system is layered as follows:
   - **Never judge WiFi/page-load performance while the clock is USB-powered from the PC** (confirmed 2026-07-14): on the PC's USB port next to its 2.4 GHz Bluetooth radio, AP transfers to the phone degrade severely (truncated bodies, ~18 s for a 1.4 KB page) with identical firmware, healthy heap, and fast handlers; on its own power supply away from the PC, loads are fast. This matches the documented USB supply-droop behavior (TX spikes corrupt long frames; that is why TX power is 17 dBm). To separate device work from radio delivery: `time=` in the request log is device-side cost; the browser beacon's `dl=` is delivery time; `TRUNCATED wrote X of Y` means the client stopped ACKing mid-transfer.
 - `POST /api/message/test` accepts an optional `"blink": true`, which previews via the blinking `showInfo(msg, 5000)` path instead of the static `showSplash()` - used by Friday and Trading boundary-message previews so they match live behavior.
 - `/location` edits the persisted device `location`. `/sunset` edits/persists only the `sunset` test fields before posting to `/api/sunset`.
-- On `/time`, "Set Time from Browser" updates the RTC/config (and resets the Friday sunset cache) and mirrors the new browser-derived values into the Device fields after a successful save.
+- On `/time`, "Set Time from Browser" updates the RTC/config, resets the Friday sunset cache and Trading remembered schedule, and mirrors the new browser-derived values into the Device fields after a successful save.

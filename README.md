@@ -52,20 +52,42 @@ events + cached RTC time
 | Display transition or overlay | `src/display_manager.cpp` |
 | Friday/Trading boundary math | `src/schedule.cpp` |
 | Friday sunset caching/announcement | `src/friday_mode.cpp` |
+| Trading sessions/announcements | `src/trading_mode.cpp` |
 | HTTP route registration | `src/web_server.cpp` |
 | JSON field name or config patching | `src/config_serializer.cpp` |
 | Web page | `web/pages/` and `tools/web_manifest.py` |
 
-## Build and test
+## Scheduled modes
+
+Friday mode selects a clock or sunset countdown view from the current local
+date and the configured device location. Trading mode counts down through one
+or two ordered weekday sessions. Session 1 is always enabled; session 2 is
+optional, and its times remain saved while disabled. Both controllers update
+the base view once per accepted RTC square-wave second without disturbing an
+active overlay.
+
+Trading times are local wall-clock times. Holidays and early closes are not
+modeled.
+
+## Design references
+
+- [CLAUDE.md](CLAUDE.md): detailed authoritative firmware reference.
+- [Display state](docs/display-state-design.md): Mode/View/Overlay ownership.
+- [Friday mode](docs/friday-mode-design.md): sunset phases and live crossing.
+- [Trading mode](docs/trading-mode-design.md): session persistence, validation,
+  boundary selection, and announcements.
+- [Web subsystem](docs/web-subsystem-redesign.md): static asset and API model.
+- [WiFi management](docs/wifi-connection-management-design.md): STA/AP ownership.
+- [clock.md](clock.md): authoritative PCB wiring derived from `hardware.h`.
+
+## Build
 
 ```bash
 pio run
-pio test -e native
 ```
 
-The native tests require a desktop C++ compiler (`gcc`/`g++`) on `PATH`. They
-exercise Arduino-independent schedule logic and do not require a clock. Device
-validation is still required for RTC, display, WiFi, and timing behavior.
+Validate RTC, display, WiFi, schedule transitions, and timing behavior on the
+device after relevant changes.
 
 Read `AGENTS.md` before hardware or timing changes; it contains the critical
 electrical, RTC, display, storage, and network invariants. `CLAUDE.md` is the

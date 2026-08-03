@@ -11,9 +11,9 @@ class DisplayManager;
 // Copied from ClockConfig by applySettings() to avoid holding the full config.
 struct TradingSettings {
   Mode activeMode = kModeClock;  // Gates ticking to kModeTrading.
-  TradingConfig formats{};  // Countdown formats for the boundary phases.
-  char openMessage[64] = "";  // Blinked on a live 09:30 open crossing.
-  char closeMessage[64] = "";  // Blinked on a live 16:00 close crossing.
+  TradingConfig config{};  // Trading formats and session schedule.
+  char openMessage[64] = "";  // Blinked when any session starts live.
+  char closeMessage[64] = "";  // Blinked when any session stops live.
 };
 
 // Selects the next Trading boundary and announces live open/close crossings.
