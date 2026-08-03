@@ -22,8 +22,6 @@ class TimeApi {
   void handleTimeSync();
 
  private:
-  bool parseJsonBody(JsonDocument& doc);
-
   ESP8266WebServer& server_;  // Source of time-sync request bodies.
   HttpResponder& responder_;  // Sends time API responses.
   ClockController& clockController_;  // Applies synchronized time to the application.

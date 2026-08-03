@@ -8,6 +8,7 @@
 
 struct ClockConfig;
 enum Mode : uint8_t;
+enum class View : uint8_t;
 class DisplayManager;
 class RtcService;
 
@@ -25,6 +26,7 @@ class ClockController {
   void showInfo(const char* message, int32_t durationMs);
   void showSplash(const char* message);
   Mode activeMode() const;
+  View activeView() const;
   bool demoActive() const;
 
  private:

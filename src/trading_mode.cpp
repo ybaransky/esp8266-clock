@@ -45,8 +45,7 @@ void TradingModeController::applySettings(const ClockConfig& config) {
 }
 
 void TradingModeController::resetSchedule() {
-  currentPhase_ = TradingPhase::kNone;
-  currentTargetUnix_ = 0;
+  phaseTracker_.reset();
 }
 
 void TradingModeController::tick(const DateTime& now,
@@ -56,18 +55,18 @@ void TradingModeController::tick(const DateTime& now,
   const TradingScheduleResult result =
       evaluateTradingSchedule(now, settings_.config);
   const uint32_t targetUnix = result.view.anchor.unixtime();
-  if ((result.phase == currentPhase_) &&
-      (targetUnix == currentTargetUnix_)) return;
+  if (!phaseTracker_.hasChanged(result.phase, targetUnix)) return;
+
+  const TradingPhase previousPhase = phaseTracker_.phase();
+  phaseTracker_.accept(result.phase, targetUnix);
 
   const bool crossedOpen =
-      (currentPhase_ == TradingPhase::kToOpen) &&
+      (previousPhase == TradingPhase::kToOpen) &&
       (result.phase == TradingPhase::kToClose);
   const bool crossedClose =
-      (currentPhase_ == TradingPhase::kToClose) &&
+      (previousPhase == TradingPhase::kToClose) &&
       (result.phase == TradingPhase::kToOpen);
 
-  currentPhase_ = result.phase;
-  currentTargetUnix_ = targetUnix;
   displayManager.setView(result.view);
   LOG_PRINTF("trading mode: phase -> %s, target=%04d-%02d-%02d %02d:%02d:%02d",
              tradingPhaseName(result.phase),

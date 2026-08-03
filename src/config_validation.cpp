@@ -70,6 +70,11 @@ int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes) {
   return static_cast<int16_t>(constrain(rawOffsetMinutes, -840, 840));
 }
 
+void sanitizeLocationInfo(LocationInfo& info) {
+  info.latitude = constrain(info.latitude, -90.0f, 90.0f);
+  info.longitude = constrain(info.longitude, -180.0f, 180.0f);
+}
+
 void sanitizePrintableText(const char* input, char* output, size_t outputSize) {
   if ((output == nullptr) || (outputSize == 0)) {
     return;

@@ -40,13 +40,13 @@ bool isValidTradingSchedule(const TradingSchedule& schedule) {
       (schedule.intervalCount > kMaxTradingIntervals)) {
     return false;
   }
-  for (uint8_t i = 0; i < kMaxTradingIntervals; ++i) {
+  for (uint8_t i = 0; i < schedule.intervalCount; ++i) {
     const TradingInterval& interval = schedule.intervals[i];
     if ((interval.startMinute >= 1440) || (interval.stopMinute >= 1440) ||
         (interval.startMinute >= interval.stopMinute)) {
       return false;
     }
-    if ((i > 0) && (i < schedule.intervalCount) &&
+    if ((i > 0) &&
         (schedule.intervals[i - 1].stopMinute >= interval.startMinute)) {
       return false;
     }

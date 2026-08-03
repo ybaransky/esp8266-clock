@@ -19,6 +19,9 @@ class ClockApplication {
   void tick(uint32_t nowMs);
 
  private:
+  void initializeRtc();
+  void initializeDisplayAndConfig();
+  void reportInitialRtcStatus(const RtcStatus& status);
   void processButtonEvents();
   void checkRtcHealth(uint32_t nowMs);
   void logModeOrViewTransition();

@@ -23,6 +23,10 @@ DateTime parseDateTime(const char* s) {
   return DateTime(y, mo, d, h, mi, sec);
 }
 
+uint32_t intervalForRefreshRate(RefreshRate rate) {
+  return rate == RefreshRate::kOneTenth ? kTenthMs : kSecondMs;
+}
+
 void copyMessage(char destination[64], const char* source) {
   strncpy(destination, source, 63);
   destination[63] = '\0';
@@ -296,23 +300,26 @@ void DisplayManager::logTransition(const char* from, const char* to, const char*
   LOG_PRINTF("display: %s -> %s (%s)", from, to, reason);
 }
 
-void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
+template <typename MutateFn>
+void DisplayManager::transitionTo(uint32_t nowMs, bool resetBlinkPhase,
+                                  bool forceRender, const char* reason,
+                                  MutateFn mutate) {
   const char* oldName = renderedName();
-  overlay_ = state;
+  mutate();
   scheduler_.invalidateRender();
-  scheduler_.resetBlink(nowMs);
-  logTransition(oldName, overlayName(overlay_.overlay), "overlay");
+  if (resetBlinkPhase) scheduler_.resetBlink(nowMs);
+  logTransition(oldName, renderedName(), reason);
+  if (forceRender) render(nowMs, true);
+}
+
+void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
+  transitionTo(nowMs, /*resetBlinkPhase=*/true, /*forceRender=*/false,
+              "overlay", [&]() { overlay_ = state; });
 }
 
 void DisplayManager::installView(uint32_t nowMs, bool forceRender) {
-  const char* oldName = renderedName();
-  overlay_.overlay = Overlay::kNone;
-  scheduler_.invalidateRender();
-  scheduler_.resetBlink(nowMs);
-  logTransition(oldName, viewName(baseView_.view), "view install");
-  if (forceRender) {
-    render(nowMs, true);
-  }
+  transitionTo(nowMs, /*resetBlinkPhase=*/true, forceRender, "view install",
+              [&]() { overlay_.overlay = Overlay::kNone; });
 }
 
 void DisplayManager::finishOverlay(uint32_t nowMs) {
@@ -325,11 +332,10 @@ void DisplayManager::finishOverlay(uint32_t nowMs) {
 }
 
 void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
-  const char* oldName = renderedName();
-  overlay_.overlay = Overlay::kNone;
-  scheduler_.invalidateRender();
-  logTransition(oldName, viewName(baseView_.view), "overlay cleared");
-  render(nowMs, true);
+  // No blink-phase reset: the base view underneath doesn't use the message
+  // blink cadence (only the colon cadence, tracked separately).
+  transitionTo(nowMs, /*resetBlinkPhase=*/false, /*forceRender=*/true,
+              "overlay cleared", [&]() { overlay_.overlay = Overlay::kNone; });
 }
 
 void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
@@ -362,47 +368,8 @@ uint8_t DisplayManager::activeCountingFormatIndex() const {
                                      : baseView_.formatIndex;
 }
 
-uint32_t DisplayManager::refreshInterval() const {
-  if (hasOverlay()) {
-    switch (overlay_.overlay) {
-      case Overlay::kNone:
-        break;
-      case Overlay::kDemoCountdown:
-        return kTenthMs;
-      case Overlay::kBlinkingMessage:
-      case Overlay::kDemoFinalMessage:
-        return kMessageBlinkMs;
-      case Overlay::kSplash:
-      case Overlay::kCountdownComplete:
-        return kSecondMs;
-      case Overlay::kPagedMessage:
-        return overlay_.paged.pageDurationMs;
-    }
-    return kSecondMs;
-  }
-
-  switch (baseView_.view) {
-    case View::kCountdown:
-      return displayFormatInfo(kFmtGroupCountdown, activeCountingFormatIndex())
-                     .refreshRate == RefreshRate::kOneTenth
-                 ? kTenthMs
-                 : kSecondMs;
-    case View::kCountup:
-      return displayFormatInfo(kFmtGroupCountUp, activeCountingFormatIndex())
-                     .refreshRate == RefreshRate::kOneTenth
-                 ? kTenthMs
-                 : kSecondMs;
-    case View::kClock:
-      return displayFormatInfo(kFmtGroupClock, baseView_.formatIndex).refreshRate ==
-                     RefreshRate::kOneTenth
-                 ? kTenthMs
-                 : kSecondMs;
-  }
-  return kSecondMs;
-}
-
-bool DisplayManager::renderElapsed(uint32_t nowMs, bool force) {
-  return scheduler_.shouldRender(nowMs, refreshInterval(), force);
+bool DisplayManager::renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force) {
+  return scheduler_.shouldRender(nowMs, intervalMs, force);
 }
 
 bool DisplayManager::overlayExpired(uint32_t nowMs) const {
@@ -460,7 +427,8 @@ bool DisplayManager::buildClockFrame(uint32_t nowMs, bool force,
       scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
     force = true;
   }
-  if (!renderElapsed(nowMs, force)) return false;
+  if (!renderElapsed(nowMs, intervalForRefreshRate(format.refreshRate), force))
+    return false;
 
   // Cached read: this runs up to 10x/sec for tenths formats, and the RTC's
   // registers only change once a second anyway.
@@ -478,26 +446,19 @@ bool DisplayManager::buildClockFrame(uint32_t nowMs, bool force,
 
 bool DisplayManager::buildCountdownFrame(uint32_t nowMs, bool force,
                                          DisplayFrame& frame) {
-  if (!renderElapsed(nowMs, force)) return false;
-
   const uint8_t formatIndex = activeCountingFormatIndex();
+  const RefreshRate refreshRate =
+      displayFormatInfo(kFmtGroupCountdown, formatIndex).refreshRate;
+  if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
+    return false;
+
   const DateTime now = rtc_.getNowCached();
   const long secs = static_cast<long>(baseView_.anchor.unixtime()) -
                     static_cast<long>(now.unixtime());
-
-  if (secs <= 0) {
-    OverlayState state;
-    state.overlay = Overlay::kCountdownComplete;
-    copyMessage(state.message, settings_.finalMessage);
-    // No expiration set: the countdown has finished, so this stays up until
-    // the next mode/config change installs a new view.
-    installOverlay(state, nowMs);
-    return buildMessageFrame(nowMs, true, frame);
-  }
+  if (secs <= 0) return installCountdownCompleteOverlay(nowMs, frame);
 
   uint8_t tenths = 0;
-  if (displayFormatInfo(kFmtGroupCountdown, formatIndex).refreshRate ==
-      RefreshRate::kOneTenth) {
+  if (refreshRate == RefreshRate::kOneTenth) {
     tenths = (secs > 0) ? (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10 : 0;
   }
 
@@ -505,18 +466,31 @@ bool DisplayManager::buildCountdownFrame(uint32_t nowMs, bool force,
   return true;
 }
 
+bool DisplayManager::installCountdownCompleteOverlay(uint32_t nowMs,
+                                                      DisplayFrame& frame) {
+  OverlayState state;
+  state.overlay = Overlay::kCountdownComplete;
+  copyMessage(state.message, settings_.finalMessage);
+  // No expiration set: the countdown has finished, so this stays up until
+  // the next mode/config change installs a new view.
+  installOverlay(state, nowMs);
+  return buildMessageFrame(nowMs, true, frame);
+}
+
 bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,
                                        DisplayFrame& frame) {
-  if (!renderElapsed(nowMs, force)) return false;
-
   const uint8_t formatIndex = activeCountingFormatIndex();
+  const RefreshRate refreshRate =
+      displayFormatInfo(kFmtGroupCountUp, formatIndex).refreshRate;
+  if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
+    return false;
+
   const DateTime now = rtc_.getNowCached();
   const long secs = static_cast<long>(now.unixtime()) -
                     static_cast<long>(baseView_.anchor.unixtime());
 
   uint8_t tenths = 0;
-  if (displayFormatInfo(kFmtGroupCountUp, formatIndex).refreshRate ==
-      RefreshRate::kOneTenth) {
+  if (refreshRate == RefreshRate::kOneTenth) {
     tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 
@@ -526,7 +500,7 @@ bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,
 
 bool DisplayManager::buildDemoFrame(uint32_t nowMs, bool force,
                                     DisplayFrame& frame) {
-  if (!renderElapsed(nowMs, force)) return false;
+  if (!renderElapsed(nowMs, kTenthMs, force)) return false;
 
   const uint32_t remaining = overlay_.transition.expiresAtMs - nowMs;
   const uint8_t whole  = static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
@@ -542,7 +516,8 @@ bool DisplayManager::buildMessageFrame(uint32_t nowMs, bool force,
     force = true;
   }
 
-  if (!renderElapsed(nowMs, force)) return false;
+  const uint32_t intervalMs = blink ? kMessageBlinkMs : kSecondMs;
+  if (!renderElapsed(nowMs, intervalMs, force)) return false;
 
   frame = renderMessageDisplayFrame(
       overlay_.message, !blink || scheduler_.blinkOn());

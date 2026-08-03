@@ -56,11 +56,11 @@ void FridayModeController::applySettings(const ClockConfig& config) {
                         config.timezone.utcOffsetMinutes};
   strlcpy(settings_.sunsetMessage, config.messages.fridaySunset,
           sizeof(settings_.sunsetMessage));
-  currentPhase_ = FridayPhase::kNone;
-  cachedFridayDate_ = DateTime();
+  resetSchedule();
 }
 
-void FridayModeController::resetSunsetCache() {
+void FridayModeController::resetSchedule() {
+  phaseTracker_.reset();
   cachedFridayDate_ = DateTime();
 }
 
@@ -71,15 +71,18 @@ void FridayModeController::tick(const DateTime& now,
   refreshSunsetCacheIfNeeded(now);
   const FridayScheduleResult result = evaluateFridaySchedule(
       now, cachedFridaySunset_, cachedSaturdaySunset_, settings_.formats);
-  if (result.phase == currentPhase_) return;
+  const uint32_t targetUnix = result.view.anchor.unixtime();
+  if (!phaseTracker_.hasChanged(result.phase, targetUnix)) return;
+
+  const FridayPhase previousPhase = phaseTracker_.phase();
+  phaseTracker_.accept(result.phase, targetUnix);
 
   LOG_PRINTF("friday mode: phase -> %s", fridayPhaseName(result.phase));
-  const bool crossedFridaySunset =
-      (currentPhase_ == FridayPhase::kToFridaySunset) &&
-      (result.phase == FridayPhase::kToSaturdaySunset);
-  currentPhase_ = result.phase;
   displayManager.setView(result.view);
 
+  const bool crossedFridaySunset =
+      (previousPhase == FridayPhase::kToFridaySunset) &&
+      (result.phase == FridayPhase::kToSaturdaySunset);
   if (crossedFridaySunset) {
     displayManager.showInfo(settings_.sunsetMessage, kSunsetMessageMs);
   }

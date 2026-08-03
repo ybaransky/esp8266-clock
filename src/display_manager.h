@@ -168,6 +168,16 @@ class DisplayManager {
   ViewState viewForMode(Mode mode) const;
   void logTransition(const char* from, const char* to, const char* reason) const;
 
+  // Applies an overlay/view-visibility transition: captures the current
+  // rendered name for logging, runs `mutate` to update overlay_/baseView_,
+  // invalidates the render throttle, optionally resets the blink phase, logs
+  // the transition against the resulting rendered name, and optionally
+  // forces an immediate render. Shared by every place that flips what's
+  // currently on the segments, so that sequence can't drift between them.
+  template <typename MutateFn>
+  void transitionTo(uint32_t nowMs, bool resetBlinkPhase, bool forceRender,
+                    const char* reason, MutateFn mutate);
+
   void installOverlay(const OverlayState& state, uint32_t nowMs);
   void installView(uint32_t nowMs, bool forceRender = true);
   void finishOverlay(uint32_t nowMs);
@@ -176,8 +186,7 @@ class DisplayManager {
 
   void updateCountupOrigin(const ClockConfig& config);
   uint8_t activeCountingFormatIndex() const;
-  uint32_t refreshInterval() const;
-  bool renderElapsed(uint32_t nowMs, bool force = false);
+  bool renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force = false);
   bool overlayExpired(uint32_t nowMs) const;
   bool overlayBlinks() const;
   bool hasOverlay() const { return overlay_.overlay != Overlay::kNone; }
@@ -190,6 +199,10 @@ class DisplayManager {
   bool buildMessageFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
   bool buildPagedMessageFrame(uint32_t nowMs, bool force,
                               DisplayFrame& frame);
+  // Countdown reaching zero is itself a view transition (base view ->
+  // completion overlay), detected here rather than in tick() so it fires at
+  // the same throttled cadence as every other countdown redraw.
+  bool installCountdownCompleteOverlay(uint32_t nowMs, DisplayFrame& frame);
 
   DisplaySettings settings_ =
       DisplaySettings::fromConfig(defaultClockConfig());  // Applied settings snapshot.

@@ -2,6 +2,7 @@
 
 #include <RTClib.h>
 #include "config.h"
+#include "phase_tracker.h"
 #include "schedule.h"
 #include "sunset_calculator.h"
 
@@ -20,14 +21,14 @@ struct FridaySettings {
 class FridayModeController {
  public:
   void applySettings(const ClockConfig& config);
-  void resetSunsetCache();
+  void resetSchedule();
   void tick(const DateTime& now, DisplayManager& displayManager);
 
  private:
   static DateTime fridayDateFor(const DateTime& now);
   void refreshSunsetCacheIfNeeded(const DateTime& now);
 
-  FridayPhase currentPhase_ = FridayPhase::kNone;  // Last phase applied.
+  PhaseTracker<FridayPhase> phaseTracker_;  // Last phase+target applied.
   FridaySettings settings_;  // Friday-relevant settings snapshot.
   DateTime cachedFridayDate_;  // Reference Friday; invalid until first tick.
   DateTime cachedFridaySunset_;  // Cached local Friday sunset.

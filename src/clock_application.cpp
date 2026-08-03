@@ -16,18 +16,24 @@
 
 namespace {
 
+constexpr uint32_t kRtcHealthPollIntervalMs = 2000;
+
 //                                 123412341234
 const char kMsgNoRtc[]  = "  no rtc    ";
 const char kMsgLowBat[] = "  LO BAT    ";
 
+// Deliberately raw Serial (not LOG_PRINTLN): this is a hand-aligned ASCII-art
+// box meant to catch a human's eye during hardware bring-up, and the
+// LOG_PRINTLN prefix (timestamp/stack/source) on every line would break the
+// alignment. F() still keeps the literals in flash instead of RAM.
 void printRtcErrorBanner(const char* detail) {
   Serial.println();
-  Serial.println("############################");
-  Serial.println("#          ERROR           #");
-  Serial.println("#      RTC NOT FOUND       #");
-  Serial.println("############################");
+  Serial.println(F("############################"));
+  Serial.println(F("#          ERROR           #"));
+  Serial.println(F("#      RTC NOT FOUND       #"));
+  Serial.println(F("############################"));
   if ((detail != nullptr) && (detail[0] != '\0')) {
-    Serial.print("# ");
+    Serial.print(F("# "));
     Serial.println(detail);
   }
   Serial.println();
@@ -89,8 +95,20 @@ void ClockApplication::begin() {
   delay(500);
   LOG_PRINTF("Starting up...");
   printDeviceInfo();
-
   LOG_PRINTF("Built ========= %s %s ==========", __DATE__, __TIME__);
+
+  initializeRtc();
+  initializeDisplayAndConfig();
+  reportInitialRtcStatus(rtc_.getStatus());
+
+  WifiConfig cfg = configManager_.loadWifiConfig();
+  wifiConnectionManager_.begin(cfg);
+  webPortal_.begin();
+
+  buttonBegin();
+}
+
+void ClockApplication::initializeRtc() {
   Wire.begin(Hardware::Pins::I2C_SDA, Hardware::Pins::I2C_SCL);
   Wire.setClock(100000);
   LOG_PRINTF("Initialized SDA=GPIO%u SCL=GPIO%u",
@@ -105,33 +123,30 @@ void ClockApplication::begin() {
     LOG_PRINTF("Init failed: %s", status.error.c_str());
   }
   i2cBusScanner.scan();
+}
 
+void ClockApplication::initializeDisplayAndConfig() {
   ClockConfig cs = configManager_.loadClockConfig();
   segmentDisplay_.begin(cs.display.brightness);
   LOG_PRINTF("Mode %u, brightness %u",
              (unsigned)cs.activeMode, cs.display.brightness);
 
   clockController_.applyConfig(cs);
-  lastLoggedMode_ = displayManager_.activeMode();
-  lastLoggedView_ = displayManager_.activeView();
+  lastLoggedMode_ = clockController_.activeMode();
+  lastLoggedView_ = clockController_.activeView();
   if (cs.messages.splash[0] != '\0') {
     displayManager_.showSplash(cs.messages.splash);
   }
+}
 
-  const RtcStatus rtcStatus = rtc_.getStatus();
-  if (!rtcStatus.present) {
+void ClockApplication::reportInitialRtcStatus(const RtcStatus& status) {
+  if (!status.present) {
     displayManager_.showInfo(kMsgNoRtc);
     LOG_PRINTLN("RTC not found - showing no rtc");
-  } else if (rtcStatus.lowBattery) {
+  } else if (status.lowBattery) {
     displayManager_.showInfo(kMsgLowBat);
     LOG_PRINTLN("Low battery - showing info state");
   }
-
-  WifiConfig cfg = configManager_.loadWifiConfig();
-  wifiConnectionManager_.begin(cfg);
-  webPortal_.begin();
-
-  buttonBegin();
 }
 
 void ClockApplication::tick(uint32_t nowMs) {
@@ -160,7 +175,8 @@ void ClockApplication::processButtonEvents() {
 }
 
 void ClockApplication::checkRtcHealth(uint32_t nowMs) {
-  if (static_cast<long>(nowMs - lastRtcHealthCheckMs_) < 2000L) return;
+  if (static_cast<long>(nowMs - lastRtcHealthCheckMs_) <
+      static_cast<long>(kRtcHealthPollIntervalMs)) return;
   lastRtcHealthCheckMs_ = nowMs;
   const bool healthy = rtc_.isHealthy();
   if (!healthy) {
@@ -176,8 +192,8 @@ void ClockApplication::checkRtcHealth(uint32_t nowMs) {
 }
 
 void ClockApplication::logModeOrViewTransition() {
-  const Mode mode = displayManager_.activeMode();
-  const View view = displayManager_.activeView();
+  const Mode mode = clockController_.activeMode();
+  const View view = clockController_.activeView();
   if ((mode == lastLoggedMode_) && (view == lastLoggedView_)) return;
 
   LOG_PRINTF("mode/view: %s/%s -> %s/%s",

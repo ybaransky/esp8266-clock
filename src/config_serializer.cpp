@@ -131,44 +131,70 @@ bool applyZipcode(const char* zipcode, char* destination, size_t destinationSize
   return true;
 }
 
+// One row per format-index field: where it lives in the JSON (modes[modeKey]
+// [fieldKey]), which format group governs valid indexes, whether kSameFormat
+// is an accepted value, and how to reach the target ClockConfig member. Using
+// an accessor instead of a member pointer lets one table cover fields nested
+// at different depths (e.g. cfg.countdown.format vs cfg.display.clockFmt).
+struct FormatFieldDescriptor {
+  const char* modeKey;
+  const char* fieldKey;
+  FormatGroup group;
+  bool optional;  // True if kSameFormat/-1 means "no secondary format".
+  uint8_t& (*field)(ClockConfig&);
+};
+
+const FormatFieldDescriptor kFormatFields[] = {
+    {"countdown", "format", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.countdown.format; }},
+    {"countup", "format", kFmtGroupCountUp, false,
+     [](ClockConfig& c) -> uint8_t& { return c.countup.format; }},
+    {"clock", "format", kFmtGroupClock, false,
+     [](ClockConfig& c) -> uint8_t& { return c.display.clockFmt; }},
+    {"friday", "clockFormat", kFmtGroupClock, false,
+     [](ClockConfig& c) -> uint8_t& { return c.friday.clockFmt; }},
+    {"friday", "toFridaySunsetFormat", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.friday.toFridaySunsetFmt; }},
+    {"friday", "toSaturdaySunsetFormat", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.friday.toSaturdaySunsetFmt; }},
+    {"trading", "format", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.trading.format; }},
+    {"trading", "formatOver24", kFmtGroupCountdown, true,
+     [](ClockConfig& c) -> uint8_t& { return c.trading.formatOver24; }},
+};
+
+// One row per free-text display-message field: JSON key under "messages" and
+// how to reach the target fixed-size buffer.
+struct MessageFieldDescriptor {
+  const char* jsonKey;
+  char* (*field)(ClockConfig&);
+  size_t size;
+};
+
+const MessageFieldDescriptor kMessageFields[] = {
+    {"splash", [](ClockConfig& c) -> char* { return c.messages.splash; },
+     sizeof(MessageConfig::splash)},
+    {"final", [](ClockConfig& c) -> char* { return c.messages.final; },
+     sizeof(MessageConfig::final)},
+    {"fridaySunset",
+     [](ClockConfig& c) -> char* { return c.messages.fridaySunset; },
+     sizeof(MessageConfig::fridaySunset)},
+    {"tradingOpen",
+     [](ClockConfig& c) -> char* { return c.messages.tradingOpen; },
+     sizeof(MessageConfig::tradingOpen)},
+    {"tradingClose",
+     [](ClockConfig& c) -> char* { return c.messages.tradingClose; },
+     sizeof(MessageConfig::tradingClose)},
+};
+
 void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& cfg) {
-  if (!modes["countdown"]["format"].isNull()) {
-    cfg.countdown.format = sanitizeFormatIndex(
-        kFmtGroupCountdown, modes["countdown"]["format"].as<int>(), cfg.countdown.format);
-  }
-  if (!modes["countup"]["format"].isNull()) {
-    cfg.countup.format = sanitizeFormatIndex(
-        kFmtGroupCountUp, modes["countup"]["format"].as<int>(), cfg.countup.format);
-  }
-  if (!modes["clock"]["format"].isNull()) {
-    cfg.display.clockFmt = sanitizeFormatIndex(
-        kFmtGroupClock, modes["clock"]["format"].as<int>(), cfg.display.clockFmt);
-  }
-  if (!modes["friday"]["clockFormat"].isNull()) {
-    cfg.friday.clockFmt = sanitizeFormatIndex(
-        kFmtGroupClock, modes["friday"]["clockFormat"].as<int>(), cfg.friday.clockFmt);
-  }
-  if (!modes["friday"]["toFridaySunsetFormat"].isNull()) {
-    cfg.friday.toFridaySunsetFmt = sanitizeFormatIndex(
-        kFmtGroupCountdown,
-        modes["friday"]["toFridaySunsetFormat"].as<int>(),
-        cfg.friday.toFridaySunsetFmt);
-  }
-  if (!modes["friday"]["toSaturdaySunsetFormat"].isNull()) {
-    cfg.friday.toSaturdaySunsetFmt = sanitizeFormatIndex(
-        kFmtGroupCountdown,
-        modes["friday"]["toSaturdaySunsetFormat"].as<int>(),
-        cfg.friday.toSaturdaySunsetFmt);
-  }
-  if (!modes["trading"]["format"].isNull()) {
-    cfg.trading.format = sanitizeFormatIndex(
-        kFmtGroupCountdown, modes["trading"]["format"].as<int>(),
-        cfg.trading.format);
-  }
-  if (!modes["trading"]["formatOver24"].isNull()) {
-    cfg.trading.formatOver24 = sanitizeOptionalFormatIndex(
-        kFmtGroupCountdown, modes["trading"]["formatOver24"].as<int>(),
-        cfg.trading.formatOver24);
+  for (const FormatFieldDescriptor& d : kFormatFields) {
+    JsonVariantConst value = modes[d.modeKey][d.fieldKey];
+    if (value.isNull()) continue;
+    uint8_t& field = d.field(cfg);
+    field = d.optional
+        ? sanitizeOptionalFormatIndex(d.group, value.as<int>(), field)
+        : sanitizeFormatIndex(d.group, value.as<int>(), field);
   }
   if (!display["brightness"].isNull()) {
     cfg.display.brightness = sanitizeBrightness(display["brightness"].as<int>());
@@ -220,30 +246,10 @@ bool applyTradingSchedule(JsonVariantConst trading, ClockConfig& cfg) {
 }
 
 void applyMessageFields(JsonVariantConst messages, ClockConfig& cfg) {
-  if (!messages["splash"].isNull()) {
-    sanitizeDisplayMessage(messages["splash"].as<const char*>(),
-                           cfg.messages.splash,
-                           sizeof(cfg.messages.splash));
-  }
-  if (!messages["final"].isNull()) {
-    sanitizeDisplayMessage(messages["final"].as<const char*>(),
-                           cfg.messages.final,
-                           sizeof(cfg.messages.final));
-  }
-  if (!messages["fridaySunset"].isNull()) {
-    sanitizeDisplayMessage(messages["fridaySunset"].as<const char*>(),
-                           cfg.messages.fridaySunset,
-                           sizeof(cfg.messages.fridaySunset));
-  }
-  if (!messages["tradingOpen"].isNull()) {
-    sanitizeDisplayMessage(messages["tradingOpen"].as<const char*>(),
-                           cfg.messages.tradingOpen,
-                           sizeof(cfg.messages.tradingOpen));
-  }
-  if (!messages["tradingClose"].isNull()) {
-    sanitizeDisplayMessage(messages["tradingClose"].as<const char*>(),
-                           cfg.messages.tradingClose,
-                           sizeof(cfg.messages.tradingClose));
+  for (const MessageFieldDescriptor& d : kMessageFields) {
+    JsonVariantConst value = messages[d.jsonKey];
+    if (value.isNull()) continue;
+    sanitizeDisplayMessage(value.as<const char*>(), d.field(cfg), d.size);
   }
 }
 
@@ -254,6 +260,7 @@ bool applyLocationInfo(JsonVariantConst source, LocationInfo& info) {
   if (!source["longitude"].isNull()) {
     info.longitude = source["longitude"].as<float>();
   }
+  sanitizeLocationInfo(info);
   if (!source["zipcode"].isNull()) {
     if (!applyZipcode(source["zipcode"].as<const char*>(),
                       info.zipcode,
@@ -278,6 +285,24 @@ void applyTimezoneFields(JsonVariantConst time, ClockConfig& cfg) {
 }
 
 }  // namespace
+
+void sanitizeFormatFields(ClockConfig& cfg, const ClockConfig& defaults) {
+  ClockConfig& mutableDefaults = const_cast<ClockConfig&>(defaults);
+  for (const FormatFieldDescriptor& d : kFormatFields) {
+    uint8_t& field = d.field(cfg);
+    const uint8_t fallback = d.field(mutableDefaults);
+    field = d.optional
+        ? sanitizeOptionalFormatIndex(d.group, field, fallback)
+        : sanitizeFormatIndex(d.group, field, fallback);
+  }
+}
+
+void sanitizeMessageFields(ClockConfig& cfg) {
+  for (const MessageFieldDescriptor& d : kMessageFields) {
+    char* field = d.field(cfg);
+    sanitizeDisplayMessage(field, field, d.size);
+  }
+}
 
 const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
   // Every present field is applied even after an invalid one is seen, so a

@@ -15,8 +15,6 @@ class LocationApi {
   void handleSunset();
 
  private:
-  bool parseJsonBody(JsonDocument& doc, const char* route);
-
   ESP8266WebServer& server_;  // Source of location request arguments and bodies.
   HttpResponder& responder_;  // Sends location API responses.
 };

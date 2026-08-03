@@ -35,9 +35,6 @@ class ConfigApi {
   void handleFieldMismatch();
 
  private:
-  // Deserializes the request body into doc. On failure, logs, sends 400, and returns false.
-  bool parseJsonBody(JsonDocument& doc, const char* route);
-
   void populateConfigJson(JsonDocument& doc);
 
   ESP8266WebServer& server_;       // Source of request payloads and query args.

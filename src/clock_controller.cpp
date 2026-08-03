@@ -26,7 +26,7 @@ void ClockController::onSecondBoundary(const DateTime& now) {
 
 void ClockController::setTime(const DateTime& now) {
   rtc_.setNow(now);
-  fridayMode_.resetSunsetCache();
+  fridayMode_.resetSchedule();
   tradingMode_.resetSchedule();
 }
 
@@ -48,6 +48,10 @@ void ClockController::showSplash(const char* message) {
 
 Mode ClockController::activeMode() const {
   return displayManager_.activeMode();
+}
+
+View ClockController::activeView() const {
+  return displayManager_.activeView();
 }
 
 bool ClockController::demoActive() const {

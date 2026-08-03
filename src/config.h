@@ -115,8 +115,10 @@ public:
     bool        saveWifiConfig(const WifiConfig& cfg);
 
     ClockConfig loadClockConfig();
-    bool        saveClockConfig(const ClockConfig& cfg);
-    bool        saveConfig(const ClockConfig& clock, const WifiConfig& wifi);
+    // Sanitizes cfg in place before persisting, so the caller's copy always
+    // matches what was written to disk - no separate re-sanitize step needed.
+    bool        saveClockConfig(ClockConfig& cfg);
+    bool        saveConfig(ClockConfig& clock, const WifiConfig& wifi);
     // Sanitizes cfg in place. ClockConfig is ~450 bytes, and the web handlers
     // that save/apply configs run on the ESP8266's 4KB cont stack - returning
     // by value here stacked enough extra copies to overflow it.

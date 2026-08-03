@@ -138,20 +138,20 @@ ClockConfig ConfigManager::loadClockConfig() {
     return current_.clock;
 }
 
-bool ConfigManager::saveClockConfig(const ClockConfig& cfg) {
+bool ConfigManager::saveClockConfig(ClockConfig& cfg) {
     ensureLoaded();
+    sanitizeClockConfig(cfg);
     DeviceConfig next = current_;
     next.clock = cfg;
-    sanitizeClockConfig(next.clock);
     if (!writeAll(next, "save clock config")) return false;
     current_ = next;
     return true;
 }
 
-bool ConfigManager::saveConfig(const ClockConfig& clock, const WifiConfig& wifi) {
+bool ConfigManager::saveConfig(ClockConfig& clock, const WifiConfig& wifi) {
     ensureLoaded();
+    sanitizeClockConfig(clock);
     DeviceConfig next{clock, wifi};
-    sanitizeClockConfig(next.clock);
     if (!writeAll(next, "save complete config")) return false;
     current_ = next;
     return true;
@@ -159,39 +159,17 @@ bool ConfigManager::saveConfig(const ClockConfig& clock, const WifiConfig& wifi)
 
 void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
     const ClockConfig defaults = defaultClockConfig();
-    cfg.activeMode   = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
-    cfg.countdown.format = sanitizeFormatIndex(
-        kFmtGroupCountdown, cfg.countdown.format, defaults.countdown.format);
-    cfg.countup.format = sanitizeFormatIndex(
-        kFmtGroupCountUp, cfg.countup.format, defaults.countup.format);
-    cfg.display.clockFmt     = sanitizeFormatIndex(kFmtGroupClock,     cfg.display.clockFmt,     defaults.display.clockFmt);
-    cfg.friday.clockFmt = sanitizeFormatIndex(
-        kFmtGroupClock, cfg.friday.clockFmt, defaults.friday.clockFmt);
-    cfg.friday.toFridaySunsetFmt = sanitizeFormatIndex(
-        kFmtGroupCountdown, cfg.friday.toFridaySunsetFmt,
-        defaults.friday.toFridaySunsetFmt);
-    cfg.friday.toSaturdaySunsetFmt = sanitizeFormatIndex(
-        kFmtGroupCountdown, cfg.friday.toSaturdaySunsetFmt,
-        defaults.friday.toSaturdaySunsetFmt);
-    cfg.trading.format = sanitizeFormatIndex(
-        kFmtGroupCountdown, cfg.trading.format, defaults.trading.format);
-    cfg.trading.formatOver24 = sanitizeOptionalFormatIndex(
-        kFmtGroupCountdown, cfg.trading.formatOver24,
-        defaults.trading.formatOver24);
+    cfg.activeMode = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
+    sanitizeFormatFields(cfg, defaults);
     if (!isValidTradingSchedule(cfg.trading.schedule)) {
       cfg.trading.schedule = defaults.trading.schedule;
     }
     cfg.display.brightness = sanitizeBrightness(cfg.display.brightness);
     cfg.timezone.utcOffsetMinutes =
         sanitizeUtcOffsetMinutes(cfg.timezone.utcOffsetMinutes);
-    sanitizeDisplayMessage(cfg.messages.splash, cfg.messages.splash, sizeof(cfg.messages.splash));
-    sanitizeDisplayMessage(cfg.messages.final, cfg.messages.final, sizeof(cfg.messages.final));
-    sanitizeDisplayMessage(cfg.messages.fridaySunset, cfg.messages.fridaySunset,
-                           sizeof(cfg.messages.fridaySunset));
-    sanitizeDisplayMessage(cfg.messages.tradingOpen, cfg.messages.tradingOpen,
-                           sizeof(cfg.messages.tradingOpen));
-    sanitizeDisplayMessage(cfg.messages.tradingClose, cfg.messages.tradingClose,
-                           sizeof(cfg.messages.tradingClose));
+    sanitizeMessageFields(cfg);
     sanitizePrintableText(cfg.timezone.name, cfg.timezone.name,
                           sizeof(cfg.timezone.name));
+    sanitizeLocationInfo(cfg.locations.device);
+    sanitizeLocationInfo(cfg.locations.sunsetTest);
 }

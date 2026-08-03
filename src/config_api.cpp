@@ -20,20 +20,10 @@ constexpr uint32_t kRebootDelayMs = 1500;
 // ConfigApi
 // -----------------------------------------------------------------------------
 
-bool ConfigApi::parseJsonBody(JsonDocument& doc, const char* route) {
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("%s failed: invalid JSON: %s", route, err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return false;
-  }
-  return true;
-}
-
 void ConfigApi::handleDemoTest() {
   if (server_.hasArg("plain") && (server_.arg("plain").length() > 0)) {
     JsonDocument doc;
-    if (!parseJsonBody(doc, "/api/demo/test")) return;
+    if (!responder_.parseJsonBody(doc, "/api/demo/test")) return;
     JsonVariant finalMessage = doc["display"]["messages"]["final"];
     if (!finalMessage.isNull()) {
       ClockConfig cfg = configManager_.loadClockConfig();
@@ -50,7 +40,7 @@ void ConfigApi::handleDemoTest() {
 
 void ConfigApi::handleMessageTest() {
   JsonDocument doc;
-  if (!parseJsonBody(doc, "/api/message/test")) return;
+  if (!responder_.parseJsonBody(doc, "/api/message/test")) return;
 
   char message[64];
   sanitizeDisplayMessage(doc["message"] | "", message, sizeof(message));
@@ -66,22 +56,21 @@ void ConfigApi::handleMessageTest() {
 
 void ConfigApi::handleSetMode() {
   JsonDocument doc;
-  if (!parseJsonBody(doc, "/api/mode")) return;
+  if (!responder_.parseJsonBody(doc, "/api/mode")) return;
 
   Mode nextMode;
   const String mode = doc["mode"] | "";
   if (!modeFromName(mode, &nextMode)) {
     LOG_PRINTF("/api/mode failed: invalid mode=\"%s\"", mode.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid mode\"}");
+    responder_.sendJsonError(400, "Invalid mode");
     return;
   }
 
   ClockConfig cfg = configManager_.loadClockConfig();
   cfg.activeMode = nextMode;
-  configManager_.sanitizeClockConfig(cfg);
   if (!configManager_.saveClockConfig(cfg)) {
     LOG_PRINTLN("/api/mode failed: complete config write failed");
-    responder_.sendJson(500, "{\"error\":\"Configuration write failed\"}");
+    responder_.sendJsonError(500, "Configuration write failed");
     return;
   }
   clockController_.applyConfig(cfg);
@@ -90,10 +79,10 @@ void ConfigApi::handleSetMode() {
 
 void ConfigApi::handleBrightness() {
   JsonDocument doc;
-  if (!parseJsonBody(doc, "/api/brightness")) return;
+  if (!responder_.parseJsonBody(doc, "/api/brightness")) return;
   if (doc["brightness"].isNull()) {
     LOG_PRINTLN("/api/brightness failed: brightness required");
-    responder_.sendJson(400, "{\"error\":\"Brightness required\"}");
+    responder_.sendJsonError(400, "Brightness required");
     return;
   }
 
@@ -126,7 +115,7 @@ void ConfigApi::handleGetConfig() {
 
 void ConfigApi::handleSaveConfig() {
   JsonDocument doc;
-  if (!parseJsonBody(doc, "/api/config")) return;
+  if (!responder_.parseJsonBody(doc, "/api/config")) return;
   JsonVariantConst payload = doc.as<JsonVariantConst>();
 
   ClockConfig clockConfig = configManager_.loadClockConfig();
@@ -140,10 +129,9 @@ void ConfigApi::handleSaveConfig() {
   const bool wifiChanged = applyJsonToWifiConfig(payload, wifiConfig);
   if (!configManager_.saveConfig(clockConfig, wifiConfig)) {
     LOG_PRINTLN("/api/config failed: complete config write failed");
-    responder_.sendJson(500, "{\"error\":\"Configuration write failed\"}");
+    responder_.sendJsonError(500, "Configuration write failed");
     return;
   }
-  configManager_.sanitizeClockConfig(clockConfig);
   clockController_.applyConfig(clockConfig);
 
   if (wifiChanged) {
@@ -156,7 +144,7 @@ void ConfigApi::handleSaveConfig() {
 
 void ConfigApi::handleFieldMismatch() {
   JsonDocument doc;
-  if (!parseJsonBody(doc, "/api/field-mismatch")) return;
+  if (!responder_.parseJsonBody(doc, "/api/field-mismatch")) return;
 
   char page[32], field[32], configValue[80], acceptedValue[80], reason[80];
   sanitizePrintableText(doc["page"]          | "", page,          sizeof(page));

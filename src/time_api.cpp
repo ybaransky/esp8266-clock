@@ -8,15 +8,6 @@
 // TimeApi
 // -----------------------------------------------------------------------------
 
-bool TimeApi::parseJsonBody(JsonDocument& doc) {
-  const DeserializationError error = deserializeJson(doc, server_.arg("plain"));
-  if (!error) return true;
-
-  LOG_PRINTF("/api/time failed: invalid JSON: %s", error.c_str());
-  responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-  return false;
-}
-
 void TimeApi::handleGetTime() {
   const DateTime dt = rtc_.getNow();
   char buffer[96];
@@ -29,7 +20,7 @@ void TimeApi::handleGetTime() {
 
 void TimeApi::handleTimeSync() {
   JsonDocument doc;
-  if (!parseJsonBody(doc)) return;
+  if (!responder_.parseJsonBody(doc, "/api/time")) return;
 
   const int year = doc["year"] | 0;
   const int month = doc["month"] | 0;
@@ -42,7 +33,7 @@ void TimeApi::handleTimeSync() {
       (minute < 0) || (minute > 59) || (second < 0) || (second > 59)) {
     LOG_PRINTF("/api/time failed: invalid time %04d-%02d-%02d %02d:%02d:%02d",
                year, month, day, hour, minute, second);
-    responder_.sendJson(400, "{\"error\":\"Invalid time\"}");
+    responder_.sendJsonError(400, "Invalid time");
     return;
   }
 

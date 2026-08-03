@@ -14,6 +14,16 @@ void serializeWifiConfig(JsonDocument& doc, const WifiConfig& wifi);
 // Writes only the wifi SSIDs, omitting the station password (for HTTP API responses).
 void serializeWifiStatus(JsonDocument& doc, const WifiConfig& wifi);
 
+// Clamps every format-index field to a valid value for its format group,
+// falling back to the matching field in defaults. Shares the field list
+// (mode/JSON key, target member, format group) with applyJsonToClockConfig
+// so the two directions can't drift apart.
+void sanitizeFormatFields(ClockConfig& cfg, const ClockConfig& defaults);
+
+// Re-sanitizes every display message field in place (trims to printable
+// ASCII, clamps length). Shares the field list with applyJsonToClockConfig.
+void sanitizeMessageFields(ClockConfig& cfg);
+
 // Applies every clock-config field present in root onto cfg (patch semantics:
 // absent fields are untouched). Used both to load config.json (base = defaults)
 // and to apply a POST /api/config payload (base = loaded config). Returns

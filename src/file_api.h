@@ -24,7 +24,6 @@ class FileApi {
   static String uploadFilePath(const String& uploadName);
   static void sendJsonEscapedString(ESP8266WebServer& server, const String& value);
 
-  void printConfigFileToSerial(File& file);
   void closeUploadFile();
 
   ESP8266WebServer& server_;  // Source of file-management requests.

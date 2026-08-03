@@ -34,18 +34,13 @@ void WifiApi::handleScan() {
 
 void WifiApi::handleConnect() {
   JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, server_.arg("plain"));
-  if (err) {
-    LOG_PRINTF("/api/wifi/connect failed: invalid JSON: %s", err.c_str());
-    responder_.sendJson(400, "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
+  if (!responder_.parseJsonBody(doc, "/api/wifi/connect")) return;
 
   const String ssid = doc["ssid"] | "";
   const String password = doc["password"] | "";
   if (!wifiConnectionManager_.connectAndSave(configManager_, ssid, password)) {
     LOG_PRINTLN("/api/wifi/connect failed: SSID required");
-    responder_.sendJson(400, "{\"error\":\"SSID required\"}");
+    responder_.sendJsonError(400, "SSID required");
     return;
   }
 

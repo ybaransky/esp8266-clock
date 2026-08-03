@@ -17,6 +17,10 @@ class HttpResponder {
   void sendGzipProgmem(int status, const char* contentType,
                        const uint8_t* body, size_t length,
                        bool cacheImmutable = false);
+
+  // Deserializes the "plain" request body into doc. On failure, logs
+  // against `route`, sends a 400 error response, and returns false.
+  bool parseJsonBody(JsonDocument& doc, const char* route);
   void logRequest(int status, size_t txBytes = 0);
   uint32_t responseSequence() const { return responseSequence_; }
   void logCompletion(uint32_t elapsedUs);

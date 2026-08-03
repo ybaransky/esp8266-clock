@@ -97,7 +97,7 @@ void FileApi::sendJsonEscapedString(ESP8266WebServer& server, const String& valu
 
 void FileApi::handleListFiles() {
   if (!storageManager.ensureMounted("list files")) {
-    responder_.sendJson(500, "{\"error\":\"Storage mount failed\"}");
+    responder_.sendJsonError(500, "Storage mount failed");
     return;
   }
 
@@ -157,11 +157,6 @@ void FileApi::handleReadFile() {
     return;
   }
 
-  if (path == "/config.json") {
-    printConfigFileToSerial(file);
-    file.seek(0, SeekSet);
-  }
-
   if (server_.hasArg("offset") && server_.hasArg("limit")) {
     constexpr size_t kMaxViewerChunk = 512U * 1024U;
     const size_t fileSize = file.size();
@@ -190,19 +185,19 @@ void FileApi::handleReadFile() {
 void FileApi::handleDeleteFile() {
   const String path = normalizedFilePath(server_.arg("name"));
   if (path.isEmpty()) {
-    responder_.sendJson(400, "{\"error\":\"Invalid file name\"}");
+    responder_.sendJsonError(400, "Invalid file name");
     return;
   }
   if (!storageManager.ensureMounted("delete file")) {
-    responder_.sendJson(500, "{\"error\":\"Storage mount failed\"}");
+    responder_.sendJsonError(500, "Storage mount failed");
     return;
   }
   if (!STORAGE.exists(path)) {
-    responder_.sendJson(404, "{\"error\":\"Not found\"}");
+    responder_.sendJsonError(404, "Not found");
     return;
   }
   if (!STORAGE.remove(path)) {
-    responder_.sendJson(500, "{\"error\":\"Delete failed\"}");
+    responder_.sendJsonError(500, "Delete failed");
     return;
   }
   responder_.sendJson(200, "{\"message\":\"Deleted\"}");
@@ -255,22 +250,11 @@ void FileApi::handleUploadData() {
 
 void FileApi::handleUpload() {
   if (uploadError_) {
-    responder_.sendJson(500, "{\"error\":\"Upload failed\"}");
+    responder_.sendJsonError(500, "Upload failed");
   } else {
     responder_.sendJson(200, "{\"message\":\"Uploaded\"}");
   }
   uploadError_ = false;
-}
-
-void FileApi::printConfigFileToSerial(File& file) {
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, file);
-  if (err) {
-    LOG_PRINTF("config.json parse error while viewing file: %s", err.c_str());
-    return;
-  }
-  serializeJsonPretty(doc, Serial);
-  Serial.println();
 }
 
 void FileApi::closeUploadFile() {

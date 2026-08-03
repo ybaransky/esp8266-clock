@@ -3,6 +3,7 @@
 #include <RTClib.h>
 
 #include "config.h"
+#include "phase_tracker.h"
 #include "schedule.h"
 
 class DisplayManager;
@@ -25,6 +26,5 @@ class TradingModeController {
 
  private:
   TradingSettings settings_;  // Trading-relevant settings snapshot.
-  TradingPhase currentPhase_ = TradingPhase::kNone;  // Last phase installed.
-  uint32_t currentTargetUnix_ = 0;  // Boundary currently on the display.
+  PhaseTracker<TradingPhase> phaseTracker_;  // Last phase+target installed.
 };

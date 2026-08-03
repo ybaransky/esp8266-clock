@@ -38,6 +38,15 @@ void HttpResponder::sendJsonError(int status, const char* message) {
   sendJson(status, body);
 }
 
+bool HttpResponder::parseJsonBody(JsonDocument& doc, const char* route) {
+  const DeserializationError error = deserializeJson(doc, server_.arg("plain"));
+  if (!error) return true;
+
+  LOG_PRINTF("%s failed: invalid JSON: %s", route, error.c_str());
+  sendJsonError(400, "Invalid JSON");
+  return false;
+}
+
 void HttpResponder::sendGzipProgmem(int status, const char* contentType,
                                     const uint8_t* body, size_t length,
                                     bool cacheImmutable) {

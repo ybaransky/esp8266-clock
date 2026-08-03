@@ -15,6 +15,9 @@ uint8_t sanitizeOptionalFormatIndex(FormatGroup group, int rawIndex,
                                     uint8_t fallback);
 uint8_t sanitizeBrightness(int rawBrightness);
 int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes);
+// Clamps latitude/longitude to valid ranges in place. Zipcode is untouched -
+// callers that accept a new zipcode validate it with isValidZipcode instead.
+void sanitizeLocationInfo(LocationInfo& info);
 // Both text sanitizers support input == output (in-place sanitization):
 // sanitizePrintableText compacts forward, so its write index never passes its
 // read index, and sanitizeDisplayMessage stages through a local buffer.
