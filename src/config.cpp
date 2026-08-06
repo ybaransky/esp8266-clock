@@ -165,6 +165,10 @@ void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
       cfg.trading.schedule = defaults.trading.schedule;
     }
     cfg.display.brightness = sanitizeBrightness(cfg.display.brightness);
+    cfg.friday.blinkBeforeMinutes =
+        sanitizeBlinkMinutes(cfg.friday.blinkBeforeMinutes);
+    cfg.friday.blinkAfterMinutes =
+        sanitizeBlinkMinutes(cfg.friday.blinkAfterMinutes);
     cfg.timezone.utcOffsetMinutes =
         sanitizeUtcOffsetMinutes(cfg.timezone.utcOffsetMinutes);
     sanitizeMessageFields(cfg);

@@ -11,6 +11,7 @@ namespace {
 constexpr uint32_t kSecondMs = 1000;
 constexpr uint32_t kTenthMs = 100;
 constexpr uint32_t kMessageBlinkMs = 500;
+constexpr uint32_t kViewBlinkMs = 250;  // 2 blinks/second for view blink windows.
 constexpr uint32_t kColonBlinkMs = 1000;
 constexpr uint32_t kSplashDurationMs = 5000;
 constexpr uint32_t kDemoCountdownMs = 5000;
@@ -368,6 +369,10 @@ uint8_t DisplayManager::activeCountingFormatIndex() const {
                                      : baseView_.formatIndex;
 }
 
+bool DisplayManager::viewBlinkActive() const {
+  return baseView_.blink.contains(rtc_.getNowCached().unixtime());
+}
+
 bool DisplayManager::renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force) {
   return scheduler_.shouldRender(nowMs, intervalMs, force);
 }
@@ -402,6 +407,19 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
         break;
     }
   } else {
+    // The blink phase advances before the build functions consult the render
+    // throttle, so every toggle produces a frame of its own regardless of the
+    // format's normal refresh rate.
+    const bool blinking = viewBlinkActive();
+    if (blinking) {
+      if (scheduler_.toggleBlinkIfDue(nowMs, kViewBlinkMs)) force = true;
+    } else if (!scheduler_.blinkOn()) {
+      // The window closed (or an overlay cleared) on an "off" phase: restore
+      // visibility now instead of waiting for the view's refresh interval.
+      scheduler_.resetBlink(nowMs);
+      force = true;
+    }
+
     switch (baseView_.view) {
       case View::kClock:
         frameReady = buildClockFrame(nowMs, force, frame);
@@ -412,6 +430,13 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
       case View::kCountup:
         frameReady = buildCountupFrame(nowMs, force, frame);
         break;
+    }
+
+    // hasOverlay() is re-checked because a build function may have installed
+    // one (countdown completion); that frame belongs to the overlay and is
+    // not subject to the view's blink window.
+    if (frameReady && blinking && !hasOverlay() && !scheduler_.blinkOn()) {
+      frame = renderBlankDisplayFrame();
     }
   }
 

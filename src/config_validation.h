@@ -14,6 +14,8 @@ uint8_t sanitizeFormatIndex(FormatGroup group, int rawIndex, uint8_t fallback);
 uint8_t sanitizeOptionalFormatIndex(FormatGroup group, int rawIndex,
                                     uint8_t fallback);
 uint8_t sanitizeBrightness(int rawBrightness);
+// Clamps a blink-window length in minutes to 0 (disabled) through 240.
+uint8_t sanitizeBlinkMinutes(int rawMinutes);
 int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes);
 // Clamps latitude/longitude to valid ranges in place. Zipcode is untouched -
 // callers that accept a new zipcode validate it with isValidZipcode instead.

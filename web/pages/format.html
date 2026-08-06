@@ -89,11 +89,13 @@
 
 <div id="fri">
   <hr>
-  <h3>Clock Phase &nbsp;(Sat sunset &rarr; Thu midnight)</h3>
+  <h3>Clock Phase<br><span class="muted">(Saturday sunset &rarr; Thursday midnight)</span></h3>
   <label>Format<select id="ffck"></select></label>
-  <h3>Countdown &nbsp;(Thu midnight &rarr; Fri sunset)</h3>
+  <h3>Countdown Phase I<br><span class="muted">(Thursday midnight &rarr; Friday sunset)</span></h3>
   <label>Format<select id="ffri"></select></label>
-  <h3>Countdown &nbsp;(Fri sunset &rarr; Sat sunset)</h3>
+  <label>Blink minutes before sunset &nbsp;(0 = off)<input type="number" min="0" max="240" step="1" id="fblinkb"></label>
+  <label>Blink minutes after sunset &nbsp;(0 = off)<input type="number" min="0" max="240" step="1" id="fblinka"></label>
+  <h3>Countdown Phase II<br><span class="muted">(Friday sunset &rarr; Saturday sunset)</span></h3>
   <label>Format<select id="fsat"></select></label>
 </div>
 
@@ -215,6 +217,8 @@ api('/api/formats').catch(function (e) {
   options('ffck', formats.clock, fri.clockFormat);
   options('ffri', formats.countdown, fri.toFridaySunsetFormat);
   options('fsat', formats.countdown, fri.toSaturdaySunsetFormat);
+  $('fblinkb').value = fri.blinkBeforeMinutes == null ? 0 : fri.blinkBeforeMinutes;
+  $('fblinka').value = fri.blinkAfterMinutes == null ? 0 : fri.blinkAfterMinutes;
   options('ftrade', formats.countdown, trading.format);
   optionsWithSame('ftrade24', formats.countdown, trading.formatOver24);
   var intervals = trading.intervals || [];
@@ -272,7 +276,9 @@ function save() {
         friday: {
           clockFormat: +$('ffck').value,
           toFridaySunsetFormat: +$('ffri').value,
-          toSaturdaySunsetFormat: +$('fsat').value
+          toSaturdaySunsetFormat: +$('fsat').value,
+          blinkBeforeMinutes: +$('fblinkb').value,
+          blinkAfterMinutes: +$('fblinka').value
         },
         trading: {
           format: +$('ftrade').value,

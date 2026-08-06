@@ -66,6 +66,11 @@ uint8_t sanitizeBrightness(int rawBrightness) {
   return static_cast<uint8_t>(constrain(rawBrightness, 0, 7));
 }
 
+uint8_t sanitizeBlinkMinutes(int rawMinutes) {
+  static constexpr int kMaxBlinkMinutes = 240;
+  return static_cast<uint8_t>(constrain(rawMinutes, 0, kMaxBlinkMinutes));
+}
+
 int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes) {
   return static_cast<int16_t>(constrain(rawOffsetMinutes, -840, 840));
 }

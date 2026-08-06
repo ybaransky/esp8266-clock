@@ -5,6 +5,7 @@
 
 // Pure rendering functions. Each converts explicit application data into a
 // hardware-independent frame and performs no I/O or scheduling.
+DisplayFrame renderBlankDisplayFrame();
 DisplayFrame renderDemoDisplayFrame(uint8_t wholeSeconds, uint8_t tenths);
 DisplayFrame renderMessageDisplayFrame(const char* message, bool visible);
 DisplayFrame renderPageDisplayFrame(const char* panel1,

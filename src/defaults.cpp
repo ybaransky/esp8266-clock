@@ -24,6 +24,8 @@ ClockConfig defaultClockConfig() {
     s.friday.clockFmt             = 7;
     s.friday.toFridaySunsetFmt    = 0;
     s.friday.toSaturdaySunsetFmt  = 0;
+    s.friday.blinkBeforeMinutes   = 0;  // no pre-sunset blink
+    s.friday.blinkAfterMinutes    = 0;  // no post-sunset blink
     s.trading.format              = 0;
     s.trading.formatOver24        = kSameFormat;
     s.trading.schedule.intervalCount = 1;

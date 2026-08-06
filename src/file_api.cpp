@@ -173,13 +173,54 @@ void FileApi::handleReadFile() {
     snprintf(totalSize, sizeof(totalSize), "%u", static_cast<unsigned>(fileSize));
     server_.sendHeader("X-File-Size", totalSize);
     server_.send(200, mimeTypeForPath(path), &file, length);
+    logFileContent(file, path, offset, length);
     file.close();
     return;
   }
 
-  responder_.logRequest(200, file.size());
+  const size_t fileSize = file.size();
+  responder_.logRequest(200, fileSize);
   server_.streamFile(file, mimeTypeForPath(path));
+  logFileContent(file, path, 0, fileSize);
   file.close();
+}
+
+void FileApi::logFileContent(File& file, const String& path, size_t offset,
+                             size_t length) {
+  // Only the config file is mirrored. Serial drains at roughly 7.5 KB/s, so
+  // dumping whatever the browser happens to open would stall the loop for
+  // minutes on a large file (/zipcodes.txt is 860 KB).
+  static constexpr char kMirroredPath[] = "/config.json";
+  if (path != kMirroredPath) return;
+
+  // Kept as a safety net in case the config file ever grows: 4 KB is about
+  // half a second of serial time, and the current file is under 1 KB.
+  static constexpr size_t kMaxSerialDumpBytes = 4096;
+  const size_t dumped = min(length, kMaxSerialDumpBytes);
+
+  LOG_PRINTF("file body: %s offset=%u bytes=%u of %u", path.c_str(),
+             static_cast<unsigned>(offset), static_cast<unsigned>(dumped),
+             static_cast<unsigned>(length));
+  // The response has already been streamed, so the read head sits at the end
+  // of the range; rewind to replay exactly the bytes the browser received.
+  if (!file.seek(offset, SeekSet)) {
+    LOG_PRINTLN("file body: seek failed");
+    return;
+  }
+
+  uint8_t buffer[64];
+  size_t remaining = dumped;
+  while (remaining > 0) {
+    const size_t wanted = min(sizeof(buffer), remaining);
+    // File::read() returns int: a negative error must not be widened into a
+    // huge size_t length for Serial.write().
+    const int read = file.read(buffer, wanted);
+    if (read <= 0) break;  // Truncated or unreadable; stop rather than spin.
+    Serial.write(buffer, static_cast<size_t>(read));
+    remaining -= static_cast<size_t>(read);
+    yield();
+  }
+  Serial.println();
 }
 
 void FileApi::handleDeleteFile() {

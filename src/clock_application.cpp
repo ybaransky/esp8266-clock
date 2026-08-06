@@ -154,7 +154,12 @@ void ClockApplication::tick(uint32_t nowMs) {
   processButtonEvents();
   if (rtc_.consumeSqwPulse()) {
     clockController_.onSecondBoundary(rtc_.getNowCached());
-    if (rtc_.isLogIntervalDue()) {
+    // isLogIntervalDue() keeps running at its own cadence because that call is
+    // also what resyncs the RTC cache; only the state line is throttled to the
+    // minute. The second is read before the call, since the resync replaces the
+    // cached value this test is based on.
+    const uint8_t cachedSecond = rtc_.getNowCached().second();
+    if (rtc_.isLogIntervalDue() && (cachedSecond == 0)) {
       LOG_PRINTF("SQW: mode=%s view=%s",
                  modeName(displayManager_.activeMode()),
                  viewName(displayManager_.activeView()));

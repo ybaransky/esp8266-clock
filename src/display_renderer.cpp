@@ -10,6 +10,12 @@ void blankFrame(DisplayFrame& frame) {
 
 }  // namespace
 
+DisplayFrame renderBlankDisplayFrame() {
+  DisplayFrame frame;
+  blankFrame(frame);
+  return frame;
+}
+
 DisplayFrame renderDemoDisplayFrame(uint8_t wholeSeconds, uint8_t tenths) {
   DisplayFrame frame;
   blankFrame(frame);

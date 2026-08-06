@@ -12,7 +12,7 @@ class DisplayManager;
 // Copied from ClockConfig by applySettings() to avoid holding the full config.
 struct FridaySettings {
   Mode activeMode = kModeClock;  // Gates ticking to kModeFriday.
-  FridayConfig formats{};  // Format index for each Friday phase.
+  FridayConfig formats{};  // Per-phase format indexes and the sunset blink windows.
   Location location{};  // Device coordinates and UTC offset for sunset math.
   char sunsetMessage[64] = "";  // Blinked on a live Friday-sunset crossing.
 };

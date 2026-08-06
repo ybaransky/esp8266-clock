@@ -54,11 +54,14 @@ struct CountupConfig {
   uint8_t format;  // Selected counting-format index.
 };
 
-// Stores the format selected for each phase of the Friday schedule.
+// Stores the format selected for each phase of the Friday schedule, plus the
+// two blink windows that bracket Friday sunset.
 struct FridayConfig {
   uint8_t clockFmt;             // Clock phase (Saturday sunset through Friday midnight).
   uint8_t toFridaySunsetFmt;    // Friday-midnight to Friday-sunset countdown.
   uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
+  uint8_t blinkBeforeMinutes;   // Blink for this many minutes before Friday sunset; 0 = off.
+  uint8_t blinkAfterMinutes;    // Blink for this many minutes after Friday sunset; 0 = off.
 };
 
 // Stores Trading-mode presentation and its local-time session schedule.

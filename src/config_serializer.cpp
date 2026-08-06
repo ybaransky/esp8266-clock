@@ -66,6 +66,8 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   friday["clockFormat"]            = clock.friday.clockFmt;
   friday["toFridaySunsetFormat"]   = clock.friday.toFridaySunsetFmt;
   friday["toSaturdaySunsetFormat"] = clock.friday.toSaturdaySunsetFmt;
+  friday["blinkBeforeMinutes"]     = clock.friday.blinkBeforeMinutes;
+  friday["blinkAfterMinutes"]      = clock.friday.blinkAfterMinutes;
 
   JsonObject trading = modes["trading"].to<JsonObject>();
   trading["format"] = clock.trading.format;
@@ -201,6 +203,14 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
   }
   if (!display["clock12Hour"].isNull()) {
     cfg.display.clockUse12Hour = display["clock12Hour"].as<bool>();
+  }
+  if (!modes["friday"]["blinkBeforeMinutes"].isNull()) {
+    cfg.friday.blinkBeforeMinutes =
+        sanitizeBlinkMinutes(modes["friday"]["blinkBeforeMinutes"].as<int>());
+  }
+  if (!modes["friday"]["blinkAfterMinutes"].isNull()) {
+    cfg.friday.blinkAfterMinutes =
+        sanitizeBlinkMinutes(modes["friday"]["blinkAfterMinutes"].as<int>());
   }
   if (!modes["countdown"]["end"].isNull()) {
     snprintf(cfg.countdown.end, sizeof(cfg.countdown.end), "%s",

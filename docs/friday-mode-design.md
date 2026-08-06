@@ -41,3 +41,24 @@ a false boundary announcement.
 
 The blinking message is an overlay. The Saturday countdown is installed first,
 so clearing the message reveals the correct live view.
+
+## Sunset blink windows
+
+`friday.blinkBeforeMinutes` and `friday.blinkAfterMinutes` bracket **Friday**
+sunset: the countdown blinks twice a second for the last N minutes before it
+and the first M minutes after it. Either value at 0 disables that window.
+
+The windows are not phases. The controller converts them into an absolute
+`BlinkWindow` on the `ViewState` it installs - `[sunset - N, sunset)` on the
+to-Friday-sunset countdown, `[sunset, sunset + M)` on the to-Saturday-sunset
+countdown - and `DisplayManager` re-tests membership on every render, the same
+way `longFormatIndex` is re-resolved. Consequences:
+
+- No phase is added, so the `kToFridaySunset -> kToSaturdaySunset` crossing
+  test that gates the sunset message is untouched.
+- A window ends on its own; nothing has to push a new view to stop the blink.
+- A time sync or a reboot inside a window lands in the right state with no
+  crossing state to invalidate.
+
+The post-sunset window starts under the 5-second sunset message overlay and
+becomes visible when that overlay clears.

@@ -66,7 +66,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 | `kModeCountdown` | countdown | Counts down to a configured end datetime |
 | `kModeCountup`   | countup   | Counts up from a configured start datetime |
 | `kModeClock`     | clock     | Displays current time (24h or 12h per `clockUse12Hour`) |
-| `kModeFriday`    | friday    | Clock phase (Sat sunset → Fri midnight) → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `messages.fridaySunset` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. |
+| `kModeFriday`    | friday    | Clock phase (Sat sunset → Fri midnight) → countdown to Fri sunset → countdown to Sat sunset → repeats. A **live** Fri-sunset crossing blinks `messages.fridaySunset` for 5s (`showInfo` overlay); arriving there from boot/config-save does not. `friday.blinkBeforeMinutes`/`blinkAfterMinutes` blink the countdown 2x/sec for N minutes before and M minutes after Fri sunset (0 = off) via `ViewState::blink`, not via a phase. |
 | `kModeTrading`   | trading   | Counts down through one or two configured weekday trading sessions in local wall-clock time: each enabled start, each stop, then session 1 on the next weekday. Live crossings blink `messages.tradingOpen` or `messages.tradingClose` for 5s; boot/config-save/time-sync arrival does not. Holidays and early closes are not modeled. |
 
 ## 12-hour clock mode
@@ -86,6 +86,7 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 
 ## Critical invariants
 
+- **Duration-dependent presentation is resolved at render time, not by a phase** — `ViewState::longFormatIndex` and `ViewState::blink` are re-evaluated on every render, so they end on their own and survive time syncs/reboots with no crossing state. Do not add schedule phases for presentation-only changes.
 - **`ViewState`/`OverlayState` are plain structs, not unions** — fields unused by the active view/overlay (e.g. `anchor` for clock, `message` for a paged overlay) are simply ignored. Do not reintroduce the old union-payload design.
 - **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` is a UI label plus three declarative `PanelSpec` shapes; the shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are derived from the shapes (they cannot drift), and the `hhh:mm` overflow fallback is resolved semantically by `resolveCountingOverflow()` — no hardcoded indices. Countdown and countup intentionally share `kCountingFormats`.
 - **Schedule math stays pure** — `schedule.h/cpp` contains Arduino-independent Friday/Trading boundary calculations. Controllers own cache/transition state and perform display actions; keep RTC, display, logging, and sunset I/O out of the pure schedule module.
@@ -103,4 +104,4 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - **`RtcService::getNow()` vs `getNowCached()`** — `getNow()` is a live I2C read; `getNowCached()` is advanced by SQW pulses with a live-read fallback if pulses go stale. `DisplayManager` uses the cached version; do not replace it with live reads on the hot render path.
 - **LOG macros require string literals** — `LOG_PRINTLN`/`LOG_PRINTF` keep their strings in flash (`PSTR` + `printf_P`) to hold static RAM under 50% for OTA. For a runtime string use `LOG_PRINTF("%s", value)`; a literal `%` in a `LOG_PRINTLN` message must be `%%` (it is pasted into the printf format). Each call appends its own newline, so formats must **not** end with `\n`.
 - **Tenths are phase-locked to the RTC second** — compute them from `RtcService::msIntoSecond(nowMs)`, never `millis() % 1000`. `ClockController` notifies the display manager on each accepted SQW pulse.
-- **`RtcService::consumeSqwPulse()` vs `isLogIntervalDue()`** — `consumeSqwPulse()` fires every real RTC second; `isLogIntervalDue()` is only true on `:00`/`:30` boundaries and only paces logging. Time-sensitive logic such as Friday and Trading phase transitions must gate on the real pulse.
+- **`RtcService::consumeSqwPulse()` vs `isLogIntervalDue()`** — `consumeSqwPulse()` fires every real RTC second; `isLogIntervalDue()` is only true on `:00`/`:30` boundaries; it paces logging **and** the RTC cache resync, so do not slow it down to slow a log line (the once-a-minute `SQW:` state line gates on `second() == 0` separately). Time-sensitive logic such as Friday and Trading phase transitions must gate on the real pulse.

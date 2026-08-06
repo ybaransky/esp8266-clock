@@ -36,6 +36,10 @@ class ConfigApi {
 
  private:
   void populateConfigJson(JsonDocument& doc);
+  // Mirrors a /api/config response body to the serial monitor. Call it after
+  // the response has been sent: writing ~1KB at 74880 baud blocks for roughly
+  // 150ms, which must not sit on the browser's wait.
+  void logConfigJson(const JsonDocument& doc) const;
 
   ESP8266WebServer& server_;       // Source of request payloads and query args.
   HttpResponder& responder_;       // Sends JSON/HTML API responses.

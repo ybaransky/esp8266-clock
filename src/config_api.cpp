@@ -111,6 +111,7 @@ void ConfigApi::handleGetConfig() {
   JsonDocument doc;
   populateConfigJson(doc);
   responder_.sendJsonDocument(200, doc);
+  logConfigJson(doc);
 }
 
 void ConfigApi::handleSaveConfig() {
@@ -168,4 +169,15 @@ void ConfigApi::populateConfigJson(JsonDocument& doc) {
 
   serializeClockConfig(doc, clockConfig);
   serializeWifiStatus(doc, wifiConfig);
+}
+
+void ConfigApi::logConfigJson(const JsonDocument& doc) const {
+  // Streamed straight to Serial instead of through LOG_PRINTF: the body is
+  // about a kilobyte, and buffering it into RAM just to hand it to a "%s"
+  // would cost more than the ESP8266 has to spare on a web handler. The
+  // LOG_PRINTLN above carries the usual time/stack/source prefix; the body
+  // that follows is the exact bytes the browser received.
+  LOG_PRINTLN("/api/config body:");
+  serializeJson(doc, Serial);
+  Serial.println();
 }

@@ -41,6 +41,24 @@ enum class View : uint8_t {
   kCountup,
 };
 
+// A half-open [from, until) window of local wall-clock Unix seconds during
+// which the whole base view blinks. Expressed as absolute times rather than a
+// duration relative to the view's anchor, so one field pair covers both "the
+// last N minutes before a boundary" and "the first M minutes after it".
+// Membership is re-evaluated on every render, so a time sync or a reboot
+// inside the window needs no crossing state to stay correct.
+struct BlinkWindow {
+  uint32_t fromUnix = 0;   // First second that blinks.
+  uint32_t untilUnix = 0;  // First second that no longer blinks.
+
+  // Disabled unless the window is non-empty, so a default-constructed
+  // ViewState never blinks.
+  bool contains(uint32_t nowUnix) const {
+    return (untilUnix > fromUnix) && (nowUnix >= fromUnix) &&
+           (nowUnix < untilUnix);
+  }
+};
+
 // Captures the base content and format-specific anchor needed for rendering a view.
 struct ViewState {
   View view = View::kClock;  // Kind of base content to render.
@@ -48,6 +66,7 @@ struct ViewState {
   uint8_t formatIndex = 0;  // Index into the view's format table.
   uint8_t longFormatIndex = kSameFormat;  // Counting format while the duration
                                           // is >= 24h; kSameFormat disables.
+  BlinkWindow blink;  // When set, the view blinks inside this time window.
 };
 
 // Short lowercase name for logging (e.g. "clock", "countdown").
@@ -186,6 +205,10 @@ class DisplayManager {
 
   void updateCountupOrigin(const ClockConfig& config);
   uint8_t activeCountingFormatIndex() const;
+  // True while the base view's blink window covers the current time. Resolved
+  // fresh on every render - like activeCountingFormatIndex(), the window ends
+  // on its own without anyone pushing a new view.
+  bool viewBlinkActive() const;
   bool renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force = false);
   bool overlayExpired(uint32_t nowMs) const;
   bool overlayBlinks() const;

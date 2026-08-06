@@ -14,6 +14,22 @@ struct FridayScheduleResult {
   ViewState view;  // Base display view for the selected phase.
 };
 
+// Builds the blink window that ends at Friday sunset, or an empty (disabled)
+// one when the configured length is zero.
+BlinkWindow blinkWindowBefore(const DateTime& fridaySunset, uint8_t minutes) {
+  if (minutes == 0) return {};
+  const uint32_t sunsetUnix = fridaySunset.unixtime();
+  return {sunsetUnix - minutes * 60UL, sunsetUnix};
+}
+
+// Builds the blink window that starts at Friday sunset, or an empty (disabled)
+// one when the configured length is zero.
+BlinkWindow blinkWindowAfter(const DateTime& fridaySunset, uint8_t minutes) {
+  if (minutes == 0) return {};
+  const uint32_t sunsetUnix = fridaySunset.unixtime();
+  return {sunsetUnix, sunsetUnix + minutes * 60UL};
+}
+
 FridayScheduleResult evaluateFridaySchedule(
     const DateTime& now, const DateTime& fridaySunset,
     const DateTime& saturdaySunset, const FridayConfig& formats) {
@@ -23,11 +39,17 @@ FridayScheduleResult evaluateFridaySchedule(
   switch (result.phase) {
     case FridayPhase::kToFridaySunset:
       result.view = {View::kCountdown, fridaySunset,
-                     formats.toFridaySunsetFmt};
+                     formats.toFridaySunsetFmt, kSameFormat,
+                     blinkWindowBefore(fridaySunset,
+                                       formats.blinkBeforeMinutes)};
       break;
     case FridayPhase::kToSaturdaySunset:
+      // Both windows bracket *Friday* sunset, so the post-sunset window rides
+      // on the Saturday-sunset countdown that follows it.
       result.view = {View::kCountdown, saturdaySunset,
-                     formats.toSaturdaySunsetFmt};
+                     formats.toSaturdaySunsetFmt, kSameFormat,
+                     blinkWindowAfter(fridaySunset,
+                                      formats.blinkAfterMinutes)};
       break;
     case FridayPhase::kClock:
     case FridayPhase::kNone:
