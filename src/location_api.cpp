@@ -76,10 +76,12 @@ void LocationApi::handleZipcodeLookup() {
     return;
   }
 
-  LOG_PRINTF("/api/zipcode/lookup success: zip=\"%s\" lat=%.6f lon=%.6f",
-             location.zipcode, location.latitude, location.longitude);
+  // The table stores hundredths of a degree; logging more digits than that
+  // would suggest a precision the data does not have.
+  LOG_PRINTF("/api/zipcode/lookup success: zip=\"%s\" lat=%.2f lon=%.2f",
+             zipcode.c_str(), location.latitude, location.longitude);
   JsonDocument response;
-  response["zipcode"] = location.zipcode;
+  response["zipcode"] = zipcode;
   response["latitude"] = location.latitude;
   response["longitude"] = location.longitude;
   responder_.sendJsonDocument(200, response);

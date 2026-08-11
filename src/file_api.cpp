@@ -189,7 +189,7 @@ void FileApi::logFileContent(File& file, const String& path, size_t offset,
                              size_t length) {
   // Only the config file is mirrored. Serial drains at roughly 7.5 KB/s, so
   // dumping whatever the browser happens to open would stall the loop for
-  // minutes on a large file (/zipcodes.txt is 860 KB).
+  // minutes on a large file (/zipcodes.bin is 164 KB).
   static constexpr char kMirroredPath[] = "/config.json";
   if (path != kMirroredPath) return;
 

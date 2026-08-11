@@ -71,8 +71,11 @@ function computeZip() {
   setLookupStatus('Looking up...');
   jsonFetch('/api/zipcode/lookup?zip=' + encodeURIComponent(zip)).then(function (d) {
     if (d.error) { setLookupStatus(d.error + ' - coordinates left unchanged', true); return; }
-    $('lat').value = Number(d.latitude).toFixed(6);
-    $('lon').value = Number(d.longitude).toFixed(6);
+    // The ZIP table stores hundredths of a degree; more digits than that would
+    // be invented precision. Browser geolocation above is genuinely finer and
+    // keeps its six.
+    $('lat').value = Number(d.latitude).toFixed(2);
+    $('lon').value = Number(d.longitude).toFixed(2);
     setLookupStatus('');
   }).catch(function (e) {
     setLookupStatus('ZIP lookup failed: ' + e.message + ' - coordinates left unchanged', true);

@@ -130,8 +130,10 @@ function getFromZipcode() {
   jsonFetch('/api/zipcode/lookup?zip=' + encodeURIComponent(zip))
     .then(function (d) {
       if (d.error) { setStatus(d.error); return; }
-      $('lat').value = Number(d.latitude).toFixed(6);
-      $('lon').value = Number(d.longitude).toFixed(6);
+      // The ZIP table stores hundredths of a degree; more digits than that
+      // would be invented precision.
+      $('lat').value = Number(d.latitude).toFixed(2);
+      $('lon').value = Number(d.longitude).toFixed(2);
       setStatus('');
     }).catch(function () { setStatus('ZIP lookup failed'); });
 }

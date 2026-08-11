@@ -3,8 +3,6 @@
 
 #include "schedule.h"
 
-#define STORAGE LittleFS
-
 static constexpr int32_t kForever = INT32_MAX;
 
 // Sentinel for optional secondary format indexes: use the primary format.
