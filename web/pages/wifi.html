@@ -34,6 +34,15 @@ function loadConfig() {
   }).catch(function () {});
 }
 
+// A blank AP Name is stored as-is and means "derive ESP_XXXXXX from the MAC".
+// The placeholder shows only while the field is empty, which is exactly when
+// that derived name is the one on the air.
+function loadApName() {
+  api('/api/wifi/status').then(function (d) {
+    $('apSsid').placeholder = (d.apSsid || 'ESP_XXXXXX') + ' (auto)';
+  }).catch(function () {});
+}
+
 function signalLevel(rssi) {
   if (rssi >= -55) return 4;
   if (rssi >= -67) return 3;
@@ -110,6 +119,7 @@ function saveAp() {
 }
 
 loadConfig();
+loadApName();
 scan();
 </script>
 </body>

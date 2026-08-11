@@ -26,3 +26,9 @@ void sanitizeLocationInfo(LocationInfo& info);
 // ConfigManager::sanitizeClockConfig relies on this to avoid struct copies.
 void sanitizePrintableText(const char* input, char* output, size_t outputSize);
 void sanitizeDisplayMessage(const char* input, char* output, size_t outputSize);
+// Keeps the fallback access point startable: clears an over-long AP SSID back
+// to the empty "derive from the soft-AP MAC" sentinel, and replaces a password
+// softAP() would reject with the default. An empty SSID is left alone - it is
+// the sentinel, not an error. Station credentials are untouched; empty is
+// meaningful there too (it selects AP-only mode).
+void sanitizeWifiConfig(WifiConfig& wifi);

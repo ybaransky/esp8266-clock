@@ -1,5 +1,18 @@
 #include "config_validation.h"
 
+#include "defaults.h"
+#include "log.h"
+
+namespace {
+
+// 802.11 limits that softAP() enforces. A refused AP is unrecoverable when no
+// station credentials are configured - nothing else serves the config pages.
+constexpr size_t kMaxApSsidLength     = 32;
+constexpr size_t kMinApPasswordLength = 8;
+constexpr size_t kMaxApPasswordLength = 63;
+
+}  // namespace
+
 const char* modeName(Mode mode) {
   switch (mode) {
     case kModeCountdown: return "countdown";
@@ -115,4 +128,24 @@ void sanitizeDisplayMessage(const char* input, char* output, size_t outputSize) 
   char clean[kDisplayMessageChars + 1];
   sanitizePrintableText(input, clean, sizeof(clean));
   snprintf(output, outputSize, "%s", clean);
+}
+
+void sanitizeWifiConfig(WifiConfig& wifi) {
+  wifi.apSsid.trim();
+  if (wifi.apSsid.length() > kMaxApSsidLength) {
+    LOG_PRINTF("AP SSID is %u characters (max %u) - reverting to the derived default",
+               static_cast<unsigned>(wifi.apSsid.length()),
+               static_cast<unsigned>(kMaxApSsidLength));
+    wifi.apSsid = "";
+  }
+
+  const size_t passwordLength = wifi.apPassword.length();
+  if ((passwordLength < kMinApPasswordLength) ||
+      (passwordLength > kMaxApPasswordLength)) {
+    LOG_PRINTF("AP password is %u characters (WPA2 needs %u-%u) - reverting to the default",
+               static_cast<unsigned>(passwordLength),
+               static_cast<unsigned>(kMinApPasswordLength),
+               static_cast<unsigned>(kMaxApPasswordLength));
+    wifi.apPassword = defaultWifiConfig().apPassword;
+  }
 }

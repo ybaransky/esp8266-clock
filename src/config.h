@@ -22,7 +22,7 @@ enum Mode : uint8_t {
 struct WifiConfig {
     String staSsid;      // SSID used when joining an existing WiFi network.
     String staPassword;  // Password for staSsid.
-    String apSsid;       // SSID advertised by fallback access-point mode.
+    String apSsid;       // SSID for fallback AP mode; empty = derive ESP_XXXXXX from the soft-AP MAC.
     String apPassword;   // Password for fallback access-point mode.
 };
 

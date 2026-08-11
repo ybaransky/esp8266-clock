@@ -5,6 +5,7 @@ extern "C" {
 #include <user_interface.h>
 }
 
+#include "defaults.h"
 #include "log.h"
 
 namespace {
@@ -12,6 +13,7 @@ namespace {
 constexpr uint32_t kStationConnectTimeoutMs = 15000;
 constexpr uint16_t kStationConnectPollMs = 250;
 constexpr uint32_t kApClientIpTimeoutMs = 10000;
+constexpr uint32_t kApAddressTimeoutMs = 5000;
 
 WiFiEventHandler apStationConnectedHandler;
 WiFiEventHandler apStationDisconnectedHandler;
@@ -52,6 +54,10 @@ void WifiConnectionManager::begin(const WifiConfig& config) {
   config_ = config;
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
+  // Resolve before the station attempt, not inside startAccessPoint(): status()
+  // reports the AP name in station mode too, and every consumer must see the
+  // same value this manager would actually advertise.
+  apSsid_ = resolveApSsid();
 
   if (!config_.staSsid.isEmpty() &&
       tryStationConnect(config_.staSsid, config_.staPassword)) {
@@ -123,7 +129,7 @@ WifiRuntimeStatus WifiConnectionManager::status() const {
   runtime.connected = WiFi.status() == WL_CONNECTED;
   runtime.ssid = runtime.connected ? WiFi.SSID() : String();
   runtime.ip = runtime.connected ? WiFi.localIP().toString() : String();
-  runtime.apSsid = config_.apSsid;
+  runtime.apSsid = apSsid_;
   runtime.apIp = WiFi.softAPIP().toString();
   return runtime;
 }
@@ -168,6 +174,21 @@ bool WifiConnectionManager::connectAndSave(ConfigManager& configManager,
   }
   config_ = next;
   return true;
+}
+
+// An empty configured SSID means "use the name a bare ESP8266 would pick":
+// ESP_ plus the last three bytes of the soft-AP MAC. Persisting the sentinel
+// rather than the resolved name is what lets the user clear the field on
+// /wifi to return to it.
+String WifiConnectionManager::resolveApSsid() const {
+  if (!config_.apSsid.isEmpty()) {
+    return config_.apSsid;
+  }
+  uint8_t mac[6] = {};
+  WiFi.softAPmacAddress(mac);
+  char derived[12];
+  snprintf(derived, sizeof(derived), "ESP_%02X%02X%02X", mac[3], mac[4], mac[5]);
+  return String(derived);
 }
 
 bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& password) {
@@ -241,21 +262,42 @@ void WifiConnectionManager::startAccessPoint() {
   // Keep the default 100 TU beacon interval: 50 TU was tried against the
   // power-save Android client (2026-07-13) and produced frequent TRUNCATED
   // transfers instead of helping.
-  WiFi.softAP(config_.apSsid.c_str(), config_.apPassword.c_str(), channel);
+  if (!WiFi.softAP(apSsid_.c_str(), config_.apPassword.c_str(), channel)) {
+    // With no station credentials the AP is the only way back into the device,
+    // so a rejected credential pair must not leave it dark. sanitizeWifiConfig
+    // should have prevented this; retry on the compiled defaults regardless.
+    LOG_PRINTF("softAP rejected \"%s\" - retrying with default credentials",
+               apSsid_.c_str());
+    const WifiConfig defaults = defaultWifiConfig();
+    config_.apSsid = defaults.apSsid;
+    config_.apPassword = defaults.apPassword;
+    apSsid_ = resolveApSsid();
+    if (!WiFi.softAP(apSsid_.c_str(), config_.apPassword.c_str(), channel)) {
+      LOG_PRINTLN("softAP failed on default credentials - no access point is running");
+      return;
+    }
+  }
   // Full power (20.5 dBm) draws supply-drooping TX spikes over USB; long
   // frames (multi-segment page bodies) are the first casualties, and supply
   // sag varies run to run -- matching the observed inconsistency between
   // otherwise-identical test sessions (2026-07-13).
   WiFi.setOutputPower(17.0f);
 
-  while (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
+  // Bounded: softAP() can report success while the DHCP server never comes up,
+  // and an open-ended wait here would hang the device before the web server
+  // ever starts.
+  const uint32_t deadline = millis() + kApAddressTimeoutMs;
+  while ((WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) && (millis() < deadline)) {
     delay(10);
     yield();
   }
-
-  LOG_PRINTF("AP \"%s\" started  IP: %s",
-             config_.apSsid.c_str(),
-             WiFi.softAPIP().toString().c_str());
+  if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
+    LOG_PRINTF("AP \"%s\" started but never received an IP address", apSsid_.c_str());
+  } else {
+    LOG_PRINTF("AP \"%s\" started  IP: %s",
+               apSsid_.c_str(),
+               WiFi.softAPIP().toString().c_str());
+  }
 
   apStationConnectedHandler =
       WiFi.onSoftAPModeStationConnected(onApStationConnected);

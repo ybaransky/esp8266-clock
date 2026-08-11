@@ -57,6 +57,7 @@ bool ConfigManager::readAll(DeviceConfig& config) {
         LOG_PRINTF("Complete config has invalid values: %s", validationError);
     }
     sanitizeClockConfig(config.clock);
+    sanitizeWifiConfig(config.wifi);
     LOG_PRINTF("Complete config read: bytes=%u time=%.2f ms",
                static_cast<unsigned>(bytes),
                (micros() - startedUs) / 1000.0f);
@@ -128,6 +129,7 @@ bool ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     ensureLoaded();
     DeviceConfig next = current_;
     next.wifi = cfg;
+    sanitizeWifiConfig(next.wifi);
     if (!writeAll(next, "save WiFi config")) return false;
     current_ = next;
     return true;
@@ -152,6 +154,7 @@ bool ConfigManager::saveConfig(ClockConfig& clock, const WifiConfig& wifi) {
     ensureLoaded();
     sanitizeClockConfig(clock);
     DeviceConfig next{clock, wifi};
+    sanitizeWifiConfig(next.wifi);
     if (!writeAll(next, "save complete config")) return false;
     current_ = next;
     return true;

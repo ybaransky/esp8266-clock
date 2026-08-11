@@ -39,8 +39,10 @@ class WifiConnectionManager {
   bool tryStationConnect(const String& ssid, const String& password);
   void startAccessPoint();
   uint8_t pickLeastCongestedChannel();
+  String resolveApSsid() const;
 
   WifiConfig config_;  // Last loaded WiFi configuration.
+  String apSsid_;      // Effective AP SSID: the configured one, or derived when it is empty.
   WifiMode mode_ = WifiMode::kAccessPoint;  // Current runtime WiFi mode.
 
   volatile bool apClientConnectedPending_ = false;  // Deferred AP-client log flag.

@@ -2,7 +2,11 @@
 
 namespace {
 
-constexpr const char* kDefaultApSsid     = "YuriCloc";
+// Empty is a sentinel, not a missing value: WifiConnectionManager derives
+// ESP_XXXXXX from the soft-AP MAC whenever the configured SSID is blank, so a
+// freshly uploaded filesystem advertises the SDK-style name until the user
+// picks one. Keep this in sync with data/config.json.
+constexpr const char* kDefaultApSsid     = "";
 constexpr const char* kDefaultApPassword = "12345678";
 
 constexpr const char* kDefaultCountdownDatetime = "2026-07-04 00:00:00";
