@@ -30,7 +30,7 @@ namespace {
 //   [8]   2 bytes each   pitchTable[pitchCount], distinct frequencies in Hz
 //   then  directory, songCount entries sorted by name:
 //                   uint16 offset, uint16 tempo, uint16 noteCount,
-//                   uint8 nameLength, name[nameLength]
+//                   uint8 kind, uint8 nameLength, name[nameLength]
 //   then  records:  { uint8 pitchIndex, int8 durationDivisor } * noteCount
 //
 // A note costs two bytes because the catalog draws on 50 distinct pitches, so a
@@ -39,9 +39,10 @@ namespace {
 constexpr char kCatalogPath[] = "/songs.bin";
 constexpr char kMagic[] = "SNG1";
 constexpr size_t kMagicLength = 4;
-constexpr uint8_t kFormatVersion = 1;
+constexpr uint8_t kFormatVersion = 2;
 constexpr size_t kHeaderSize = 8;
-constexpr size_t kDirectoryEntrySize = 7;  // offset, tempo, noteCount, nameLength.
+// offset, tempo, noteCount, kind, nameLength.
+constexpr size_t kDirectoryEntrySize = 8;
 
 // Must match MAX_PITCHES in tools/pack_songs.py, and the pitchTable_ dimension.
 constexpr size_t kPitchTableMax = 128;
@@ -76,6 +77,20 @@ uint32_t noteSlotMs(int8_t divisor, uint32_t wholeNoteMs) {
   }
   const int magnitude = (divisor <= 0) ? 4 : divisor;
   return 1000u / magnitude;
+}
+
+// Total time one note occupies: the tone plus the gap that articulates it from
+// the next one. startNextNote() splits the same slot into those two parts, so a
+// duration summed from here cannot disagree with what playback actually spends.
+uint32_t noteTotalMs(int8_t divisor, uint32_t wholeNoteMs) {
+  const uint32_t slotMs = noteSlotMs(divisor, wholeNoteMs);
+  if (wholeNoteMs > 0) return slotMs;   // 90% tone, 10% gap, within the slot.
+  return slotMs + (slotMs * 30 / 100);  // Full slot of tone, then a 30% gap.
+}
+
+// A whole note in milliseconds; 0 keeps a song in simple timing mode.
+uint32_t wholeNoteMsFor(uint16_t tempo) {
+  return (tempo > 0) ? ((60000u * 4u) / tempo) : 0u;
 }
 
 }  // namespace
@@ -119,7 +134,8 @@ bool SoundPlayer::loadCatalogHeader() {
     return false;
   }
   if (header[4] != kFormatVersion) {
-    LOG_PRINTF("%s is version %u; this firmware reads version %u",
+    LOG_PRINTF("%s is version %u; this firmware reads version %u - run "
+               "'pio run -t uploadfs'",
                kCatalogPath, header[4], kFormatVersion);
     file.close();
     return false;
@@ -168,8 +184,13 @@ bool SoundPlayer::readEntry(File& file, SongEntry& entry) const {
   entry.offset = readUint16(buffer);
   entry.tempo = readUint16(buffer + 2);
   entry.noteCount = readUint16(buffer + 4);
+  // An unknown kind reads as a song: a new kind added later would then still
+  // appear in a dropdown rather than vanishing from the UI with no explanation.
+  entry.kind = (buffer[6] == static_cast<uint8_t>(SoundKind::kAlert))
+                   ? SoundKind::kAlert
+                   : SoundKind::kSong;
 
-  const uint8_t nameLength = buffer[6];
+  const uint8_t nameLength = buffer[7];
   const size_t copyLength =
       (nameLength < (kSoundNameLength - 1)) ? nameLength : (kSoundNameLength - 1);
   if (file.read(reinterpret_cast<uint8_t*>(entry.name), copyLength) !=
@@ -192,7 +213,7 @@ bool SoundPlayer::findSong(File& file, const char* name,
   return false;
 }
 
-bool SoundPlayer::namesAsJson(JsonArray array) {
+bool SoundPlayer::namesAsJson(JsonArray array, SoundKind kind) {
   if (!loadCatalogHeader()) return false;
 
   File file = STORAGE.open(kCatalogPath, "r");
@@ -205,11 +226,48 @@ bool SoundPlayer::namesAsJson(JsonArray array) {
   SongEntry entry;
   for (uint8_t index = 0; index < songCount_; ++index) {
     if (!readEntry(file, entry)) break;
-    array.add(entry.name);
+    if (entry.kind == kind) array.add(entry.name);
     yield();
   }
   file.close();
   return true;
+}
+
+// Reads the record a chunk at a time and sums each note's slot. Deliberately
+// not stored in the catalog: it is derivable, and a stored copy is one more
+// field that can disagree with the notes it describes.
+//
+// Nothing on the device needs this - a boundary cue just plays - so the cost
+// falls only on the web preview that asks, never on the announcement path.
+uint32_t SoundPlayer::durationMs(const char* name) {
+  if ((name == nullptr) || (name[0] == '\0')) return 0;
+  if (!loadCatalogHeader()) return 0;
+
+  File file = STORAGE.open(kCatalogPath, "r");
+  if (!file) return 0;
+  SongEntry entry;
+  if (!findSong(file, name, entry) || !file.seek(entry.offset, SeekSet)) {
+    file.close();
+    return 0;
+  }
+
+  const uint32_t wholeNoteMs = wholeNoteMsFor(entry.tempo);
+  uint32_t totalMs = 0;
+  uint8_t notes[64];  // Even size: a note is two bytes and must not split.
+  uint16_t remaining = entry.noteCount;
+  while (remaining > 0) {
+    const size_t wanted =
+        min(sizeof(notes), static_cast<size_t>(remaining) * 2u);
+    const int read = file.read(notes, wanted);
+    if (read < 2) break;  // Truncated record; report what was measurable.
+    for (int at = 0; at + 1 < read; at += 2) {
+      totalMs += noteTotalMs(static_cast<int8_t>(notes[at + 1]), wholeNoteMs);
+    }
+    remaining -= static_cast<uint16_t>(read / 2);
+    yield();
+  }
+  file.close();
+  return totalMs;
 }
 
 // -----------------------------------------------------------------------------
@@ -259,8 +317,14 @@ void SoundPlayer::endPlayback() {
   playingName_[0] = '\0';
 }
 
+// Only ever reached from an explicit user request (the /format Stop button via
+// ClockController::stopSound); internal stops go through endPlayback(). That is
+// why the idle case logs too - a silent console would read as a dead button.
 void SoundPlayer::stop() {
-  if (phase_ == Phase::kIdle) return;
+  if (phase_ == Phase::kIdle) {
+    LOG_PRINTLN("sound: stop requested; nothing playing");
+    return;
+  }
   LOG_PRINTF("sound: stopped %s", playingName_);
   endPlayback();
 }
@@ -291,13 +355,14 @@ bool SoundPlayer::play(const char* name, uint32_t nowMs) {
 
   record_ = file;
   notesRemaining_ = entry.noteCount;
-  wholeNoteMs_ = (entry.tempo > 0) ? ((60000u * 4u) / entry.tempo) : 0u;
+  wholeNoteMs_ = wholeNoteMsFor(entry.tempo);
   strlcpy(playingName_, entry.name, sizeof(playingName_));
 
   if (!startNextNote(nowMs)) {
     endPlayback();
     return false;
   }
+  LOG_PRINTF("sound: playing %s (%u notes)", playingName_, entry.noteCount);
   return true;
 }
 

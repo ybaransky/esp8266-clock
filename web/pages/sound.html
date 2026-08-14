@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="/common.css">
+<script src="/common.js"></script>
+<title>Sound Settings</title>
+</head>
+<body>
+<h1>Sound Settings</h1>
+<p>Play any song or alert on the device to hear it before assigning it to an
+event on the <a href="/format">Formats</a> page. The play button turns into a
+stop button while a sound is running. Playing does not save anything.</p>
+
+<p id="snone" class="muted" hidden>No sounds are installed. Upload the
+filesystem image (<code>pio run -t uploadfs</code>) to add them.</p>
+
+<h2>Try a sound</h2>
+<label for="song">Song &mdash; a full melody</label>
+<div class="soundRow"><select id="song"></select>
+<button class="secondary" type="button" onclick="toggleSound(this,'song')">&#9654;</button></div>
+
+<label for="alert">Alert &mdash; a short burst</label>
+<div class="soundRow"><select id="alert"></select>
+<button class="secondary" type="button" onclick="toggleSound(this,'alert')">&#9654;</button></div>
+
+<hr>
+<h2>Settings</h2>
+<label class="check"><input type="checkbox" id="enabled"> Play sounds at event boundaries</label>
+<label>Volume: <span id="volv">40</span>%
+<input type="range" min="0" max="100" step="5" id="vol" oninput="$('volv').textContent = this.value"></label>
+<label for="startup">Song at startup</label>
+<div class="soundRow"><select id="startup"></select>
+<button class="secondary" type="button" onclick="toggleSound(this,'startup')">&#9654;</button></div>
+
+<div class="actions"><button onclick="save()">Save</button></div>
+<div id="st"></div>
+<p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
+
+<script>
+// Sound dropdowns are name-valued, not index-valued: a sound's name is its
+// identity in the catalog and in config.json, so re-uploading the filesystem
+// cannot silently repoint a selection at a different sound.
+function fill(id, names, selected, silentOption) {
+  var el = $(id);
+  el.innerHTML = '';
+  if (silentOption) {
+    var none = document.createElement('option');
+    none.value = '';
+    none.textContent = '(silent)';
+    el.appendChild(none);
+  }
+  names.forEach(function (name) {
+    var o = document.createElement('option');
+    o.value = name;
+    o.textContent = name;
+    el.appendChild(o);
+  });
+  var wanted = selected || '';
+  // A configured name the catalog no longer has would otherwise fall back to
+  // the first entry without saying so. Keep it selectable and flag it instead.
+  if (wanted && names.indexOf(wanted) < 0) {
+    var missing = document.createElement('option');
+    missing.value = wanted;
+    missing.textContent = wanted + ' (not installed)';
+    el.appendChild(missing);
+  }
+  // Fall back to the first entry so an audition dropdown is never blank.
+  var first = el.options.length ? el.options[0].value : '';
+  el.value = wanted ? wanted : first;
+}
+
+// Requested one at a time, not in parallel: the device serves a single
+// connection at a time, so concurrent fetches only queue up behind each other
+// and make a slow AP link look broken.
+api('/api/sounds').catch(function (e) {
+  throw new Error('/api/sounds: ' + e.message);
+}).then(function (s) {
+  var songs = (s && s.songs) || [];
+  var alerts = (s && s.alerts) || [];
+  $('snone').hidden = !!(s && s.available);
+  return api('/api/config').catch(function (e) {
+    throw new Error('/api/config: ' + e.message);
+  }).then(function (d) {
+    var sound = d.sound || {};
+    fill('song', songs, sound.startup, false);
+    fill('alert', alerts, '', false);
+    fill('startup', songs, sound.startup, true);
+    $('enabled').checked = sound.enabled !== false;
+    $('vol').value = sound.volume == null ? 40 : sound.volume;
+    $('volv').textContent = $('vol').value;
+  });
+}).catch(function (e) { setStatus('API failed: ' + e.message); });
+
+// Only the sound section is sent. /api/config patches what it is given, so
+// every display and mode setting is left exactly as it was.
+function save() {
+  jsonFetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sound: {
+        enabled: $('enabled').checked,
+        volume: +$('vol').value,
+        startup: $('startup').value
+      }
+    })
+  }).then(function (d) {
+    setStatus(d.error || d.message || 'Saved');
+  }).catch(function (e) {
+    setStatus('Save failed: ' + e.message);
+  });
+}
+</script>
+</body>
+</html>

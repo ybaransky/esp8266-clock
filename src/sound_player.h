@@ -6,6 +6,15 @@
 
 #include "config.h"  // kSoundNameLength
 
+// What a catalog entry is used for. Both kinds share one catalog, one binary
+// layout, and one player - they differ only in which dropdown offers them, so
+// this classifies entries without splitting anything else in two. Stored per
+// directory entry in /songs.bin; must match KIND_* in tools/pack_songs.py.
+enum class SoundKind : uint8_t {
+  kAlert = 0,  // Short burst; authored in assets/sounds.json.
+  kSong = 1,   // Full melody; authored in assets/songs/*.json.
+};
+
 // Plays one sound at a time from the packed /songs.bin catalog, advancing one
 // note per tick() rather than blocking.
 //
@@ -44,9 +53,14 @@ class SoundPlayer {
   void setVolume(uint8_t percent);
   uint8_t volume() const { return volumePercent_; }
 
-  // Fills `array` with one string per catalog entry, in catalog (alphabetical)
-  // order. Returns false when the catalog is unreadable.
-  bool namesAsJson(JsonArray array);
+  // Fills `array` with the name of every catalog entry of `kind`, in catalog
+  // (alphabetical) order. Returns false when the catalog is unreadable.
+  bool namesAsJson(JsonArray array, SoundKind kind);
+
+  // How long `name` takes to play, in milliseconds; 0 when it is not in the
+  // catalog. Reads the record without disturbing playback. Lets a browser know
+  // when a preview ends without polling the device for it.
+  uint32_t durationMs(const char* name);
 
  private:
   // What the player is doing between note boundaries. A note is a tone
@@ -60,6 +74,7 @@ class SoundPlayer {
     uint16_t offset = 0;      // Absolute file offset of the note record.
     uint16_t tempo = 0;       // Beats per minute; 0 selects simple timing.
     uint16_t noteCount = 0;   // Notes in the record.
+    SoundKind kind = SoundKind::kSong;  // Which dropdown offers this entry.
   };
 
   bool loadCatalogHeader();

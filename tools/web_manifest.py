@@ -13,6 +13,7 @@ PAGES = {
     "/time": "time.html",
     "/sunset": "sunset.html",
     "/messages": "messages.html",
+    "/sound": "sound.html",
     "/location": "location.html",
     "/wifi": "wifi.html",
     "/view": "view.html",

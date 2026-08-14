@@ -113,6 +113,63 @@ function jsonFetch(url, options) {
 
 function validZip(value) { return /^[0-9]{5}$/.test(value); }
 
+// ---- Sound rows: one button that toggles between play and stop ----
+//
+// The device plays one sound at a time, so at most one button is ever in the
+// stop state; it is tracked here rather than per row. The device pushes
+// nothing, so the button learns that a sound ended from the duration returned
+// when it started - not by polling, which would spend a request per second on
+// a link that serves a single connection at a time.
+
+// Escaped rather than written literally: this file is served as
+// application/javascript with no charset, so its encoding is inherited from
+// whichever page loads it. Escapes keep the source pure ASCII either way.
+var PLAY_GLYPH = '\u25B6';  // Black right-pointing triangle.
+var STOP_GLYPH = '\u25A0';  // Black square.
+// Used when the device reports no duration, so a button can never stick.
+var SOUND_FALLBACK_MS = 60000;
+
+var _soundButton = null;  // The button currently showing stop, if any.
+var _soundTimer = null;   // Reverts it when the sound is due to have ended.
+
+function _soundIdle() {
+  if (_soundTimer) { clearTimeout(_soundTimer); _soundTimer = null; }
+  if (_soundButton) { _soundButton.textContent = PLAY_GLYPH; _soundButton = null; }
+}
+
+function _soundPlaying(button, durationMs) {
+  _soundIdle();
+  _soundButton = button;
+  button.textContent = STOP_GLYPH;
+  // A small margin so the button does not revert a beat before the buzzer.
+  var ms = durationMs > 0 ? (durationMs + 300) : SOUND_FALLBACK_MS;
+  _soundTimer = setTimeout(function () { _soundTimer = null; _soundIdle(); }, ms);
+}
+
+function stopSound() {
+  _soundIdle();
+  return apiPost('/api/sound/test', { stop: true })
+    .then(function () { setStatus('Stopped', 2000); })
+    .catch(function () {});
+}
+
+// `button` is the clicked element; `selectId` names the dropdown beside it.
+function toggleSound(button, selectId) {
+  if (button === _soundButton) { stopSound(); return; }
+
+  var name = $(selectId).value;
+  if (!name) { setStatus('Nothing selected to play', 2000); return; }
+  // Deliberately bypasses the master sound switch, as the endpoint itself
+  // does: pressing play is an explicit request to hear something now.
+  apiPost('/api/sound/test', { sound: name }).then(function (d) {
+    _soundPlaying(button, +(d && d.durationMs) || 0);
+    setStatus('Playing ' + name, 3000);
+  }).catch(function () {
+    _soundIdle();
+    setStatus('Could not play ' + name, 3000);
+  });
+}
+
 // Tell the device when a config value could not be represented in a form
 // field, so silent browser-side value rejection shows up in the serial log.
 function reportFieldMismatch(page, field, configValue, acceptedValue, reason) {

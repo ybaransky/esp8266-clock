@@ -7,6 +7,75 @@
 #include "config.h"
 #include "storage_manager.h"
 
+namespace {
+
+// Indents a compact JSON byte stream on its way to Serial, one byte at a time.
+//
+// Deliberately not a parse-then-serializeJsonPretty(): this mirror exists to
+// show what is actually on disk, and a file worth reading on the console is
+// often one that no longer parses. A byte filter cannot fail, allocates
+// nothing, and needs no lookahead beyond the one character of state below, so
+// it also survives the 4 KB truncation the caller may apply mid-document.
+//
+// Output matches serializeJsonPretty(): two spaces per level, ": " after a
+// key, and empty containers left on one line.
+class JsonIndenter {
+ public:
+  void write(uint8_t byte);
+
+ private:
+  void newline();
+
+  uint8_t depth_ = 0;    // Container nesting level; sets the indent width.
+  bool inString_ = false;  // True between the quotes of a string literal.
+  bool escaped_ = false;   // True when the previous byte was a backslash.
+  bool pendingBreak_ = false;  // A container just opened; break before its first item.
+};
+
+void JsonIndenter::newline() {
+  Serial.println();
+  for (uint8_t level = 0; level < depth_; ++level) Serial.print(F("  "));
+}
+
+void JsonIndenter::write(uint8_t byte) {
+  // Inside a string every byte is content, including the structural characters
+  // and whitespace this otherwise rewrites.
+  if (inString_) {
+    Serial.write(byte);
+    if (escaped_) escaped_ = false;
+    else if (byte == '\\') escaped_ = true;
+    else if (byte == '"') inString_ = false;
+    return;
+  }
+
+  // Existing layout is discarded rather than added to, so a file that is
+  // already indented does not come out doubly so.
+  if ((byte == ' ') || (byte == '\t') || (byte == '\n') || (byte == '\r')) return;
+
+  const bool closer = ((byte == '}') || (byte == ']'));
+  if (closer && (depth_ > 0)) --depth_;
+  if (pendingBreak_) {
+    pendingBreak_ = false;
+    if (!closer) newline();  // "{}" and "[]" stay on one line.
+  } else if (closer) {
+    newline();
+  }
+
+  Serial.write(byte);
+  if (byte == '"') {
+    inString_ = true;
+  } else if ((byte == '{') || (byte == '[')) {
+    ++depth_;
+    pendingBreak_ = true;
+  } else if (byte == ',') {
+    newline();
+  } else if (byte == ':') {
+    Serial.write(' ');
+  }
+}
+
+}  // namespace
+
 // -----------------------------------------------------------------------------
 // FileApi
 // -----------------------------------------------------------------------------
@@ -203,11 +272,13 @@ void FileApi::logFileContent(File& file, const String& path, size_t offset,
              static_cast<unsigned>(length));
   // The response has already been streamed, so the read head sits at the end
   // of the range; rewind to replay exactly the bytes the browser received.
+  // They are re-indented on the way out - only the console reads this copy.
   if (!file.seek(offset, SeekSet)) {
     LOG_PRINTLN("file body: seek failed");
     return;
   }
 
+  JsonIndenter indenter;
   uint8_t buffer[64];
   size_t remaining = dumped;
   while (remaining > 0) {
@@ -216,7 +287,7 @@ void FileApi::logFileContent(File& file, const String& path, size_t offset,
     // huge size_t length for Serial.write().
     const int read = file.read(buffer, wanted);
     if (read <= 0) break;  // Truncated or unreadable; stop rather than spin.
-    Serial.write(buffer, static_cast<size_t>(read));
+    for (int index = 0; index < read; ++index) indenter.write(buffer[index]);
     remaining -= static_cast<size_t>(read);
     yield();
   }

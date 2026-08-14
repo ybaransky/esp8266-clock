@@ -16,7 +16,7 @@ table uses - so the JSON never reaches the device.
 Format (little endian), see SOUNDS.md:
 
     magic   "SNG1"
-    u8      version (1)
+    u8      version (2)
     u8      songCount
     u8      pitchCount
     u8      reserved (0)
@@ -25,6 +25,7 @@ Format (little endian), see SOUNDS.md:
         u16 offset                        absolute file offset of the record
         u16 tempo                         0 = simple timing mode
         u16 noteCount
+        u8  kind                          0 = alert, 1 = song
         u8  nameLength
         u8  name[nameLength]              UTF-8
     records:
@@ -42,10 +43,18 @@ import struct
 import sys
 
 MAGIC = b"SNG1"
-VERSION = 1
+VERSION = 2
 HEADER = struct.Struct("<4sBBBB")
-DIRECTORY_ENTRY = struct.Struct("<HHHB")
+DIRECTORY_ENTRY = struct.Struct("<HHHBB")
 NOTE = struct.Struct("<Bb")
+
+# What an entry is used for. The two kinds share one catalog and one player;
+# they differ only in which dropdown offers them, so the split is carried as a
+# per-entry field rather than by ordering - adding one alert must not reshuffle
+# the directory. Must match SoundKind in src/sound_player.h.
+KIND_ALERT = 0  # Short burst: assets/sounds.json.
+KIND_SONG = 1   # Full melody: assets/songs/*.json.
+KIND_NAMES = {KIND_ALERT: "alert", KIND_SONG: "song"}
 
 # The device caches the pitch table in RAM (2 bytes per entry), and song and
 # pitch indexes are single bytes. Both limits are enormous next to real data:
@@ -76,8 +85,19 @@ def read_json(path):
 
 
 def source_paths(assets_dir):
-    """Every file the packed catalog is built from, in a stable order."""
+    """Every file the packed catalog is built from, in a stable order.
+
+    This script counts as a source: it defines the binary layout, so a format
+    change must rebuild the catalog even when no song JSON was touched. Without
+    it the device silently keeps an image the new firmware refuses to read. It
+    is located from the project layout rather than __file__, which SCons does
+    not define when it execs a pre-script.
+    """
     paths = []
+    script = assets_dir.parent / "tools" / "pack_songs.py"
+    if script.exists():
+        paths.append(script)
+
     catalog = assets_dir / "sounds.json"
     if catalog.exists():
         paths.append(catalog)
@@ -89,20 +109,22 @@ def load_songs(assets_dir):
     """Read every song source. Returns a list of dicts sorted by name.
 
     Both the small-sound catalog (sounds.json) and the one-file-per-song
-    directory feed the same packed catalog; the device does not distinguish
-    between them.
+    directory feed the same packed catalog. Where an entry came from is what
+    classifies it: sounds.json holds alerts, songs/ holds songs. That keeps the
+    classification free of new syntax - moving a file changes its kind - and it
+    is already how the sources are organized.
     """
     songs = []
 
     catalog_path = assets_dir / "sounds.json"
     if catalog_path.exists():
         for sound in read_json(catalog_path).get("sounds", []):
-            songs.append((catalog_path, sound))
+            songs.append((catalog_path, sound, KIND_ALERT))
 
     for path in sorted((assets_dir / "songs").glob("*.json")):
-        songs.append((path, read_json(path)))
+        songs.append((path, read_json(path), KIND_SONG))
 
-    validated = [validate(path, song) for path, song in songs]
+    validated = [validate(path, song, kind) for path, song, kind in songs]
 
     names = {}
     for song in validated:
@@ -117,7 +139,7 @@ def load_songs(assets_dir):
     return validated
 
 
-def validate(path, song):
+def validate(path, song, kind):
     """Reject anything the firmware could not play, naming the offending file."""
     name = song.get("name")
     if not isinstance(name, str) or not name.strip():
@@ -166,6 +188,7 @@ def validate(path, song):
         "path": path,
         "name": name,
         "encoded_name": encoded,
+        "kind": kind,
         "tempo": tempo,
         "notes": notes,
         "durations": durations,
@@ -200,7 +223,11 @@ def build(songs):
                 "catalog exceeds 64 KB at %r; offsets are 16-bit" % song["name"]
             )
         directory += DIRECTORY_ENTRY.pack(
-            offset, song["tempo"], len(song["notes"]), len(song["encoded_name"])
+            offset,
+            song["tempo"],
+            len(song["notes"]),
+            song["kind"],
+            len(song["encoded_name"]),
         )
         directory += song["encoded_name"]
         for frequency, divisor in zip(song["notes"], song["durations"]):
@@ -228,14 +255,20 @@ def read_catalog(image):
 
     songs = []
     for _ in range(song_count):
-        offset, tempo, note_count, name_length = DIRECTORY_ENTRY.unpack_from(
+        offset, tempo, note_count, kind, name_length = DIRECTORY_ENTRY.unpack_from(
             image, cursor
         )
         cursor += DIRECTORY_ENTRY.size
         name = image[cursor:cursor + name_length].decode("utf-8")
         cursor += name_length
         songs.append(
-            {"name": name, "tempo": tempo, "note_count": note_count, "offset": offset}
+            {
+                "name": name,
+                "kind": kind,
+                "tempo": tempo,
+                "note_count": note_count,
+                "offset": offset,
+            }
         )
 
     for song in songs:
@@ -265,6 +298,8 @@ def verify(packed, songs):
                 "directory order broke: expected %r, decoded %r"
                 % (source["name"], result["name"])
             )
+        if result["kind"] != source["kind"]:
+            raise PackError("%s: kind did not survive packing" % source["name"])
         if result["tempo"] != source["tempo"]:
             raise PackError("%s: tempo did not survive packing" % source["name"])
         if result["notes"] != source["notes"]:
@@ -275,9 +310,15 @@ def verify(packed, songs):
 
 def report(packed, songs, pitches, source_bytes, source_files):
     blocks = -(-len(packed) // BLOCK_SIZE)
+    alerts = sum(1 for song in songs if song["kind"] == KIND_ALERT)
     print(
-        "Song catalog: %d songs, %d notes, %d distinct pitches"
-        % (len(songs), sum(len(song["notes"]) for song in songs), len(pitches))
+        "Song catalog: %d songs, %d alerts, %d notes, %d distinct pitches"
+        % (
+            len(songs) - alerts,
+            alerts,
+            sum(len(song["notes"]) for song in songs),
+            len(pitches),
+        )
     )
     print(
         "  %d bytes packed from %d bytes of JSON in %d files"
@@ -314,12 +355,14 @@ def build_catalog(project):
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(packed)
+    # This script is a staleness input but not an input to the size comparison.
+    json_sources = [path for path in sources if path.suffix == ".json"]
     report(
         packed,
         songs,
         pitches,
-        sum(path.stat().st_size for path in sources),
-        len(sources),
+        sum(path.stat().st_size for path in json_sources),
+        len(json_sources),
     )
 
 
@@ -329,11 +372,17 @@ def default_image(project):
 
 def command_list(image_path):
     songs, pitches = read_catalog(image_path.read_bytes())
-    print("%-28s %6s %6s %8s" % ("name", "tempo", "notes", "offset"))
+    print("%-28s %-6s %6s %6s %8s" % ("name", "kind", "tempo", "notes", "offset"))
     for song in songs:
         print(
-            "%-28s %6d %6d %8d"
-            % (song["name"], song["tempo"], song["note_count"], song["offset"])
+            "%-28s %-6s %6d %6d %8d"
+            % (
+                song["name"],
+                KIND_NAMES.get(song["kind"], song["kind"]),
+                song["tempo"],
+                song["note_count"],
+                song["offset"],
+            )
         )
     print("\n%d songs, %d distinct pitches: %s" % (len(songs), len(pitches), pitches))
 
@@ -364,15 +413,20 @@ def main(project, argv):
         raise SystemExit(__doc__)
 
 
+# Only the Import() probe may raise NameError here. Running the build inside
+# the same try would let a NameError from any of the code above be mistaken for
+# "not running under PlatformIO", which reports the wrong failure entirely.
 try:
     Import("env")  # noqa: F821 - injected by PlatformIO when run as a pre-script.
-    try:
-        build_catalog(pathlib.Path(env.subst("$PROJECT_DIR")))  # noqa: F821
-    except PackError as error:
-        raise SystemExit("pack_songs: %s" % error)
+    _project = pathlib.Path(env.subst("$PROJECT_DIR"))  # noqa: F821
 except NameError:
-    # Run directly to regenerate the catalog, or to inspect an existing one.
-    try:
+    _project = None
+
+try:
+    if _project is not None:
+        build_catalog(_project)
+    else:
+        # Run directly to regenerate the catalog, or to inspect an existing one.
         main(pathlib.Path(__file__).resolve().parent.parent, sys.argv)
-    except PackError as error:
-        raise SystemExit("pack_songs: %s" % error)
+except PackError as error:
+    raise SystemExit("pack_songs: %s" % error)

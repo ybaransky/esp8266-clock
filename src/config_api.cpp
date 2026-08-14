@@ -8,6 +8,7 @@
 #include "config_serializer.h"
 #include "config_validation.h"
 #include "log.h"
+#include "sound_player.h"  // SoundKind
 #include "web_server.h"
 
 namespace {
@@ -107,13 +108,21 @@ void ConfigApi::handleFormats() {
   responder_.sendJsonDocument(200, doc);
 }
 
+// Songs and alerts are returned as separate arrays rather than one list with a
+// kind on each entry: every consumer wants exactly one of the two to fill a
+// dropdown, so splitting here keeps that filter out of each page's script.
 void ConfigApi::handleSounds() {
   JsonDocument doc;
-  JsonArray sounds = doc["sounds"].to<JsonArray>();
+  JsonArray songs = doc["songs"].to<JsonArray>();
+  JsonArray alerts = doc["alerts"].to<JsonArray>();
+  const bool songsRead =
+      clockController_.soundNamesAsJson(songs, SoundKind::kSong);
+  const bool alertsRead =
+      clockController_.soundNamesAsJson(alerts, SoundKind::kAlert);
   // Reported separately from an empty array: a device with no /songs.bin is
   // missing its filesystem image, which is worth saying out loud on the page
   // rather than showing as a dropdown that happens to have no entries.
-  doc["available"] = clockController_.soundNamesAsJson(sounds);
+  doc["available"] = (songsRead && alertsRead);
   responder_.sendJsonDocument(200, doc);
 }
 
@@ -141,7 +150,14 @@ void ConfigApi::handleSoundTest() {
     responder_.sendJsonError(404, "No such sound");
     return;
   }
-  responder_.sendJson(200, "{\"message\":\"Playing\"}");
+  // The play/stop button reverts itself when this elapses. Sent with the start
+  // so the page never has to poll a device that serves one connection at a
+  // time; it is measured after playback begins, off the browser's critical
+  // path for hearing the sound.
+  JsonDocument response;
+  response["message"] = "Playing";
+  response["durationMs"] = clockController_.soundDurationMs(name);
+  responder_.sendJsonDocument(200, response);
 }
 
 void ConfigApi::handleGetConfig() {
@@ -212,9 +228,13 @@ void ConfigApi::logConfigJson(const JsonDocument& doc) const {
   // Streamed straight to Serial instead of through LOG_PRINTF: the body is
   // about a kilobyte, and buffering it into RAM just to hand it to a "%s"
   // would cost more than the ESP8266 has to spare on a web handler. The
-  // LOG_PRINTLN above carries the usual time/stack/source prefix; the body
-  // that follows is the exact bytes the browser received.
+  // LOG_PRINTLN above carries the usual time/stack/source prefix.
+  //
+  // Indented rather than sent verbatim: this line exists to be read on the
+  // console, and the browser got the compact bytes either way. The whitespace
+  // roughly doubles the serial time (~150ms to ~300ms at 74880 baud), which is
+  // affordable only because this runs after the response has been sent.
   LOG_PRINTLN("/api/config body:");
-  serializeJson(doc, Serial);
+  serializeJsonPretty(doc, Serial);
   Serial.println();
 }

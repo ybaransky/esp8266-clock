@@ -11,6 +11,7 @@
 struct ClockConfig;
 enum Mode : uint8_t;
 enum class View : uint8_t;
+enum class SoundKind : uint8_t;
 class DisplayManager;
 class RtcService;
 class SoundPlayer;
@@ -43,10 +44,13 @@ class ClockController {
   bool playSound(const char* name);
   void stopSound();
 
-  // Fills `array` with every catalog sound name. False when no catalog is
-  // readable, which the page shows as "no sounds installed" rather than an
-  // empty dropdown that looks like a bug.
-  bool soundNamesAsJson(JsonArray array);
+  // Fills `array` with every catalog sound name of `kind`. False when no
+  // catalog is readable, which the page shows as "no sounds installed" rather
+  // than an empty dropdown that looks like a bug.
+  bool soundNamesAsJson(JsonArray array, SoundKind kind);
+
+  // Playing time of a catalog sound in milliseconds; 0 when it is unknown.
+  uint32_t soundDurationMs(const char* name);
   Mode activeMode() const;
   View activeView() const;
   bool demoActive() const;

@@ -68,8 +68,12 @@ void ClockController::stopSound() {
   sound_.stop();
 }
 
-bool ClockController::soundNamesAsJson(JsonArray array) {
-  return sound_.namesAsJson(array);
+bool ClockController::soundNamesAsJson(JsonArray array, SoundKind kind) {
+  return sound_.namesAsJson(array, kind);
+}
+
+uint32_t ClockController::soundDurationMs(const char* name) {
+  return sound_.durationMs(name);
 }
 
 Mode ClockController::activeMode() const {

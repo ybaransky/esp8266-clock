@@ -31,11 +31,6 @@
 .sessionTimes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .sessionToggle { color: #eee; }
 .sessionToggle input { margin-right: 7px; }
-/* A sound dropdown and its preview button share one row; the select takes the
-   slack so the button stays a fixed, thumb-sized target on a phone. */
-.soundRow { display: flex; gap: 8px; align-items: stretch; }
-.soundRow select { flex: 1; min-width: 0; }
-.soundRow button { flex: 0 0 auto; margin: 0; padding: 0 14px; font-size: .95em; }
 </style>
 </head>
 <body>
@@ -78,9 +73,9 @@
   <hr>
   <label>Format<select id="fcd"></select></label>
   <label>End time<input type="datetime-local" step="1" id="end"></label>
-  <label for="sfinal">Sound at zero</label>
+  <label for="sfinal">Song at zero</label>
   <div class="soundRow"><select id="sfinal"></select>
-  <button class="secondary" type="button" onclick="preview('sfinal')">&#9654;</button></div>
+  <button class="secondary" type="button" onclick="toggleSound(this,'sfinal')">&#9654;</button></div>
 </div>
 
 <div id="cu">
@@ -105,9 +100,9 @@
   <label>Blink minutes after sunset &nbsp;(0 = off)<input type="number" min="0" max="240" step="1" id="fblinka"></label>
   <h3>Countdown Phase II<br><span class="muted">(Friday sunset &rarr; Saturday sunset)</span></h3>
   <label>Format<select id="fsat"></select></label>
-  <label for="ssunset">Sound at Friday sunset</label>
+  <label for="ssunset">Song at Friday sunset</label>
   <div class="soundRow"><select id="ssunset"></select>
-  <button class="secondary" type="button" onclick="preview('ssunset')">&#9654;</button></div>
+  <button class="secondary" type="button" onclick="toggleSound(this,'ssunset')">&#9654;</button></div>
 </div>
 
 <div id="trade">
@@ -131,12 +126,12 @@
   </div>
   <label>Format<select id="ftrade"></select></label>
   <label>Format over 24h (e.g. weekends)<select id="ftrade24"></select></label>
-  <label for="sopen">Sound at open</label>
+  <label for="sopen">Song at open</label>
   <div class="soundRow"><select id="sopen"></select>
-  <button class="secondary" type="button" onclick="preview('sopen')">&#9654;</button></div>
-  <label for="sclose">Sound at close</label>
+  <button class="secondary" type="button" onclick="toggleSound(this,'sopen')">&#9654;</button></div>
+  <label for="sclose">Song at close</label>
   <div class="soundRow"><select id="sclose"></select>
-  <button class="secondary" type="button" onclick="preview('sclose')">&#9654;</button></div>
+  <button class="secondary" type="button" onclick="toggleSound(this,'sclose')">&#9654;</button></div>
 </div>
 
 <div id="hours" class="choices">
@@ -145,21 +140,12 @@
   <label><input type="radio" name="hour" id="h12"> 12h</label>
 </div>
 
+<p id="snone" class="muted" hidden>No sounds are installed, so every song list is
+empty. Upload the filesystem image (<code>pio run -t uploadfs</code>) to add them.</p>
+
 <hr>
 <label>Brightness: <span id="bv">4</span>
 <input type="range" min="0" max="7" id="br" oninput="previewBrightness(this.value)"></label>
-
-<hr>
-<h3>Sound</h3>
-<p id="snone" class="muted" hidden>No sounds are installed. Upload the
-filesystem image (<code>pio run -t uploadfs</code>) to add them.</p>
-<label class="sessionToggle"><input type="checkbox" id="senabled"> Play sounds at mode boundaries</label>
-<label>Volume: <span id="svolv">40</span>%
-<input type="range" min="0" max="100" step="5" id="svol" oninput="$('svolv').textContent = this.value"></label>
-<label for="sstartup">Sound at startup</label>
-<div class="soundRow"><select id="sstartup"></select>
-<button class="secondary" type="button" onclick="preview('sstartup')">&#9654;</button></div>
-<div class="actions"><button class="secondary" type="button" onclick="stopSound()">Stop sound</button></div>
 
 <div class="actions"><button onclick="save()">Save</button></div>
 <div id="st"></div>
@@ -212,7 +198,10 @@ function optionsWithSame(id, labels, selected) {
 // identity in the catalog and in config.json, so re-uploading the filesystem
 // cannot silently repoint a selection at a different sound. An empty value is
 // the "stay silent" choice.
-var soundNames = [];
+//
+// Only songs are offered here. Alerts are the other half of the catalog and
+// get their own cue fields later; see /sound to audition either kind.
+var songNames = [];
 function soundOptions(id, selected) {
   var el = $(id);
   el.innerHTML = '';
@@ -220,7 +209,7 @@ function soundOptions(id, selected) {
   none.value = '';
   none.textContent = '(silent)';
   el.appendChild(none);
-  soundNames.forEach(function (name) {
+  songNames.forEach(function (name) {
     var o = document.createElement('option');
     o.value = name;
     o.textContent = name;
@@ -229,27 +218,13 @@ function soundOptions(id, selected) {
   var wanted = selected || '';
   // A configured name the catalog no longer has would otherwise fall back to
   // "(silent)" without saying so. Keep it selectable and flag it instead.
-  if (wanted && soundNames.indexOf(wanted) < 0) {
+  if (wanted && songNames.indexOf(wanted) < 0) {
     var missing = document.createElement('option');
     missing.value = wanted;
     missing.textContent = wanted + ' (not installed)';
     el.appendChild(missing);
   }
   el.value = wanted;
-}
-
-function preview(id) {
-  var name = $(id).value;
-  if (!name) { setStatus('Nothing selected to play', 2000); return; }
-  apiPost('/api/sound/test', { sound: name })
-    .then(function () { setStatus('Playing ' + name, 3000); })
-    .catch(function () { setStatus('Could not play ' + name, 3000); });
-}
-
-function stopSound() {
-  apiPost('/api/sound/test', { stop: true })
-    .then(function () { setStatus('Stopped', 2000); })
-    .catch(function () {});
 }
 
 // Config stores "YYYY-MM-DD hh:mm:ss" (or "now"); datetime-local wants a "T".
@@ -283,7 +258,7 @@ api('/api/formats').catch(function (e) {
     throw new Error('/api/sounds: ' + e.message);
   });
 }).then(function (s) {
-  soundNames = (s && s.sounds) || [];
+  songNames = (s && s.songs) || [];
   $('snone').hidden = !!(s && s.available);
   return api('/api/config').catch(function (e) {
     throw new Error('/api/config: ' + e.message);
@@ -322,10 +297,6 @@ api('/api/formats').catch(function (e) {
   $('h12').checked = !!display.clock12Hour;
   $('h24').checked = !display.clock12Hour;
   var sound = d.sound || {};
-  $('senabled').checked = sound.enabled !== false;
-  $('svol').value = sound.volume == null ? 40 : sound.volume;
-  $('svolv').textContent = $('svol').value;
-  soundOptions('sstartup', sound.startup);
   soundOptions('sfinal', sound.final);
   soundOptions('ssunset', sound.fridaySunset);
   soundOptions('sopen', sound.tradingOpen);
@@ -379,10 +350,9 @@ function save() {
         }
       }
     },
+    // Patch semantics: enabled, volume and startup are owned by /sound and
+    // stay untouched by leaving them out.
     sound: {
-      enabled: $('senabled').checked,
-      volume: +$('svol').value,
-      startup: $('sstartup').value,
       final: $('sfinal').value,
       fridaySunset: $('ssunset').value,
       tradingOpen: $('sopen').value,

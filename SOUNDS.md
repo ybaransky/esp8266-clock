@@ -10,10 +10,20 @@ hold 30,562 bytes of notes. The same catalog packed into one file costs **8,192
 bytes**, and playing a song streams notes two bytes at a time straight from
 flash instead of parsing JSON into RAM.
 
-| | source | on device |
-| --- | --- | --- |
-| Short cues | `assets/sounds.json` | `/songs.bin` |
-| Full songs | `assets/songs/*.json` | `/songs.bin` |
+| kind | what it is | source | on device |
+| --- | --- | --- | --- |
+| **alert** | a short burst | `assets/sounds.json` | `/songs.bin` |
+| **song** | a full melody | `assets/songs/*.json` | `/songs.bin` |
+
+**Where a sound is authored is what classifies it.** There is no `kind` field to
+write: an object in the `sounds` array of `assets/sounds.json` is an alert, and
+a file under `assets/songs/` is a song. Moving a file between the two changes
+its kind. The packer records the result per directory entry so the firmware can
+offer one kind or the other without reading any notes.
+
+The two kinds share one catalog, one binary layout, and one player - they
+differ only in which dropdown offers them. `/sound` auditions either kind;
+`/format` assigns songs to events.
 
 The sources live under `assets/` rather than `data/` - the same split
 `zipcodes.csv` uses - so the JSON never reaches the device. `data/songs.bin` is
@@ -23,7 +33,8 @@ newer.
 ## Structure
 
 Each song file is a JSON object; `assets/sounds.json` is an object with a
-`sounds` array of the same objects. Nothing distinguishes the two on the device.
+`sounds` array of the same objects. The two carry identical fields - only their
+location differs, and that is what sets the kind.
 
 ```json
 { "name": "Doorbell", "notes": [659, 523], "durations": [4, 2] }
@@ -115,11 +126,13 @@ Notes on the workflow:
 - **No firmware rebuild is needed**, even for a sound using a frequency no other
   sound uses. The pitch table is rebuilt from the sources and stored in
   `songs.bin` itself, not compiled into the firmware.
-- The `name` field is the identity: it is what the `/format` dropdowns list and
-  what `/config.json` stores under `sound`. The filename only matters to you.
-  Names are sorted alphabetically.
+- The `name` field is the identity: it is what the dropdowns list and what
+  `/config.json` stores under `sound`. The filename only matters to you. Names
+  are sorted alphabetically.
 - **Renaming a sound orphans any config that selected it.** The firmware treats
-  a name it cannot find as silence and logs it once; re-pick it on `/format`.
+  a name it cannot find as silence and logs it once; re-pick it on `/format`,
+  which keeps the orphaned name visible as `... (not installed)` rather than
+  quietly reverting to `(silent)`.
 - Deleting is complete: the whole image is rewritten, so no stale entry can
   survive on the device.
 
@@ -144,6 +157,10 @@ python tools/pack_songs.py list
 python tools/pack_songs.py dump "Pacman Intro Theme"
 ```
 
+`list` shows each entry's kind, so a song accidentally added to
+`assets/sounds.json` is visible as an `alert` there rather than in a dropdown
+it does not belong in.
+
 `dump` reconstructs the original JSON, so it also verifies the round trip.
 
 ## On-device format
@@ -154,8 +171,8 @@ python tools/pack_songs.py dump "Pacman Intro Theme"
 
 ```
 magic   "SNG1"
-u8      version (1)
-u8      songCount
+u8      version (2)
+u8      songCount                   alerts and songs together
 u8      pitchCount
 u8      reserved (0)
 u16     pitchTable[pitchCount]      distinct frequencies in Hz, 0 = rest
@@ -164,12 +181,22 @@ directory, songCount entries sorted by name:
     u16 offset                      absolute file offset of the record
     u16 tempo                       0 = simple timing mode
     u16 noteCount
+    u8  kind                        0 = alert, 1 = song
     u8  nameLength
     u8  name[nameLength]            UTF-8
 
 records:
     { u8 pitchIndex, s8 durationDivisor } * noteCount
 ```
+
+`kind` is a field on each entry rather than an ordering: the directory stays
+sorted by name across both kinds, so adding one alert does not move every song.
+Filtering is a walk over the directory, which listing the names already does.
+
+Version 2 added `kind`. **A firmware update that changes the version needs a
+matching `pio run -t uploadfs`** - the firmware refuses a catalog it cannot read
+and says so on the console. The packer treats itself as one of its own sources,
+so a format change rebuilds `songs.bin` even when no song JSON was touched.
 
 A note costs 2 bytes because the whole catalog draws on 50 distinct pitches, so
 a one-byte index into the table is enough. The firmware caches only the pitch
