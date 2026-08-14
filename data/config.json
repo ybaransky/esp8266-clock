@@ -20,6 +20,15 @@
       }
     }
   },
+  "sound": {
+    "enabled": true,
+    "volume": 40,
+    "startup": "",
+    "final": "",
+    "fridaySunset": "",
+    "tradingOpen": "",
+    "tradingClose": ""
+  },
   "time": {
     "timezone": {
       "name": "America/New_York",

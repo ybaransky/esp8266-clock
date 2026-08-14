@@ -175,6 +175,7 @@ void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
     cfg.timezone.utcOffsetMinutes =
         sanitizeUtcOffsetMinutes(cfg.timezone.utcOffsetMinutes);
     sanitizeMessageFields(cfg);
+    sanitizeSoundFields(cfg);
     sanitizePrintableText(cfg.timezone.name, cfg.timezone.name,
                           sizeof(cfg.timezone.name));
     sanitizeLocationInfo(cfg.locations.device);

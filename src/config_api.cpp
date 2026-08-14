@@ -107,6 +107,43 @@ void ConfigApi::handleFormats() {
   responder_.sendJsonDocument(200, doc);
 }
 
+void ConfigApi::handleSounds() {
+  JsonDocument doc;
+  JsonArray sounds = doc["sounds"].to<JsonArray>();
+  // Reported separately from an empty array: a device with no /songs.bin is
+  // missing its filesystem image, which is worth saying out loud on the page
+  // rather than showing as a dropdown that happens to have no entries.
+  doc["available"] = clockController_.soundNamesAsJson(sounds);
+  responder_.sendJsonDocument(200, doc);
+}
+
+void ConfigApi::handleSoundTest() {
+  JsonDocument doc;
+  if (!responder_.parseJsonBody(doc, "/api/sound/test")) return;
+
+  if (doc["stop"] | false) {
+    clockController_.stopSound();
+    responder_.sendJson(200, "{\"message\":\"Stopped\"}");
+    return;
+  }
+
+  char name[kSoundNameLength];
+  sanitizePrintableText(doc["sound"] | "", name, sizeof(name));
+  if (name[0] == '\0') {
+    responder_.sendJsonError(400, "Sound name required");
+    return;
+  }
+  // Deliberately bypasses the master sound switch: pressing preview is an
+  // explicit request to hear something, and staying silent would read as a
+  // broken button rather than as a setting.
+  if (!clockController_.playSound(name)) {
+    LOG_PRINTF("/api/sound/test failed: no sound named \"%s\"", name);
+    responder_.sendJsonError(404, "No such sound");
+    return;
+  }
+  responder_.sendJson(200, "{\"message\":\"Playing\"}");
+}
+
 void ConfigApi::handleGetConfig() {
   JsonDocument doc;
   populateConfigJson(doc);

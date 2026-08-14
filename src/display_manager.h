@@ -173,6 +173,12 @@ class DisplayManager {
   const char* renderedName() const;
   bool demoActive() const;
 
+  // True exactly once after a countdown reaches zero and the completion
+  // overlay is installed, then false until the next completion. Lets a caller
+  // pair an announcement with the event without DisplayManager having to know
+  // what an announcement is - the display layer stays free of sound.
+  bool consumeCountdownCompleted();
+
   // The persistent mode from config.
   Mode activeMode() const { return settings_.activeMode; }
 
@@ -232,6 +238,7 @@ class DisplayManager {
   ViewState baseView_;                           // What to show when no overlay is active.
   OverlayState overlay_;                         // kNone unless an overlay is active.
 
+  bool countdownCompleted_ = false;  // Set on completion, cleared when consumed.
   DateTime countupOrigin_;       // Captured start time for count-up views using "now".
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
   SegmentDisplay& display_;  // Hardware target for completed frames.

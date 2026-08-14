@@ -1,0 +1,34 @@
+{
+  "sounds": [
+    {
+      "name": "Welcome",
+      "notes": [262, 330, 392, 523],
+      "durations": [8, 8, 8, 4]
+    },
+    {
+      "name": "Doorbell",
+      "notes": [659, 523],
+      "durations": [4, 2]
+    },
+    {
+      "name": "Alert",
+      "notes": [880, 0, 880, 0, 880],
+      "durations": [8, 16, 8, 16, 8]
+    },
+    {
+      "name": "Cute Connection",
+      "notes": [659, 1319, 1760],
+      "durations": [20, 18, 16]
+    },
+    {
+      "name": "Cute Disconnection",
+      "notes": [659, 1760, 1319],
+      "durations": [20, 18, 20]
+    },
+    {
+      "name": "Cute Mode 3",
+      "notes": [1319, 1568, 2349],
+      "durations": [20, 20, 3]
+    }
+  ]
+}

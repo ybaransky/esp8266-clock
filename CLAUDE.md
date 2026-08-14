@@ -56,6 +56,10 @@ pio device monitor
 # sources raw at localhost:8080 and proxies /api/* to the device
 python tools/dev_server.py --device <clock-ip>
 
+# Inspect the packed sound catalog (also rebuilt by any pio run target)
+python tools/pack_songs.py list
+python tools/pack_songs.py dump "Pacman Intro Theme"
+
 # Clean build artifacts
 pio run --target clean
 ```
@@ -73,7 +77,7 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 | TM1637 CLK    | D5  | GPIO14 | Shared across all 3 displays                                       |
 | TM1637 DIO[1] | D6  | GPIO12 | Safe                                                               |
 | DS3231 SQW    | D7  | GPIO13 | RISING interrupt, INPUT_PULLUP, 1Hz                                |
-| D8 (unused)   | —   | GPIO15 | **Must stay LOW at boot (strapping pin); do not connect**          |
+| Buzzer        | D8  | GPIO15 | **Strapping pin; must stay LOW at boot.** Inverting NPN buffer required — see `WIRING.md` |
 | *Right side*  |     |        |                                                                    |
 | DS3231 SCL    | D1  | GPIO5  | Hardware I2C                                                       |
 | DS3231 SDA    | D2  | GPIO4  | Hardware I2C                                                       |
@@ -82,7 +86,7 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 | Internal LED  | D4  | GPIO2  | Active-low; shared with TM1637 DIO[0] — LED flickers during write |
 
 ### Pin boot constraints
-- **GPIO15 (D8)**: must be LOW - leave unconnected; any pull-up prevents boot/flash.
+- **GPIO15 (D8)**: must be LOW - the buzzer's 10k base pulldown is what satisfies this. Any pull-up prevents boot/flash, which is why the active-LOW buzzer module (S idles at 2.7V) cannot sit on D8 directly. `WIRING.md` explains the NPN buffer and why a plain pulldown does not work.
 - **GPIO0 (D3)**: must be HIGH - INPUT_PULLUP + button not pressed.
 - **GPIO2 (D4)**: must be HIGH - LED and TM1637 DIO both idle HIGH; safe.
 
@@ -140,7 +144,7 @@ The display system is layered as follows:
    - Tenths values come from the injected RTC service's `msIntoSecond(nowMs)`, not `millis() % 1000`. `notifySecondBoundary()` invalidates the render throttle on each accepted SQW pulse. Demo tenths remain deadline-derived.
    - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
 
-4. **`clock_controller.h/cpp`** - coordinates application actions. It applies configuration to the owned `DisplayManager`, Friday controller, and Trading controller; ticks both scheduled modes on real SQW boundaries; resets their cached/remembered schedule state after time synchronization; and exposes display previews to web APIs.
+4. **`clock_controller.h/cpp`** - coordinates application actions. It applies configuration to the owned `DisplayManager`, Friday controller, Trading controller, and the injected `SoundPlayer`; ticks both scheduled modes on real SQW boundaries; resets their cached/remembered schedule state after time synchronization; announces countdown completion from its per-loop `tick()`; and exposes display and sound previews to web APIs. Scheduled modes receive `ModeOutputs` (`mode_outputs.h`) rather than a bare `DisplayManager&`, so a boundary crossing can drive the display and the buzzer together.
 5. **`time_api.h/cpp`** - owns `GET /api/time` and `POST /api/time`; reads through `RtcService` and synchronizes through `ClockController`.
 
 ### Friday Mode
@@ -168,6 +172,23 @@ The display system is layered as follows:
 - Boundary announcements follow the Friday-mode pattern: a live open-to-close phase crossing first installs that session's stop countdown, then blinks `messages.tradingOpen` for 5s; a live close-to-open crossing installs the next session/weekday start countdown, then blinks `messages.tradingClose` for 5s.
 - Boot, config reload, and browser time synchronization reset the remembered Trading phase to `kNone`, and a crossing from `kNone` never announces - so those events cannot synthesize an open/close message.
 
+### Sound
+- **`sound_player.h/cpp`**: application-owned `SoundPlayer`, injected into `ClockController` and reached by the mode controllers through `ModeOutputs`.
+- **Playback is a non-blocking deadline state machine**, not a port of `esp8266-sound`'s player. `tick(nowMs)` advances at most one note boundary and returns; the tone itself is produced by the ESP8266 waveform generator (`analogWriteFreq` + `analogWrite`) and keeps sounding without software help. This is the whole reason the source project's design was not reused: its `cooperativeDelay` loop blocks for the length of the song and re-enters its caller through a service callback, which here would recursively consume SQW pulses and re-enter `DisplayManager` and the web handlers. **Never add a blocking delay to the playback path.**
+  - Deadlines advance from the *previous* deadline, not from `millis()`, so per-note rounding cannot drift. A stall longer than `kMaxCatchUpMs` (250ms) re-anchors to the current time instead of racing through the backlog.
+  - Volume is the PWM duty cycle (50% = loudest), so `setVolume()` is heard within the current note. Setting `USE_SOFTWARE_VOLUME` to 0 reverts to full-volume `tone()` for use with the hardware potentiometer in `WIRING.md`; the two must not stack.
+  - `analogWriteFreq()` clamps below 100 Hz. The catalog's single 82 Hz pitch is therefore slightly sharp; a piezo reproduces almost nothing down there, so this is left alone.
+- **`assets/sounds.json` + `assets/songs/*.json` → `data/songs.bin`** via `tools/pack_songs.py` (a PlatformIO pre-script). The sources live in `assets/` so they never reach the device; the `.bin` is gitignored and regenerated when a source is newer. **The binary layout is spelled out in exactly two places - `tools/pack_songs.py` and `sound_player.cpp` - and must change together.** See `SOUNDS.md` for the format and the workflow.
+  - 28 sounds, 3,555 notes, 50 distinct pitches in 7,881 bytes (one LittleFS block). Only the pitch table is cached in RAM; notes stream two bytes at a time from an open file handle, so song length costs no memory.
+  - The packer reads its own output back and compares every note before writing, and rejects a name longer than `kSoundNameLength - 1` at build time rather than letting it be truncated into one that matches nothing.
+- **A sound's name is its identity** - in the catalog, in `/config.json`, and in the API. `kSoundNameLength` (48, in `config.h`) bounds all three and must match `MAX_NAME_BYTES` in the packer. Names are deliberately *not* validated against the catalog on save: the filesystem image can be re-uploaded independently of the config, so a name that matches nothing today may match tomorrow. `SoundPlayer` treats a miss as silence and logs it.
+- **Announced events are the existing live phase crossings** - nothing new is scheduled. Friday sunset, Trading open, Trading close, countdown-reaches-zero, and startup each pair a message with a sound.
+  - `applySettings()` copies each cue name through `activeSoundName(config.sound, name)`, which returns `""` when `sound.enabled` is false. **The master switch is resolved once, at config time**: an empty name already means silence everywhere, so no tick-path or render-path code tests the flag.
+  - Because the cues hang off the same previous-phase tests that gate the messages, a crossing from `kNone` (boot, config reload, browser time sync) is silent for free.
+  - Countdown completion is detected on the display's render cadence, so `DisplayManager` exposes a one-shot `consumeCountdownCompleted()` edge that `ClockController::tick()` polls each loop. The display layer stays free of any sound dependency - it reports an event, it does not announce one.
+- `POST /api/sound/test` **bypasses** the master switch: pressing preview is an explicit request to hear something, and staying silent would read as a broken button rather than as a setting.
+- `play()` always replaces whatever is sounding, and an empty name stops playback. A long song therefore plays on under the base view after its 5s message overlay clears, and the next boundary cuts it off.
+
 ### Input
 - **`button.h/cpp`**: `buttonBegin()`, `buttonTick()` (debounce), `buttonHasEvent()`, `buttonNextEvent()`.
   - `ButtonEvent` enum class: `kNone`, `kShowSsid`, `kShowIpAddress`, `kShowRtcStatus`.
@@ -186,6 +207,7 @@ The display system is layered as follows:
 - `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
 - `ClockConfig.friday` adds `blinkBeforeMinutes` and `blinkAfterMinutes`, serialized as `display.modes.friday.blinkBeforeMinutes` / `blinkAfterMinutes` and clamped by `sanitizeBlinkMinutes` (0-240; default 0 = off, so existing `/config.json` files are unaffected).
 - `ClockConfig.messages` stores `splash`, `final`, `fridaySunset`, `tradingOpen`, and `tradingClose`; they serialize under `display.messages` and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Trading boundary defaults are `"OPEN"` and `"CLOSE"`.
+- `ClockConfig.sound` mirrors `MessageConfig` field-for-field (`startup`, `final`, `fridaySunset`, `tradingOpen`, `tradingClose`) plus `enabled` and `volumePercent`; it serializes under a top-level `sound` object, not under `display`. Names are sanitized with `sanitizePrintableText` into `kSoundNameLength` buffers. Patch semantics mean an existing `/config.json` with no `sound` object loads unchanged and defaults to enabled-but-silent, so nothing probes the catalog until a name is picked on `/format`.
 - `ClockConfig.trading` contains its normal/over-24h formats and a `TradingSchedule`. JSON stores `display.modes.trading.intervalCount` plus both entries in `intervals`, even when only session 1 is enabled, so disabling session 2 does not discard its configured times. Older array-only JSON remains readable: its array length becomes the enabled count.
 - `LocationInfo` contains `latitude`, `longitude`, and `zipcode[6]`. `ClockConfig.locations` keeps distinct `device` and `sunsetTest` values. `/config.json` retains separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.
 - `WifiConfig` holds: `staSsid`, `staPassword`, `apSsid`, `apPassword`.
@@ -211,12 +233,14 @@ The display system is layered as follows:
   - `web/common.js` owns the shared page helpers (`$`, `api`/`apiPost`, `setStatus`, error/slow-load beacons to `POST /api/client-log`, `reportFieldMismatch`, `setFieldFromConfig`); `web/common.css` is the single stylesheet. Both are served hash-versioned (`?v=`) with an immutable cache header, so each page transfers only its own small body; pages stay `no-cache`.
   - Runs `DNSServer` for captive portal only when in AP mode.
   - UI pages: `GET /`, `/settings`, `/files`, `/format`, `/time`, `/sunset`, `/messages`, `/location`, `/wifi`, `/view`.
-  - REST API: `GET /api/status` (device name, configured mode, and live demo state for the home page), `POST /api/config`, `GET /api/config`, `GET /api/formats`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `POST /api/field-mismatch`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
+  - REST API: `GET /api/status` (device name, configured mode, and live demo state for the home page), `POST /api/config`, `GET /api/config`, `GET /api/formats`, `GET /api/sounds`, `POST /api/sound/test`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `POST /api/field-mismatch`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
   - File management: `GET /api/files`, `GET|DELETE /api/file`, `POST /api/file/upload`.
   - `GET /api/file` mirrors the served bytes to the serial monitor for **`/config.json` only** (`FileApi::logFileContent`); every other path returns immediately. Serial moves at ~7.5 KB/s, so mirroring whatever the browser opens would stall the loop for minutes (`/zipcodes.bin` is 164 KB) - that restriction is the point, and a 4 KB cap backs it up. It runs **after** the response is streamed, rewinds to the served offset, and `yield()`s per 64-byte chunk. `File::read()` returns `int`; never widen it into the `size_t` length for `Serial.write()`.
   - AP-mode radio settings in `wifi_connection_manager.cpp` (11g phy mode, channel survey, 17 dBm TX) are evidence-backed fixes for transfer stalls with power-save phone clients; code comments record what was observed, including two settings that were tried and made things worse. Do not change them without new on-device evidence.
   - **Never judge WiFi/page-load performance while the clock is USB-powered from the PC** (confirmed 2026-07-14): on the PC's USB port next to its 2.4 GHz Bluetooth radio, AP transfers to the phone degrade severely (truncated bodies, ~18 s for a 1.4 KB page) with identical firmware, healthy heap, and fast handlers; on its own power supply away from the PC, loads are fast. This matches the documented USB supply-droop behavior (TX spikes corrupt long frames; that is why TX power is 17 dBm). To separate device work from radio delivery: `time=` in the request log is device-side cost; the browser beacon's `dl=` is delivery time; `TRUNCATED wrote X of Y` means the client stopped ACKing mid-transfer.
 - `GET /api/config` mirrors its response body to the serial monitor (`/api/config body:` followed by the exact JSON sent to the browser). It is streamed with `serializeJson(doc, Serial)` **after** `sendJsonDocument()` returns - ~1KB at 74880 baud blocks for roughly 150ms, which must stay off the browser's wait and out of RAM. Every settings page hits this endpoint on load, so it is the noisiest line on the console.
 - `POST /api/message/test` accepts an optional `"blink": true`, which previews via the blinking `showInfo(msg, 5000)` path instead of the static `showSplash()` - used by Friday and Trading boundary-message previews so they match live behavior.
+- `GET /api/sounds` returns `{"sounds": [...names...], "available": bool}`. `available` is reported separately from an empty array because a device with no `/songs.bin` is missing its filesystem image - the page says so instead of showing an empty dropdown that looks like a bug.
+- Sound selection lives on `/format`, not a page of its own: each mode section carries the sounds that mode's events can raise (countdown → at zero, Friday → at sunset, Trading → at open/close), with the master switch, volume, and startup sound in a global block by Brightness. The three `/format` fetches (`/api/formats`, `/api/sounds`, `/api/config`) are chained sequentially - the device serves one connection at a time, so parallel fetches only queue behind each other.
 - `/location` edits the persisted device `location`. `/sunset` edits/persists only the `sunset` test fields before posting to `/api/sunset`.
 - On `/time`, "Set Time from Browser" updates the RTC/config, resets the Friday sunset cache and Trading remembered schedule, and mirrors the new browser-derived values into the Device fields after a successful save.

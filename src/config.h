@@ -8,6 +8,13 @@ static constexpr int32_t kForever = INT32_MAX;
 // Sentinel for optional secondary format indexes: use the primary format.
 static constexpr uint8_t kSameFormat = 0xFF;
 
+// Size of every stored sound name, including the terminator. A sound's name is
+// its identity - in the catalog, in /config.json, and in the API - so this one
+// value bounds all three. Must match MAX_NAME_BYTES (this value minus one) in
+// tools/pack_songs.py, which fails the build rather than let a name be silently
+// truncated into one that matches nothing.
+static constexpr size_t kSoundNameLength = 48;
+
 // Persistent setting selected by the user. This is distinct from the
 // currently rendered View and any temporary Overlay (see display_manager.h).
 enum Mode : uint8_t {
@@ -84,6 +91,19 @@ struct MessageConfig {
   char tradingClose[64];  // Blinked when a Trading session stops live.
 };
 
+// Stores the buzzer settings and the sound played at each announced boundary.
+// The name fields mirror MessageConfig one-for-one: every event that blinks a
+// message can also play a sound, and an empty name means that event is silent.
+struct SoundConfig {
+  bool enabled;             // Master switch; false silences every event cue.
+  uint8_t volumePercent;    // Loudness from 0 through 100.
+  char startup[kSoundNameLength];       // Played once at boot, under the splash.
+  char final[kSoundNameLength];         // Played when a countdown reaches zero.
+  char fridaySunset[kSoundNameLength];  // Played when Friday sunset is crossed live.
+  char tradingOpen[kSoundNameLength];   // Played when a Trading session starts live.
+  char tradingClose[kSoundNameLength];  // Played when a Trading session stops live.
+};
+
 // Stores the local timezone identity and the numeric offset used by sunset math.
 struct TimezoneConfig {
   char name[40];             // IANA timezone name supplied by the browser.
@@ -96,6 +116,7 @@ struct ClockConfig {
   FridayConfig friday;  // Friday-mode phase formats.
   TradingConfig trading;  // Trading-mode countdown format.
   MessageConfig messages;  // User-configurable display messages.
+  SoundConfig sound;  // Buzzer settings and per-event sound selections.
   LocationConfig locations;  // Device and sunset-test coordinates.
   TimezoneConfig timezone;  // Local timezone and UTC offset.
   DisplayConfig display;  // Clock rendering and hardware brightness settings.

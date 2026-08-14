@@ -49,6 +49,15 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   messages["tradingOpen"]  = String(clock.messages.tradingOpen);
   messages["tradingClose"] = String(clock.messages.tradingClose);
 
+  JsonObject sound = doc["sound"].to<JsonObject>();
+  sound["enabled"] = clock.sound.enabled;
+  sound["volume"]  = clock.sound.volumePercent;
+  sound["startup"]      = String(clock.sound.startup);
+  sound["final"]        = String(clock.sound.final);
+  sound["fridaySunset"] = String(clock.sound.fridaySunset);
+  sound["tradingOpen"]  = String(clock.sound.tradingOpen);
+  sound["tradingClose"] = String(clock.sound.tradingClose);
+
   JsonObject modes = display["modes"].to<JsonObject>();
 
   JsonObject countdown = modes["countdown"].to<JsonObject>();
@@ -189,6 +198,45 @@ const MessageFieldDescriptor kMessageFields[] = {
      sizeof(MessageConfig::tradingClose)},
 };
 
+// One row per per-event sound selection: JSON key under "sound" and how to
+// reach the target fixed-size buffer. Deliberately parallel to kMessageFields -
+// every announced event has both a message and a sound, and the two tables are
+// what keep that pairing from drifting.
+struct SoundFieldDescriptor {
+  const char* jsonKey;
+  char* (*field)(ClockConfig&);
+};
+
+const SoundFieldDescriptor kSoundFields[] = {
+    {"startup", [](ClockConfig& c) -> char* { return c.sound.startup; }},
+    {"final", [](ClockConfig& c) -> char* { return c.sound.final; }},
+    {"fridaySunset",
+     [](ClockConfig& c) -> char* { return c.sound.fridaySunset; }},
+    {"tradingOpen",
+     [](ClockConfig& c) -> char* { return c.sound.tradingOpen; }},
+    {"tradingClose",
+     [](ClockConfig& c) -> char* { return c.sound.tradingClose; }},
+};
+
+// Sound names are stored as given, not checked against the catalog: the
+// catalog lives on the filesystem and can be re-uploaded independently of
+// config.json, so a name that matches nothing today may match tomorrow.
+// SoundPlayer treats a miss as silence and logs it once.
+void applySoundFields(JsonVariantConst sound, ClockConfig& cfg) {
+  if (!sound["enabled"].isNull()) {
+    cfg.sound.enabled = sound["enabled"].as<bool>();
+  }
+  if (!sound["volume"].isNull()) {
+    cfg.sound.volumePercent = sanitizeVolumePercent(sound["volume"].as<int>());
+  }
+  for (const SoundFieldDescriptor& d : kSoundFields) {
+    JsonVariantConst value = sound[d.jsonKey];
+    if (value.isNull()) continue;
+    sanitizePrintableText(value.as<const char*>(), d.field(cfg),
+                          kSoundNameLength);
+  }
+}
+
 void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& cfg) {
   for (const FormatFieldDescriptor& d : kFormatFields) {
     JsonVariantConst value = modes[d.modeKey][d.fieldKey];
@@ -314,6 +362,14 @@ void sanitizeMessageFields(ClockConfig& cfg) {
   }
 }
 
+void sanitizeSoundFields(ClockConfig& cfg) {
+  cfg.sound.volumePercent = sanitizeVolumePercent(cfg.sound.volumePercent);
+  for (const SoundFieldDescriptor& d : kSoundFields) {
+    char* field = d.field(cfg);
+    sanitizePrintableText(field, field, kSoundNameLength);
+  }
+}
+
 const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
   // Every present field is applied even after an invalid one is seen, so a
   // single bad value in config.json can't wipe out the rest of the file on
@@ -337,6 +393,7 @@ const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
     error = "{\"error\":\"Trading sessions must be valid, ordered, and separated\"}";
   }
   applyMessageFields(display["messages"], cfg);
+  applySoundFields(root["sound"], cfg);
 
   const bool locationOk =
       applyLocationInfo(root["location"], cfg.locations.device);

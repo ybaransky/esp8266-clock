@@ -1,7 +1,9 @@
 #include "trading_mode.h"
 
+#include "config_validation.h"
 #include "display_manager.h"
 #include "log.h"
+#include "sound_player.h"
 
 namespace {
 
@@ -41,6 +43,12 @@ void TradingModeController::applySettings(const ClockConfig& config) {
           sizeof(settings_.openMessage));
   strlcpy(settings_.closeMessage, config.messages.tradingClose,
           sizeof(settings_.closeMessage));
+  strlcpy(settings_.openSound,
+          activeSoundName(config.sound, config.sound.tradingOpen),
+          sizeof(settings_.openSound));
+  strlcpy(settings_.closeSound,
+          activeSoundName(config.sound, config.sound.tradingClose),
+          sizeof(settings_.closeSound));
   resetSchedule();
 }
 
@@ -48,8 +56,7 @@ void TradingModeController::resetSchedule() {
   phaseTracker_.reset();
 }
 
-void TradingModeController::tick(const DateTime& now,
-                                 DisplayManager& displayManager) {
+void TradingModeController::tick(const DateTime& now, ModeOutputs& outputs) {
   if (settings_.activeMode != kModeTrading) return;
 
   const TradingScheduleResult result =
@@ -67,16 +74,21 @@ void TradingModeController::tick(const DateTime& now,
       (previousPhase == TradingPhase::kToClose) &&
       (result.phase == TradingPhase::kToOpen);
 
-  displayManager.setView(result.view);
+  outputs.display.setView(result.view);
   LOG_PRINTF("trading mode: phase -> %s, target=%04d-%02d-%02d %02d:%02d:%02d",
              tradingPhaseName(result.phase),
              result.view.anchor.year(), result.view.anchor.month(),
              result.view.anchor.day(), result.view.anchor.hour(),
              result.view.anchor.minute(), result.view.anchor.second());
 
+  // A crossing out of kNone - boot, config reload, a browser time sync - is
+  // neither of these, so those events stay silent exactly as they stay
+  // message-free.
   if (crossedOpen) {
-    displayManager.showInfo(settings_.openMessage, kBoundaryMessageMs);
+    outputs.display.showInfo(settings_.openMessage, kBoundaryMessageMs);
+    outputs.sound.play(settings_.openSound, millis());
   } else if (crossedClose) {
-    displayManager.showInfo(settings_.closeMessage, kBoundaryMessageMs);
+    outputs.display.showInfo(settings_.closeMessage, kBoundaryMessageMs);
+    outputs.sound.play(settings_.closeSound, millis());
   }
 }

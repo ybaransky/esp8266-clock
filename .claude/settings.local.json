@@ -23,7 +23,9 @@
       "Bash(git -C \"c:\\\\Users\\\\ybara\\\\Documents\\\\Projects\\\\esp8266-clock\" show --stat fe41d86)",
       "Bash(git -C \"c:\\\\Users\\\\ybara\\\\Documents\\\\Projects\\\\esp8266-clock\" show fe41d86)",
       "Bash(git log *)",
-      "Bash(pio --version)"
+      "Bash(pio --version)",
+      "Bash(cd /c/Users/ybara/Documents/Projects/esp8266-sound && find . -path ./.git -prune -o -type f -print | head -100)",
+      "Read(//c/Users/ybara/Documents/Projects/esp8266-sound/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\ybara\\AppData\\Local\\Temp\\claude\\c--Users-ybara-Documents-Projects-esp8266-clock\\9f188f3c-4575-42f0-9bf4-89132e05a130\\scratchpad"

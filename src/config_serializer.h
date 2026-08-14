@@ -24,6 +24,12 @@ void sanitizeFormatFields(ClockConfig& cfg, const ClockConfig& defaults);
 // ASCII, clamps length). Shares the field list with applyJsonToClockConfig.
 void sanitizeMessageFields(ClockConfig& cfg);
 
+// Re-sanitizes the sound section in place (clamps volume, trims every event's
+// sound name to printable ASCII). Shares the field list with
+// applyJsonToClockConfig. Names are not checked against the catalog - see the
+// note on applySoundFields for why.
+void sanitizeSoundFields(ClockConfig& cfg);
+
 // Applies every clock-config field present in root onto cfg (patch semantics:
 // absent fields are untouched). Used both to load config.json (base = defaults)
 // and to apply a POST /api/config payload (base = loaded config). Returns

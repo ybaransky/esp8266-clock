@@ -88,6 +88,15 @@ int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes) {
   return static_cast<int16_t>(constrain(rawOffsetMinutes, -840, 840));
 }
 
+uint8_t sanitizeVolumePercent(int rawPercent) {
+  return static_cast<uint8_t>(constrain(rawPercent, 0, 100));
+}
+
+const char* activeSoundName(const SoundConfig& sound, const char* name) {
+  if (!sound.enabled || (name == nullptr)) return "";
+  return name;
+}
+
 void sanitizeLocationInfo(LocationInfo& info) {
   info.latitude = constrain(info.latitude, -90.0f, 90.0f);
   info.longitude = constrain(info.longitude, -180.0f, 180.0f);

@@ -1,0 +1,193 @@
+# Sound Format
+
+Sounds are authored as JSON in `assets/`, but the device does not store them
+that way. Before every build, [tools/pack_songs.py](tools/pack_songs.py)
+compiles all of them into a single `data/songs.bin`.
+
+That is a size decision, not a style one. LittleFS charges a whole 8192-byte
+block per file, so 23 small JSON files would cost **188,416 bytes** of flash to
+hold 30,562 bytes of notes. The same catalog packed into one file costs **8,192
+bytes**, and playing a song streams notes two bytes at a time straight from
+flash instead of parsing JSON into RAM.
+
+| | source | on device |
+| --- | --- | --- |
+| Short cues | `assets/sounds.json` | `/songs.bin` |
+| Full songs | `assets/songs/*.json` | `/songs.bin` |
+
+The sources live under `assets/` rather than `data/` - the same split
+`zipcodes.csv` uses - so the JSON never reaches the device. `data/songs.bin` is
+generated and gitignored; any `pio run` target regenerates it when a source is
+newer.
+
+## Structure
+
+Each song file is a JSON object; `assets/sounds.json` is an object with a
+`sounds` array of the same objects. Nothing distinguishes the two on the device.
+
+```json
+{ "name": "Doorbell", "notes": [659, 523], "durations": [4, 2] }
+```
+
+## Fields
+
+| Field       | Required | Description                                                        |
+| ----------- | -------- | ------------------------------------------------------------------ |
+| `name`      | yes      | Label shown in the dropdowns and stored in `/config.json`.         |
+| `notes`     | yes      | Array of frequencies in Hz. `0` is a rest (silence).               |
+| `durations` | yes      | Array parallel to `notes`. Each value is a note-length divisor.    |
+| `tempo`     | no       | Beats per minute. Its presence switches the timing mode (see below). |
+
+### notes
+
+Frequencies in Hz. `440` is A4, `262` is middle C, and so on. A value of `0`
+plays nothing but still consumes its time slot, which is how a beep-rest-beep
+pattern is made.
+
+### durations
+
+Each entry is a **divisor of a whole note**, so a larger number is a shorter
+note:
+
+| Value | Note          |
+| ----- | ------------- |
+| `1`   | whole note    |
+| `2`   | half note     |
+| `4`   | quarter note  |
+| `8`   | eighth note   |
+| `16`  | sixteenth note |
+
+`notes` and `durations` are matched up index by index and must be the same
+length; the packer fails the build if they are not.
+
+## Timing modes
+
+The presence of `tempo` selects one of two modes.
+
+### Simple mode (no `tempo`)
+
+Used by the short cues in `assets/sounds.json`. Duration in milliseconds is
+`1000 / divisor`, independent of any musical tempo:
+
+- `4` (quarter) = 250 ms
+- `8` (eighth) = 125 ms
+- `2` (half) = 500 ms
+
+Each note is followed by a gap of 30% of its length.
+
+```json
+{ "name": "Alert", "notes": [880, 0, 880, 0, 880], "durations": [8, 16, 8, 16, 8] }
+```
+
+### Musical mode (`tempo` present, > 0)
+
+A whole note lasts `(60000 * 4) / tempo` ms, and each note is
+`wholeNote / divisor`. Each note sounds for 90% of its slot with a 10% gap.
+
+In this mode a **negative divisor is a dotted note** (1.5x the length):
+
+- `-4` = dotted quarter note
+- `-8` = dotted eighth note
+
+## Defaults and edge cases
+
+- A missing or `0` divisor defaults to a quarter note (`4`).
+- A negative divisor is a dotted note only in musical mode; in simple mode it is
+  treated as a quarter note.
+
+## Adding, changing and removing sounds
+
+The sources stay in `assets/`; the packer runs automatically, so every change is
+an edit plus one filesystem upload:
+
+```sh
+# add     -> write assets/songs/tetris.json (or use tools/convert_arduino_songs.py)
+# modify  -> edit the JSON in place
+# delete  -> delete the JSON file
+pio run -t uploadfs
+```
+
+Short cues work the same way - append an object to the `sounds` array in
+`assets/sounds.json`.
+
+Notes on the workflow:
+
+- **No firmware rebuild is needed**, even for a sound using a frequency no other
+  sound uses. The pitch table is rebuilt from the sources and stored in
+  `songs.bin` itself, not compiled into the firmware.
+- The `name` field is the identity: it is what the `/format` dropdowns list and
+  what `/config.json` stores under `sound`. The filename only matters to you.
+  Names are sorted alphabetically.
+- **Renaming a sound orphans any config that selected it.** The firmware treats
+  a name it cannot find as silence and logs it once; re-pick it on `/format`.
+- Deleting is complete: the whole image is rewritten, so no stale entry can
+  survive on the device.
+
+### Build-time validation
+
+A bad source fails the build with the offending file named, rather than being
+silently skipped at boot:
+
+- `name` present, non-empty, unique across all sources, and at most 47 bytes
+  (`MAX_NAME_BYTES`, which must match `kSoundNameLength` in `src/config.h`)
+- `notes` non-empty and the same length as `durations`
+- note frequencies in 0..65535 Hz, duration divisors in -128..127
+- at most 255 songs, 128 distinct frequencies, and 64 KB of packed catalog
+
+The packer also reads its own output back and compares every note against the
+source before writing the file.
+
+### Inspecting what was packed
+
+```sh
+python tools/pack_songs.py list
+python tools/pack_songs.py dump "Pacman Intro Theme"
+```
+
+`dump` reconstructs the original JSON, so it also verifies the round trip.
+
+## On-device format
+
+`/songs.bin`, little endian. Read by
+[src/sound_player.cpp](src/sound_player.cpp), written by
+[tools/pack_songs.py](tools/pack_songs.py) - change the two together.
+
+```
+magic   "SNG1"
+u8      version (1)
+u8      songCount
+u8      pitchCount
+u8      reserved (0)
+u16     pitchTable[pitchCount]      distinct frequencies in Hz, 0 = rest
+
+directory, songCount entries sorted by name:
+    u16 offset                      absolute file offset of the record
+    u16 tempo                       0 = simple timing mode
+    u16 noteCount
+    u8  nameLength
+    u8  name[nameLength]            UTF-8
+
+records:
+    { u8 pitchIndex, s8 durationDivisor } * noteCount
+```
+
+A note costs 2 bytes because the whole catalog draws on 50 distinct pitches, so
+a one-byte index into the table is enough. The firmware caches only the pitch
+table (up to 256 bytes) and streams the rest.
+
+If `/songs.bin` is missing or unreadable, the firmware plays nothing and logs it
+once at startup. Unlike the display, sound is not load-bearing, so there is no
+built-in fallback melody to justify the flash it would cost.
+
+## Imported catalog
+
+The 28 sounds came from the `esp8266-sound` project unchanged, except that four
+names had a descriptive tail trimmed so they fit `kSoundNameLength` and read
+sensibly in a dropdown:
+
+| Original | Now |
+| --- | --- |
+| `We Wish You a Merry Christmas - Traditional Christmas song` | `We Wish You a Merry Christmas` |
+| `Brahms' Lullaby (Wiegenlied) -  Johannes Brahms` | `Brahms' Lullaby` |
+| `Greensleves - Traditional English folk song` | `Greensleeves` |
+| `Ode to Joy - Beethoven's Symphony No. 9` | `Ode to Joy` |

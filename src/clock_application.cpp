@@ -11,6 +11,7 @@
 #include "log.h"
 #include "page_manager.h"
 #include "rtc_ds3231.h"
+#include "sound_player.h"
 #include "web_server.h"
 #include "wifi_connection_manager.h"
 
@@ -86,7 +87,7 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
 
 ClockApplication::ClockApplication()
     : displayManager_(segmentDisplay_, rtc_),
-      clockController_(displayManager_, rtc_),
+      clockController_(displayManager_, rtc_, soundPlayer_),
       pageManager_(displayManager_),
       webPortal_(clockController_, configManager_, wifiConnectionManager_, rtc_) {}
 
@@ -128,6 +129,7 @@ void ClockApplication::initializeRtc() {
 void ClockApplication::initializeDisplayAndConfig() {
   ClockConfig cs = configManager_.loadClockConfig();
   segmentDisplay_.begin(cs.display.brightness);
+  soundPlayer_.begin();
   LOG_PRINTF("Mode %u, brightness %u",
              (unsigned)cs.activeMode, cs.display.brightness);
 
@@ -137,6 +139,9 @@ void ClockApplication::initializeDisplayAndConfig() {
   if (cs.messages.splash[0] != '\0') {
     displayManager_.showSplash(cs.messages.splash);
   }
+  // Plays under the splash rather than after it: the sound is non-blocking, so
+  // the two overlap the way a startup chime is expected to.
+  soundPlayer_.play(activeSoundName(cs.sound, cs.sound.startup), millis());
 }
 
 void ClockApplication::reportInitialRtcStatus(const RtcStatus& status) {
@@ -169,6 +174,10 @@ void ClockApplication::tick(uint32_t nowMs) {
   logModeOrViewTransition();
   checkRtcHealth(nowMs);
   displayManager_.tick(nowMs);
+  // After the display tick, so a countdown that just hit zero is announced in
+  // the same loop pass that put its final message on the segments.
+  clockController_.tick();
+  soundPlayer_.tick(nowMs);
   wifiConnectionManager_.tick();
   webPortal_.handleClients();
 }

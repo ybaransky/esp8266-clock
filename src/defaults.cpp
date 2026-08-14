@@ -17,6 +17,12 @@ constexpr const char* kDefaultFridaySunsetMessage = "     SUN SET";
 constexpr const char* kDefaultTradingOpenMessage  = "        OPEN";
 constexpr const char* kDefaultTradingCloseMessage = "        CLSE";
 
+// Sound ships enabled but with every event unassigned, so a device without the
+// buzzer wired (or with a filesystem predating /songs.bin) behaves exactly as
+// it did before: an empty name is silence, and nothing probes the catalog until
+// a name is picked on /format. Keep in sync with data/config.json.
+constexpr uint8_t kDefaultSoundVolumePercent = 40;
+
 }  // namespace
 
 ClockConfig defaultClockConfig() {
@@ -46,6 +52,9 @@ ClockConfig defaultClockConfig() {
              "%s", kDefaultTradingOpenMessage);
     snprintf(s.messages.tradingClose, sizeof(s.messages.tradingClose),
              "%s", kDefaultTradingCloseMessage);
+    s.sound = {};
+    s.sound.enabled = true;
+    s.sound.volumePercent = kDefaultSoundVolumePercent;
     s.locations = {};
     s.timezone.name[0] = '\0';
     s.timezone.utcOffsetMinutes = 0;

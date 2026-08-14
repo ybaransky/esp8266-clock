@@ -8,6 +8,7 @@
 #include "display_manager.h"
 #include "page_manager.h"
 #include "rtc_ds3231.h"
+#include "sound_player.h"
 #include "wifi_connection_manager.h"
 #include "web_server.h"
 
@@ -27,6 +28,7 @@ class ClockApplication {
   void logModeOrViewTransition();
 
   SegmentDisplay segmentDisplay_;  // Physical three-panel display driver.
+  SoundPlayer soundPlayer_;  // Buzzer output and packed sound catalog.
   RtcService rtc_;  // RTC access, SQW processing, and cached wall-clock time.
   DisplayManager displayManager_;  // Display view, overlay, and render policy.
   ClockController clockController_;  // Application actions shared with APIs.

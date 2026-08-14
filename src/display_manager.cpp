@@ -499,7 +499,17 @@ bool DisplayManager::installCountdownCompleteOverlay(uint32_t nowMs,
   // No expiration set: the countdown has finished, so this stays up until
   // the next mode/config change installs a new view.
   installOverlay(state, nowMs);
+  // Reached only once per completion: the overlay now covers the base view, so
+  // the countdown frame builder that got here is not called again until
+  // something installs a new view.
+  countdownCompleted_ = true;
   return buildMessageFrame(nowMs, true, frame);
+}
+
+bool DisplayManager::consumeCountdownCompleted() {
+  const bool completed = countdownCompleted_;
+  countdownCompleted_ = false;
+  return completed;
 }
 
 bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,

@@ -15,7 +15,10 @@ TM1637 DIO[2]  | D0  | GPIO16 | No interrupts, but fine for DIO
 TM1637 ALL CLK | D5  | GPIO14 | Shared across all 3 displays
 TM1637 DIO[1]  | D6  | GPIO12 | Safe
 DS3231 SQW     | D7  | GPIO13 | Interrupt capable, INPUT_PULLUP
-D8             | D8  | GPIO15 | Unused; must stay LOW at boot
+Buzzer         | D8  | GPIO15 | Must stay LOW at boot; drive through the
+                                inverting NPN buffer in WIRING.md. The buzzer
+                                module cannot sit on D8 directly - it idles its
+                                S pin at 2.7V, which violates the strap.
 */
 
 namespace Hardware {
@@ -26,10 +29,11 @@ namespace Hardware {
 		constexpr uint8_t INTERNAL_LED   = D4;
 		constexpr uint8_t DIO0           = D4; 
 
-		constexpr uint8_t DIO2           = D0; 
+		constexpr uint8_t DIO2           = D0;
 		constexpr uint8_t SEGMENT_CLK    = D5;
-		constexpr uint8_t DIO1           = D6; 
+		constexpr uint8_t DIO1           = D6;
 		constexpr uint8_t RTC_SQW        = D7;
+		constexpr uint8_t BUZZER         = D8;  // Via inverting NPN; see WIRING.md.
 		//                               left/top     right/bottom
 		constexpr uint8_t SEGMENT_DIO[3] = {DIO0, DIO1, DIO2};
 	}  // namespace Pins

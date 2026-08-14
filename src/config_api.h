@@ -30,6 +30,8 @@ class ConfigApi {
   void handleSetMode();
   void handleBrightness();
   void handleFormats();
+  void handleSounds();
+  void handleSoundTest();
   void handleGetConfig();
   void handleSaveConfig();
   void handleFieldMismatch();

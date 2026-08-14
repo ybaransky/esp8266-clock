@@ -2,11 +2,10 @@
 
 #include <RTClib.h>
 #include "config.h"
+#include "mode_outputs.h"
 #include "phase_tracker.h"
 #include "schedule.h"
 #include "sunset_calculator.h"
-
-class DisplayManager;
 
 // Snapshot of only the configuration fields the Friday schedule consumes.
 // Copied from ClockConfig by applySettings() to avoid holding the full config.
@@ -15,6 +14,10 @@ struct FridaySettings {
   FridayConfig formats{};  // Per-phase format indexes and the sunset blink windows.
   Location location{};  // Device coordinates and UTC offset for sunset math.
   char sunsetMessage[64] = "";  // Blinked on a live Friday-sunset crossing.
+  // Played alongside that message. Already resolved against the master sound
+  // switch by applySettings(), so an empty name is the only "stay silent" test
+  // the tick path needs.
+  char sunsetSound[kSoundNameLength] = "";
 };
 
 // Computes Friday phases, caches weekly sunsets, and pushes view transitions.
@@ -22,7 +25,7 @@ class FridayModeController {
  public:
   void applySettings(const ClockConfig& config);
   void resetSchedule();
-  void tick(const DateTime& now, DisplayManager& displayManager);
+  void tick(const DateTime& now, ModeOutputs& outputs);
 
  private:
   static DateTime fridayDateFor(const DateTime& now);

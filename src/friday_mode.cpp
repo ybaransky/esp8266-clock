@@ -1,7 +1,9 @@
 #include "friday_mode.h"
 
+#include "config_validation.h"
 #include "display_manager.h"
 #include "log.h"
+#include "sound_player.h"
 #include "sunset_calculator.h"
 
 namespace {
@@ -78,6 +80,9 @@ void FridayModeController::applySettings(const ClockConfig& config) {
                         config.timezone.utcOffsetMinutes};
   strlcpy(settings_.sunsetMessage, config.messages.fridaySunset,
           sizeof(settings_.sunsetMessage));
+  strlcpy(settings_.sunsetSound,
+          activeSoundName(config.sound, config.sound.fridaySunset),
+          sizeof(settings_.sunsetSound));
   resetSchedule();
 }
 
@@ -86,8 +91,7 @@ void FridayModeController::resetSchedule() {
   cachedFridayDate_ = DateTime();
 }
 
-void FridayModeController::tick(const DateTime& now,
-                                DisplayManager& displayManager) {
+void FridayModeController::tick(const DateTime& now, ModeOutputs& outputs) {
   if (settings_.activeMode != kModeFriday) return;
 
   refreshSunsetCacheIfNeeded(now);
@@ -100,13 +104,17 @@ void FridayModeController::tick(const DateTime& now,
   phaseTracker_.accept(result.phase, targetUnix);
 
   LOG_PRINTF("friday mode: phase -> %s", fridayPhaseName(result.phase));
-  displayManager.setView(result.view);
+  outputs.display.setView(result.view);
 
   const bool crossedFridaySunset =
       (previousPhase == FridayPhase::kToFridaySunset) &&
       (result.phase == FridayPhase::kToSaturdaySunset);
   if (crossedFridaySunset) {
-    displayManager.showInfo(settings_.sunsetMessage, kSunsetMessageMs);
+    outputs.display.showInfo(settings_.sunsetMessage, kSunsetMessageMs);
+    // Arriving here from kNone - boot, config reload, a browser time sync -
+    // must stay silent, which the previous-phase test above already
+    // guarantees for the message and now for the sound too.
+    outputs.sound.play(settings_.sunsetSound, millis());
   }
 }
 

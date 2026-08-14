@@ -17,6 +17,12 @@ uint8_t sanitizeBrightness(int rawBrightness);
 // Clamps a blink-window length in minutes to 0 (disabled) through 240.
 uint8_t sanitizeBlinkMinutes(int rawMinutes);
 int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes);
+// Clamps a loudness percentage to 0 through 100.
+uint8_t sanitizeVolumePercent(int rawPercent);
+// Resolves a configured cue name against the master sound switch: a disabled
+// switch reads as "no sound" for every event, so no scheduling or rendering
+// code has to test the flag - an empty name already means silence everywhere.
+const char* activeSoundName(const SoundConfig& sound, const char* name);
 // Clamps latitude/longitude to valid ranges in place. Zipcode is untouched -
 // callers that accept a new zipcode validate it with isValidZipcode instead.
 void sanitizeLocationInfo(LocationInfo& info);

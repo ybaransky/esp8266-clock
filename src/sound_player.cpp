@@ -1,0 +1,356 @@
+#include "sound_player.h"
+
+#include <string.h>
+
+#include "hardware.h"
+#include "log.h"
+#include "storage_manager.h"
+
+// ---------------------------------------------------------------------------
+// Software volume control
+//
+// Notes are produced with a PWM square wave whose duty cycle sets the loudness,
+// not with tone(). A square wave is loudest at 50% duty; lowering the duty makes
+// it quieter at the same pitch.
+//
+// To control volume in hardware instead (a potentiometer on the module's VCC,
+// see WIRING.md), set USE_SOFTWARE_VOLUME to 0. That reverts to plain
+// full-volume tone() so the two attenuations do not stack.
+#define USE_SOFTWARE_VOLUME 1
+
+namespace {
+
+// Binary layout of /songs.bin, produced by tools/pack_songs.py from
+// assets/sounds.json and assets/songs/*.json. That script and this file are the
+// only two places the layout is spelled out; change them together. See
+// SOUNDS.md for the full description.
+//
+//   [0]   8 bytes   "SNG1", uint8 version, uint8 songCount, uint8 pitchCount,
+//                   uint8 reserved
+//   [8]   2 bytes each   pitchTable[pitchCount], distinct frequencies in Hz
+//   then  directory, songCount entries sorted by name:
+//                   uint16 offset, uint16 tempo, uint16 noteCount,
+//                   uint8 nameLength, name[nameLength]
+//   then  records:  { uint8 pitchIndex, int8 durationDivisor } * noteCount
+//
+// A note costs two bytes because the catalog draws on 50 distinct pitches, so a
+// one-byte index into the cached table is enough.
+
+constexpr char kCatalogPath[] = "/songs.bin";
+constexpr char kMagic[] = "SNG1";
+constexpr size_t kMagicLength = 4;
+constexpr uint8_t kFormatVersion = 1;
+constexpr size_t kHeaderSize = 8;
+constexpr size_t kDirectoryEntrySize = 7;  // offset, tempo, noteCount, nameLength.
+
+// Must match MAX_PITCHES in tools/pack_songs.py, and the pitchTable_ dimension.
+constexpr size_t kPitchTableMax = 128;
+
+constexpr int kPwmRange = 255;
+constexpr int kMaxDuty = kPwmRange / 2;  // 50% duty cycle is loudest.
+
+// analogWriteFreq() clamps below 100 Hz, so the catalog's single 82 Hz entry
+// sounds an octave-ish sharp. Not worth correcting: it appears in one bass line
+// and a piezo reproduces almost nothing down there anyway.
+constexpr uint16_t kMinPwmFrequencyHz = 100;
+
+// Playback deadlines advance from the previous deadline, not from millis(), so
+// per-note rounding cannot accumulate into drift. If the loop stalls longer
+// than this - a WiFi scan, a long flash write - the schedule is re-anchored to
+// the current time instead of racing through the backlog to catch up.
+constexpr uint32_t kMaxCatchUpMs = 250;
+
+uint16_t readUint16(const uint8_t* bytes) {
+  return static_cast<uint16_t>(bytes[0]) |
+         static_cast<uint16_t>(static_cast<uint16_t>(bytes[1]) << 8);
+}
+
+// Length of one note's slot in milliseconds. wholeNoteMs is 0 in simple mode,
+// where a divisor means "this fraction of a second" rather than a note value.
+uint32_t noteSlotMs(int8_t divisor, uint32_t wholeNoteMs) {
+  if (wholeNoteMs > 0) {
+    const int magnitude = (divisor == 0) ? 4 : abs(divisor);
+    const uint32_t slot = wholeNoteMs / magnitude;
+    // A negative divisor is a dotted note: one and a half times the length.
+    return (divisor < 0) ? (slot * 3 / 2) : slot;
+  }
+  const int magnitude = (divisor <= 0) ? 4 : divisor;
+  return 1000u / magnitude;
+}
+
+}  // namespace
+
+// -----------------------------------------------------------------------------
+// SoundPlayer - catalog access
+// -----------------------------------------------------------------------------
+
+bool SoundPlayer::begin() {
+#if USE_SOFTWARE_VOLUME
+  pinMode(Hardware::Pins::BUZZER, OUTPUT);
+  // The buzzer hangs off an inverting NPN whose base pulldown is also what
+  // holds this strapping pin LOW at boot; driving it LOW here keeps the module
+  // idle. See WIRING.md.
+  digitalWrite(Hardware::Pins::BUZZER, LOW);
+  analogWriteRange(kPwmRange);
+#endif
+
+  if (!storageManager.ensureMounted("sound catalog")) return false;
+  return loadCatalogHeader();
+}
+
+bool SoundPlayer::loadCatalogHeader() {
+  if (catalogLoaded_) return true;
+
+  File file = STORAGE.open(kCatalogPath, "r");
+  if (!file) {
+    LOG_PRINTF("%s missing; sound is unavailable", kCatalogPath);
+    return false;
+  }
+
+  uint8_t header[kHeaderSize];
+  if (file.read(header, kHeaderSize) != static_cast<int>(kHeaderSize)) {
+    LOG_PRINTF("%s is too short to hold a header", kCatalogPath);
+    file.close();
+    return false;
+  }
+  if (memcmp(header, kMagic, kMagicLength) != 0) {
+    LOG_PRINTF("%s is not a sound catalog", kCatalogPath);
+    file.close();
+    return false;
+  }
+  if (header[4] != kFormatVersion) {
+    LOG_PRINTF("%s is version %u; this firmware reads version %u",
+               kCatalogPath, header[4], kFormatVersion);
+    file.close();
+    return false;
+  }
+
+  songCount_ = header[5];
+  pitchCount_ = header[6];
+  if (pitchCount_ > kPitchTableMax) {
+    LOG_PRINTF("%s has %u pitches; this firmware holds %u", kCatalogPath,
+               pitchCount_, static_cast<unsigned>(kPitchTableMax));
+    file.close();
+    return false;
+  }
+
+  for (uint8_t index = 0; index < pitchCount_; ++index) {
+    uint8_t pitch[2];
+    if (file.read(pitch, 2) != 2) {
+      LOG_PRINTF("%s is truncated in the pitch table", kCatalogPath);
+      file.close();
+      return false;
+    }
+    pitchTable_[index] = readUint16(pitch);
+  }
+  file.close();
+
+  catalogLoaded_ = true;
+  LOG_PRINTF("Sound catalog: %u sounds, %u distinct pitches", songCount_,
+             pitchCount_);
+  return true;
+}
+
+uint32_t SoundPlayer::directoryStart() const {
+  return kHeaderSize + 2u * static_cast<uint32_t>(pitchCount_);
+}
+
+// Reads the directory entry at the file's current position and leaves the
+// position on the next one. A name longer than the firmware's field is read
+// past but not stored, so it simply never matches - the packer rejects those at
+// build time, which is where the problem belongs.
+bool SoundPlayer::readEntry(File& file, SongEntry& entry) const {
+  uint8_t buffer[kDirectoryEntrySize];
+  if (file.read(buffer, kDirectoryEntrySize) !=
+      static_cast<int>(kDirectoryEntrySize)) {
+    return false;
+  }
+  entry.offset = readUint16(buffer);
+  entry.tempo = readUint16(buffer + 2);
+  entry.noteCount = readUint16(buffer + 4);
+
+  const uint8_t nameLength = buffer[6];
+  const size_t copyLength =
+      (nameLength < (kSoundNameLength - 1)) ? nameLength : (kSoundNameLength - 1);
+  if (file.read(reinterpret_cast<uint8_t*>(entry.name), copyLength) !=
+      static_cast<int>(copyLength)) {
+    return false;
+  }
+  entry.name[copyLength] = '\0';
+  const size_t skipped = nameLength - copyLength;
+  return (skipped == 0) || file.seek(skipped, SeekCur);
+}
+
+bool SoundPlayer::findSong(File& file, const char* name,
+                           SongEntry& entry) const {
+  if (!file.seek(directoryStart(), SeekSet)) return false;
+  for (uint8_t index = 0; index < songCount_; ++index) {
+    if (!readEntry(file, entry)) return false;
+    if (strcmp(entry.name, name) == 0) return true;
+    yield();
+  }
+  return false;
+}
+
+bool SoundPlayer::namesAsJson(JsonArray array) {
+  if (!loadCatalogHeader()) return false;
+
+  File file = STORAGE.open(kCatalogPath, "r");
+  if (!file) return false;
+  if (!file.seek(directoryStart(), SeekSet)) {
+    file.close();
+    return false;
+  }
+
+  SongEntry entry;
+  for (uint8_t index = 0; index < songCount_; ++index) {
+    if (!readEntry(file, entry)) break;
+    array.add(entry.name);
+    yield();
+  }
+  file.close();
+  return true;
+}
+
+// -----------------------------------------------------------------------------
+// SoundPlayer - playback
+// -----------------------------------------------------------------------------
+
+void SoundPlayer::startTone(uint16_t frequencyHz) {
+  if (frequencyHz == 0) return;  // A rest still consumes its slot.
+  toneSounding_ = true;
+#if USE_SOFTWARE_VOLUME
+  analogWriteFreq((frequencyHz < kMinPwmFrequencyHz) ? kMinPwmFrequencyHz
+                                                     : frequencyHz);
+  analogWrite(Hardware::Pins::BUZZER,
+              (volumePercent_ * kMaxDuty) / 100);
+#else
+  tone(Hardware::Pins::BUZZER, frequencyHz);
+#endif
+}
+
+void SoundPlayer::stopTone() {
+  toneSounding_ = false;
+#if USE_SOFTWARE_VOLUME
+  analogWrite(Hardware::Pins::BUZZER, 0);
+  // Hold the pin LOW so the module is silent and the strap stays satisfied.
+  digitalWrite(Hardware::Pins::BUZZER, LOW);
+#else
+  noTone(Hardware::Pins::BUZZER);
+#endif
+}
+
+void SoundPlayer::setVolume(uint8_t percent) {
+  volumePercent_ = (percent > 100) ? 100 : percent;
+#if USE_SOFTWARE_VOLUME
+  // Re-apply the duty if a note is sounding, so the change is heard now rather
+  // than at the next note - a 40-second song would otherwise ignore the slider.
+  if (toneSounding_) {
+    analogWrite(Hardware::Pins::BUZZER, (volumePercent_ * kMaxDuty) / 100);
+  }
+#endif
+}
+
+void SoundPlayer::endPlayback() {
+  stopTone();
+  if (record_) record_.close();
+  phase_ = Phase::kIdle;
+  notesRemaining_ = 0;
+  playingName_[0] = '\0';
+}
+
+void SoundPlayer::stop() {
+  if (phase_ == Phase::kIdle) return;
+  LOG_PRINTF("sound: stopped %s", playingName_);
+  endPlayback();
+}
+
+bool SoundPlayer::play(const char* name, uint32_t nowMs) {
+  // An unset cue is the normal way to say "announce this silently", so it stops
+  // whatever is playing and reports failure without logging noise.
+  if ((name == nullptr) || (name[0] == '\0')) {
+    endPlayback();
+    return false;
+  }
+  if (!loadCatalogHeader()) return false;
+
+  endPlayback();
+
+  File file = STORAGE.open(kCatalogPath, "r");
+  if (!file) return false;
+  SongEntry entry;
+  if (!findSong(file, name, entry)) {
+    LOG_PRINTF("sound: no sound named %s", name);
+    file.close();
+    return false;
+  }
+  if (!file.seek(entry.offset, SeekSet)) {
+    file.close();
+    return false;
+  }
+
+  record_ = file;
+  notesRemaining_ = entry.noteCount;
+  wholeNoteMs_ = (entry.tempo > 0) ? ((60000u * 4u) / entry.tempo) : 0u;
+  strlcpy(playingName_, entry.name, sizeof(playingName_));
+
+  if (!startNextNote(nowMs)) {
+    endPlayback();
+    return false;
+  }
+  return true;
+}
+
+bool SoundPlayer::startNextNote(uint32_t startMs) {
+  if (notesRemaining_ == 0) return false;
+
+  uint8_t note[2];
+  if (record_.read(note, 2) != 2) {
+    LOG_PRINTF("%s is truncated in %s", kCatalogPath, playingName_);
+    return false;
+  }
+  --notesRemaining_;
+
+  const uint16_t frequencyHz =
+      (note[0] < pitchCount_) ? pitchTable_[note[0]] : 0;
+  const uint32_t slotMs = noteSlotMs(static_cast<int8_t>(note[1]), wholeNoteMs_);
+
+  // Musical mode articulates with a 10% gap; simple mode uses the divisor as
+  // the tone length and adds 30% on top, which is how the short cues were
+  // authored. Both come straight from the source project's timing.
+  uint32_t toneMs;
+  uint32_t gapMs;
+  if (wholeNoteMs_ > 0) {
+    toneMs = slotMs * 9 / 10;
+    gapMs = slotMs - toneMs;
+  } else {
+    toneMs = slotMs;
+    gapMs = slotMs * 30 / 100;
+  }
+
+  startTone(frequencyHz);
+  phase_ = Phase::kSounding;
+  phaseEndsAtMs_ = startMs + toneMs;
+  gapMs_ = static_cast<uint16_t>(gapMs);
+  return true;
+}
+
+void SoundPlayer::tick(uint32_t nowMs) {
+  if (phase_ == Phase::kIdle) return;
+  if (static_cast<int32_t>(nowMs - phaseEndsAtMs_) < 0) return;
+
+  // Re-anchor after a stall rather than replaying the backlog at full speed.
+  const uint32_t resumeMs =
+      ((nowMs - phaseEndsAtMs_) > kMaxCatchUpMs) ? nowMs : phaseEndsAtMs_;
+
+  if (phase_ == Phase::kSounding) {
+    stopTone();
+    if (gapMs_ > 0) {
+      phase_ = Phase::kGap;
+      phaseEndsAtMs_ = resumeMs + gapMs_;
+      return;
+    }
+  }
+
+  if (!startNextNote(resumeMs)) endPlayback();
+}
