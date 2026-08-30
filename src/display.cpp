@@ -218,3 +218,9 @@ void SegmentDisplay::blank() {
     cacheValid_[panel] = true;
   }
 }
+
+void SegmentDisplay::invalidateCache() {
+  for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
+    cacheValid_[panel] = false;
+  }
+}

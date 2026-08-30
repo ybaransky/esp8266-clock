@@ -27,7 +27,20 @@
     "final": "",
     "fridaySunset": "",
     "tradingOpen": "",
-    "tradingClose": ""
+    "tradingClose": "",
+    "boundaryAlert": {
+      "enabled": true,
+      "boundary1": {
+        "toneHz": 880,
+        "totalDurationSeconds": 40,
+        "startingBeatsHz": 2
+      },
+      "boundary2": {
+        "toneHz": 1320,
+        "totalDurationSeconds": 40,
+        "startingBeatsHz": 2
+      }
+    }
   },
   "time": {
     "timezone": {

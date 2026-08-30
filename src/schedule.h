@@ -34,6 +34,7 @@ struct TradingSchedule {
 struct TradingBoundary {
   TradingPhase phase = TradingPhase::kToOpen;  // Boundary being approached.
   uint32_t targetUnix = 0;  // Local wall-clock boundary timestamp.
+  uint8_t intervalIndex = 0;  // Session whose open or close is targeted.
 };
 
 // Pure schedule calculations. They contain no Arduino, RTC, display, or I/O code.

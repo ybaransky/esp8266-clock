@@ -57,6 +57,20 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   sound["fridaySunset"] = String(clock.sound.fridaySunset);
   sound["tradingOpen"]  = String(clock.sound.tradingOpen);
   sound["tradingClose"] = String(clock.sound.tradingClose);
+  JsonObject boundaryAlert = sound["boundaryAlert"].to<JsonObject>();
+  boundaryAlert["enabled"] = clock.sound.boundaryAlert.enabled;
+  JsonObject boundary1 = boundaryAlert["boundary1"].to<JsonObject>();
+  boundary1["toneHz"] = clock.sound.boundaryAlert.boundary1.toneHz;
+  boundary1["totalDurationSeconds"] =
+      clock.sound.boundaryAlert.boundary1.totalDurationSeconds;
+  boundary1["startingBeatsHz"] =
+      clock.sound.boundaryAlert.boundary1.startingBeatsHz;
+  JsonObject boundary2 = boundaryAlert["boundary2"].to<JsonObject>();
+  boundary2["toneHz"] = clock.sound.boundaryAlert.boundary2.toneHz;
+  boundary2["totalDurationSeconds"] =
+      clock.sound.boundaryAlert.boundary2.totalDurationSeconds;
+  boundary2["startingBeatsHz"] =
+      clock.sound.boundaryAlert.boundary2.startingBeatsHz;
 
   JsonObject modes = display["modes"].to<JsonObject>();
 
@@ -235,6 +249,30 @@ void applySoundFields(JsonVariantConst sound, ClockConfig& cfg) {
     sanitizePrintableText(value.as<const char*>(), d.field(cfg),
                           kSoundNameLength);
   }
+  JsonVariantConst boundaryAlert = sound["boundaryAlert"];
+  if (!boundaryAlert["enabled"].isNull()) {
+    cfg.sound.boundaryAlert.enabled = boundaryAlert["enabled"].as<bool>();
+  }
+  SoundConfig::BoundaryPatternConfig* patterns[] = {
+      &cfg.sound.boundaryAlert.boundary1,
+      &cfg.sound.boundaryAlert.boundary2};
+  const char* keys[] = {"boundary1", "boundary2"};
+  for (uint8_t i = 0; i < 2; ++i) {
+    JsonVariantConst source = boundaryAlert[keys[i]];
+    if (!source["toneHz"].isNull()) {
+      patterns[i]->toneHz =
+          sanitizeBoundaryFrequencyHz(source["toneHz"].as<int>());
+    }
+    if (!source["totalDurationSeconds"].isNull()) {
+      patterns[i]->totalDurationSeconds = sanitizeBoundaryDurationSeconds(
+          source["totalDurationSeconds"].as<int>());
+    }
+    if (!source["startingBeatsHz"].isNull()) {
+      patterns[i]->startingBeatsHz = sanitizeBoundaryStartingBeatsHz(
+          source["startingBeatsHz"].as<int>());
+    }
+  }
+
 }
 
 void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& cfg) {
@@ -364,6 +402,16 @@ void sanitizeMessageFields(ClockConfig& cfg) {
 
 void sanitizeSoundFields(ClockConfig& cfg) {
   cfg.sound.volumePercent = sanitizeVolumePercent(cfg.sound.volumePercent);
+  SoundConfig::BoundaryPatternConfig* patterns[] = {
+      &cfg.sound.boundaryAlert.boundary1,
+      &cfg.sound.boundaryAlert.boundary2};
+  for (SoundConfig::BoundaryPatternConfig* pattern : patterns) {
+    pattern->toneHz = sanitizeBoundaryFrequencyHz(pattern->toneHz);
+    pattern->totalDurationSeconds = sanitizeBoundaryDurationSeconds(
+        pattern->totalDurationSeconds);
+    pattern->startingBeatsHz =
+        sanitizeBoundaryStartingBeatsHz(pattern->startingBeatsHz);
+  }
   for (const SoundFieldDescriptor& d : kSoundFields) {
     char* field = d.field(cfg);
     sanitizePrintableText(field, field, kSoundNameLength);

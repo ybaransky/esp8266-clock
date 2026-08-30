@@ -19,6 +19,9 @@ struct TradingSettings {
   // the tick path needs.
   char openSound[kSoundNameLength] = "";
   char closeSound[kSoundNameLength] = "";
+  bool boundaryAlertEnabled = false;  // Master-resolved generated-alert switch.
+  SoundConfig::BoundaryPatternConfig boundary1{};  // First daily open pattern.
+  SoundConfig::BoundaryPatternConfig boundary2{};  // Last daily close pattern.
 };
 
 // Selects the next Trading boundary and announces live open/close crossings.
@@ -26,7 +29,8 @@ class TradingModeController {
  public:
   void applySettings(const ClockConfig& config);
   void resetSchedule();
-  void tick(const DateTime& now, ModeOutputs& outputs);
+  void tick(const DateTime& now, uint32_t secondStartedAtMs,
+            ModeOutputs& outputs);
 
  private:
   TradingSettings settings_;  // Trading-relevant settings snapshot.

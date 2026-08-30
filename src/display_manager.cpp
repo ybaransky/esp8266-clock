@@ -130,7 +130,8 @@ void DisplayManager::tick(uint32_t nowMs) {
   render(nowMs);
 }
 
-void DisplayManager::notifySecondBoundary() {
+void DisplayManager::notifySecondBoundary(bool forceHardwareRefresh) {
+  if (forceHardwareRefresh) display_.invalidateCache();
   scheduler_.invalidateRender();
 }
 

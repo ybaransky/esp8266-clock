@@ -152,7 +152,9 @@ class DisplayManager {
   // boundary). Invalidates the render throttle so the next tick() redraws
   // immediately - the seconds digit flips within one loop pass of the
   // physical edge, and the 100ms tenths cadence re-phases to it each second.
-  void notifySecondBoundary();
+  // `forceHardwareRefresh` also invalidates SegmentDisplay's write cache, so
+  // the next render resends every segment instead of only changed runs.
+  void notifySecondBoundary(bool forceHardwareRefresh = false);
 
   void showSplash(const char* message);
   void showDemo();

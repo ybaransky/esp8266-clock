@@ -102,6 +102,19 @@ struct SoundConfig {
   char fridaySunset[kSoundNameLength];  // Played when Friday sunset is crossed live.
   char tradingOpen[kSoundNameLength];   // Played when a Trading session starts live.
   char tradingClose[kSoundNameLength];  // Played when a Trading session stops live.
+  // One generated accelerating pattern selected by a scheduled boundary.
+  struct BoundaryPatternConfig {
+    uint16_t toneHz;               // Pitch used throughout all four phases.
+    uint16_t totalDurationSeconds; // Total length, divided into four phases.
+    uint8_t startingBeatsHz;       // Beeps/sec in phase 1; doubles each phase.
+  };
+
+  // Generated alerts that finish at scheduled mode boundaries.
+  struct BoundaryAlertConfig {
+    bool enabled;  // Enables both generated pre-boundary patterns.
+    BoundaryPatternConfig boundary1;  // Trading open and Friday sunset.
+    BoundaryPatternConfig boundary2;  // Trading close and Saturday sunset.
+  } boundaryAlert;
 };
 
 // Stores the local timezone identity and the numeric offset used by sunset math.

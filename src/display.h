@@ -24,6 +24,10 @@ public:
   void showFrame(const DisplayFrame& frame);
   void blank();
 
+  // Makes the next showFrame() rewrite all four digits on every panel even if
+  // its requested segments match the software cache.
+  void invalidateCache();
+
 private:
   uint8_t lastSegments_[3][4] = {};  // Last segment bytes written per panel.
   bool cacheValid_[3] = {};          // True once lastSegments_ is initialized.

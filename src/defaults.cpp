@@ -22,6 +22,10 @@ constexpr const char* kDefaultTradingCloseMessage = "        CLSE";
 // it did before: an empty name is silence, and nothing probes the catalog until
 // a name is picked on /format. Keep in sync with data/config.json.
 constexpr uint8_t kDefaultSoundVolumePercent = 40;
+constexpr uint16_t kDefaultBoundaryDurationSeconds = 40;
+constexpr uint16_t kDefaultBoundary1Hz = 880;
+constexpr uint16_t kDefaultBoundary2Hz = 1320;
+constexpr uint8_t kDefaultBoundaryStartingBeatsHz = 2;
 
 }  // namespace
 
@@ -55,6 +59,13 @@ ClockConfig defaultClockConfig() {
     s.sound = {};
     s.sound.enabled = true;
     s.sound.volumePercent = kDefaultSoundVolumePercent;
+    s.sound.boundaryAlert.enabled = true;
+    s.sound.boundaryAlert.boundary1 = {
+        kDefaultBoundary1Hz, kDefaultBoundaryDurationSeconds,
+        kDefaultBoundaryStartingBeatsHz};
+    s.sound.boundaryAlert.boundary2 = {
+        kDefaultBoundary2Hz, kDefaultBoundaryDurationSeconds,
+        kDefaultBoundaryStartingBeatsHz};
     s.locations = {};
     s.timezone.name[0] = '\0';
     s.timezone.utcOffsetMinutes = 0;

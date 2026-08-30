@@ -60,6 +60,8 @@ constexpr uint16_t kMinPwmFrequencyHz = 100;
 // than this - a WiFi scan, a long flash write - the schedule is re-anchored to
 // the current time instead of racing through the backlog to catch up.
 constexpr uint32_t kMaxCatchUpMs = 250;
+constexpr uint32_t kBoundaryBeepMaxMs = 100;
+constexpr uint8_t kBoundaryPhaseCount = 4;
 
 uint16_t readUint16(const uint8_t* bytes) {
   return static_cast<uint16_t>(bytes[0]) |
@@ -313,6 +315,7 @@ void SoundPlayer::endPlayback() {
   stopTone();
   if (record_) record_.close();
   phase_ = Phase::kIdle;
+  playback_ = Playback::kIdle;
   notesRemaining_ = 0;
   playingName_[0] = '\0';
 }
@@ -321,7 +324,7 @@ void SoundPlayer::endPlayback() {
 // ClockController::stopSound); internal stops go through endPlayback(). That is
 // why the idle case logs too - a silent console would read as a dead button.
 void SoundPlayer::stop() {
-  if (phase_ == Phase::kIdle) {
+  if (playback_ == Playback::kIdle) {
     LOG_PRINTLN("sound: stop requested; nothing playing");
     return;
   }
@@ -362,8 +365,107 @@ bool SoundPlayer::play(const char* name, uint32_t nowMs) {
     endPlayback();
     return false;
   }
+  playback_ = Playback::kCatalog;
   LOG_PRINTF("sound: playing %s (%u notes)", playingName_, entry.noteCount);
   return true;
+}
+
+void SoundPlayer::startBoundaryAlert(uint16_t frequencyHz,
+                                     uint16_t totalDurationSeconds,
+                                     uint8_t startingBeatsHz,
+                                     uint32_t startMs,
+                                     uint32_t elapsedMs) {
+  endPlayback();
+  boundaryFrequencyHz_ = frequencyHz;
+  boundaryStartingBeatsHz_ = startingBeatsHz;
+  boundaryDurationMs_ =
+      static_cast<uint32_t>(totalDurationSeconds) * 1000UL;
+  boundaryStartedAtMs_ = startMs - elapsedMs;
+  playback_ = Playback::kBoundaryAlert;
+  strlcpy(playingName_, "boundary alert", sizeof(playingName_));
+  tickBoundaryAlert(startMs);
+  LOG_PRINTF("sound: boundary alert %u Hz, starts at %u beats/sec, %lu ms remaining",
+             frequencyHz, startingBeatsHz,
+             boundaryDurationMs_ - elapsedMs);
+}
+
+void SoundPlayer::updateBoundaryAlert(uint32_t targetUnix, uint32_t nowUnix,
+                                      uint32_t secondStartedAtMs,
+                                      uint16_t frequencyHz,
+                                      uint16_t totalDurationSeconds,
+                                      uint8_t startingBeatsHz) {
+  if ((frequencyHz == 0) || (totalDurationSeconds == 0) ||
+      (startingBeatsHz == 0) ||
+      (targetUnix <= nowUnix)) {
+    cancelBoundaryAlert();
+    return;
+  }
+
+  const bool targetChanged = (armedBoundaryUnix_ != targetUnix);
+  if (targetChanged && (playback_ == Playback::kBoundaryAlert)) endPlayback();
+  armedBoundaryUnix_ = targetUnix;
+
+  const uint32_t durationMs =
+      static_cast<uint32_t>(totalDurationSeconds) * 1000UL;
+  const uint32_t remainingSeconds = targetUnix - nowUnix;
+  if (remainingSeconds * 1000UL > durationMs) return;
+
+  const uint32_t elapsedMs = durationMs - remainingSeconds * 1000UL;
+  if ((playback_ != Playback::kBoundaryAlert) || targetChanged ||
+      (boundaryFrequencyHz_ != frequencyHz) ||
+      (boundaryDurationMs_ != durationMs) ||
+      (boundaryStartingBeatsHz_ != startingBeatsHz)) {
+    startBoundaryAlert(frequencyHz, totalDurationSeconds, startingBeatsHz,
+                       secondStartedAtMs, elapsedMs);
+  }
+}
+
+void SoundPlayer::cancelBoundaryAlert() {
+  armedBoundaryUnix_ = 0;
+  if (playback_ == Playback::kBoundaryAlert) endPlayback();
+}
+
+void SoundPlayer::previewBoundaryAlert(uint16_t frequencyHz,
+                                       uint16_t totalDurationSeconds,
+                                       uint8_t startingBeatsHz,
+                                       uint32_t nowMs) {
+  armedBoundaryUnix_ = 0;
+  startBoundaryAlert(frequencyHz, totalDurationSeconds, startingBeatsHz,
+                     nowMs, 0);
+}
+
+void SoundPlayer::tickBoundaryAlert(uint32_t nowMs) {
+  const uint32_t elapsedMs = nowMs - boundaryStartedAtMs_;
+  if (elapsedMs >= boundaryDurationMs_) {
+    endPlayback();
+    return;
+  }
+
+  const uint32_t phaseMs = boundaryDurationMs_ / kBoundaryPhaseCount;
+  const uint8_t phaseIndex = elapsedMs / phaseMs;
+  const uint16_t rateHz = boundaryStartingBeatsHz_ << phaseIndex;
+  const uint32_t withinPhaseMs = elapsedMs % phaseMs;
+  const uint32_t pulseIndex = withinPhaseMs * rateHz / 1000UL;
+  const uint32_t pulseStartsAtMs = pulseIndex * 1000UL / rateHz;
+  const uint32_t nextPulseStartsAtMs =
+      (pulseIndex + 1UL) * 1000UL / rateHz;
+  const uint32_t pulsePeriodMs = nextPulseStartsAtMs - pulseStartsAtMs;
+  const uint32_t halfPeriodMs = pulsePeriodMs / 2U;
+  const uint32_t pulseLengthMs =
+      (halfPeriodMs < kBoundaryBeepMaxMs) ? halfPeriodMs
+                                          : kBoundaryBeepMaxMs;
+  // Put the tone at the end of each pulse slot. Besides preserving an audible
+  // gap, this makes the last beep end on the scheduled boundary rather than up
+  // to half a slot before it.
+  const bool shouldSound =
+      (withinPhaseMs - pulseStartsAtMs) >=
+      (pulsePeriodMs - pulseLengthMs);
+
+  if (shouldSound && !toneSounding_) {
+    startTone(boundaryFrequencyHz_);
+  } else if (!shouldSound && toneSounding_) {
+    stopTone();
+  }
 }
 
 bool SoundPlayer::startNextNote(uint32_t startMs) {
@@ -401,7 +503,11 @@ bool SoundPlayer::startNextNote(uint32_t startMs) {
 }
 
 void SoundPlayer::tick(uint32_t nowMs) {
-  if (phase_ == Phase::kIdle) return;
+  if (playback_ == Playback::kBoundaryAlert) {
+    tickBoundaryAlert(nowMs);
+    return;
+  }
+  if (playback_ == Playback::kIdle) return;
   if (static_cast<int32_t>(nowMs - phaseEndsAtMs_) < 0) return;
 
   // Re-anchor after a stall rather than replaying the backlog at full speed.

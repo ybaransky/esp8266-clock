@@ -197,7 +197,7 @@ button.secondary:active { background: #246; }
 /* A sound dropdown and its play button share one row; the select takes the
    slack so the button stays a fixed, thumb-sized target on a phone. */
 .soundRow { display: flex; gap: 8px; align-items: stretch; }
-.soundRow select { flex: 1; min-width: 0; }
+.soundRow select, .soundRow input { flex: 1; min-width: 0; }
 .soundRow button { flex: 0 0 auto; margin: 0; padding: 0 14px; font-size: .95em; }
 
 /* Checkbox and its text on one line, in body colour rather than label grey. */

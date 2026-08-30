@@ -92,6 +92,18 @@ uint8_t sanitizeVolumePercent(int rawPercent) {
   return static_cast<uint8_t>(constrain(rawPercent, 0, 100));
 }
 
+uint16_t sanitizeBoundaryDurationSeconds(int rawSeconds) {
+  return static_cast<uint16_t>(constrain(rawSeconds, 4, 1200));
+}
+
+uint16_t sanitizeBoundaryFrequencyHz(int rawFrequencyHz) {
+  return static_cast<uint16_t>(constrain(rawFrequencyHz, 100, 5000));
+}
+
+uint8_t sanitizeBoundaryStartingBeatsHz(int rawBeatsHz) {
+  return static_cast<uint8_t>(constrain(rawBeatsHz, 1, 10));
+}
+
 const char* activeSoundName(const SoundConfig& sound, const char* name) {
   if (!sound.enabled || (name == nullptr)) return "";
   return name;

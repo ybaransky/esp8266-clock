@@ -136,6 +136,31 @@ void ConfigApi::handleSoundTest() {
     return;
   }
 
+  JsonVariantConst boundaryAlert = doc["boundaryAlert"];
+  if (!boundaryAlert.isNull()) {
+    if (boundaryAlert["frequencyHz"].isNull() ||
+        boundaryAlert["totalDurationSeconds"].isNull() ||
+        boundaryAlert["startingBeatsHz"].isNull()) {
+      responder_.sendJsonError(
+          400, "Tone, total duration, and starting beats required");
+      return;
+    }
+    const uint16_t frequencyHz = sanitizeBoundaryFrequencyHz(
+        boundaryAlert["frequencyHz"].as<int>());
+    const uint16_t totalDurationSeconds = sanitizeBoundaryDurationSeconds(
+        boundaryAlert["totalDurationSeconds"].as<int>());
+    const uint8_t startingBeatsHz = sanitizeBoundaryStartingBeatsHz(
+        boundaryAlert["startingBeatsHz"].as<int>());
+    clockController_.previewBoundaryAlert(frequencyHz, totalDurationSeconds,
+                                          startingBeatsHz);
+    JsonDocument response;
+    response["message"] = "Playing boundary alert";
+    response["durationMs"] =
+        ClockController::boundaryAlertDurationMs(totalDurationSeconds);
+    responder_.sendJsonDocument(200, response);
+    return;
+  }
+
   char name[kSoundNameLength];
   sanitizePrintableText(doc["sound"] | "", name, sizeof(name));
   if (name[0] == '\0') {

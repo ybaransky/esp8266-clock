@@ -83,6 +83,10 @@ void FridayModeController::applySettings(const ClockConfig& config) {
   strlcpy(settings_.sunsetSound,
           activeSoundName(config.sound, config.sound.fridaySunset),
           sizeof(settings_.sunsetSound));
+  settings_.boundaryAlertEnabled =
+      config.sound.enabled && config.sound.boundaryAlert.enabled;
+  settings_.boundary1 = config.sound.boundaryAlert.boundary1;
+  settings_.boundary2 = config.sound.boundaryAlert.boundary2;
   resetSchedule();
 }
 
@@ -91,12 +95,29 @@ void FridayModeController::resetSchedule() {
   cachedFridayDate_ = DateTime();
 }
 
-void FridayModeController::tick(const DateTime& now, ModeOutputs& outputs) {
+void FridayModeController::tick(const DateTime& now,
+                                uint32_t secondStartedAtMs,
+                                ModeOutputs& outputs) {
   if (settings_.activeMode != kModeFriday) return;
 
   refreshSunsetCacheIfNeeded(now);
   const FridayScheduleResult result = evaluateFridaySchedule(
       now, cachedFridaySunset_, cachedSaturdaySunset_, settings_.formats);
+  if (!settings_.boundaryAlertEnabled) {
+    outputs.sound.cancelBoundaryAlert();
+  } else if (result.phase == FridayPhase::kToFridaySunset) {
+    outputs.sound.updateBoundaryAlert(cachedFridaySunset_.unixtime(),
+        now.unixtime(), secondStartedAtMs, settings_.boundary1.toneHz,
+        settings_.boundary1.totalDurationSeconds,
+        settings_.boundary1.startingBeatsHz);
+  } else if (result.phase == FridayPhase::kToSaturdaySunset) {
+    outputs.sound.updateBoundaryAlert(cachedSaturdaySunset_.unixtime(),
+        now.unixtime(), secondStartedAtMs, settings_.boundary2.toneHz,
+        settings_.boundary2.totalDurationSeconds,
+        settings_.boundary2.startingBeatsHz);
+  } else {
+    outputs.sound.cancelBoundaryAlert();
+  }
   const uint32_t targetUnix = result.view.anchor.unixtime();
   if (!phaseTracker_.hasChanged(result.phase, targetUnix)) return;
 

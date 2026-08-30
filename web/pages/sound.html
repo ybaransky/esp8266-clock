@@ -9,9 +9,6 @@
 </head>
 <body>
 <h1>Sound Settings</h1>
-<p>Play any song or alert on the device to hear it before assigning it to an
-event on the <a href="/format">Formats</a> page. The play button turns into a
-stop button while a sound is running. Playing does not save anything.</p>
 
 <p id="snone" class="muted" hidden>No sounds are installed. Upload the
 filesystem image (<code>pio run -t uploadfs</code>) to add them.</p>
@@ -26,13 +23,21 @@ filesystem image (<code>pio run -t uploadfs</code>) to add them.</p>
 <button class="secondary" type="button" onclick="toggleSound(this,'alert')">&#9654;</button></div>
 
 <hr>
-<h2>Settings</h2>
-<label class="check"><input type="checkbox" id="enabled"> Play sounds at event boundaries</label>
-<label>Volume: <span id="volv">40</span>%
-<input type="range" min="0" max="100" step="5" id="vol" oninput="$('volv').textContent = this.value"></label>
-<label for="startup">Song at startup</label>
-<div class="soundRow"><select id="startup"></select>
-<button class="secondary" type="button" onclick="toggleSound(this,'startup')">&#9654;</button></div>
+<h2>Transition Alert</h2>
+<p>A four-phase alert whose beats get progressively faster.</p>
+<label for="boundaryChoice">Boundary</label>
+<select id="boundaryChoice" onchange="chooseBoundary()">
+  <option value="boundary1">Boundary 1</option>
+  <option value="boundary2">Boundary 2</option>
+</select>
+
+<label for="toneHz">Tone (Hz)</label>
+<input type="number" id="toneHz" min="100" max="5000" step="1">
+<label for="totalDurationSeconds">Total duration (seconds)</label>
+<input type="number" id="totalDurationSeconds" min="4" max="1200" step="1">
+<label for="startingBeatsHz">Beats in starting phase (Hz)</label>
+<input type="number" id="startingBeatsHz" min="1" max="10" step="1">
+<div class="actions"><button class="secondary" type="button" onclick="toggleBoundaryAlert(this)">&#9654; Play</button></div>
 
 <div class="actions"><button onclick="save()">Save</button></div>
 <div id="st"></div>
@@ -71,6 +76,53 @@ function fill(id, names, selected, silentOption) {
   el.value = wanted ? wanted : first;
 }
 
+var boundaryPatterns = {
+  boundary1: { toneHz: 880, totalDurationSeconds: 40, startingBeatsHz: 2 },
+  boundary2: { toneHz: 1320, totalDurationSeconds: 40, startingBeatsHz: 2 }
+};
+var activeBoundary = 'boundary1';
+
+function captureBoundary() {
+  boundaryPatterns[activeBoundary] = {
+    toneHz: +$('toneHz').value,
+    totalDurationSeconds: +$('totalDurationSeconds').value,
+    startingBeatsHz: +$('startingBeatsHz').value
+  };
+}
+
+function showBoundary() {
+  var pattern = boundaryPatterns[activeBoundary];
+  $('toneHz').value = pattern.toneHz;
+  $('totalDurationSeconds').value = pattern.totalDurationSeconds;
+  $('startingBeatsHz').value = pattern.startingBeatsHz;
+}
+
+function chooseBoundary() {
+  captureBoundary();
+  activeBoundary = $('boundaryChoice').value;
+  showBoundary();
+}
+
+function toggleBoundaryAlert(button) {
+  if (button === _soundButton) { stopSound(); return; }
+  var frequencyHz = +$('toneHz').value;
+  var totalDurationSeconds = +$('totalDurationSeconds').value;
+  var startingBeatsHz = +$('startingBeatsHz').value;
+  apiPost('/api/sound/test', {
+    boundaryAlert: {
+      frequencyHz: frequencyHz,
+      totalDurationSeconds: totalDurationSeconds,
+      startingBeatsHz: startingBeatsHz
+    }
+  }).then(function (d) {
+    _soundPlaying(button, +(d && d.durationMs) || 0);
+    setStatus('Playing boundary alert at ' + frequencyHz + ' Hz', 3000);
+  }).catch(function () {
+    _soundIdle();
+    setStatus('Could not play boundary alert', 3000);
+  });
+}
+
 // Requested one at a time, not in parallel: the device serves a single
 // connection at a time, so concurrent fetches only queue up behind each other
 // and make a slow AP link look broken.
@@ -86,24 +138,27 @@ api('/api/sounds').catch(function (e) {
     var sound = d.sound || {};
     fill('song', songs, sound.startup, false);
     fill('alert', alerts, '', false);
-    fill('startup', songs, sound.startup, true);
-    $('enabled').checked = sound.enabled !== false;
-    $('vol').value = sound.volume == null ? 40 : sound.volume;
-    $('volv').textContent = $('vol').value;
+    var boundary = sound.boundaryAlert || {};
+    boundaryPatterns.boundary1 = boundary.boundary1 || boundaryPatterns.boundary1;
+    boundaryPatterns.boundary2 = boundary.boundary2 || boundaryPatterns.boundary2;
+    showBoundary();
   });
 }).catch(function (e) { setStatus('API failed: ' + e.message); });
 
 // Only the sound section is sent. /api/config patches what it is given, so
 // every display and mode setting is left exactly as it was.
 function save() {
+  captureBoundary();
   jsonFetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       sound: {
-        enabled: $('enabled').checked,
-        volume: +$('vol').value,
-        startup: $('startup').value
+        boundaryAlert: {
+          enabled: true,
+          boundary1: boundaryPatterns.boundary1,
+          boundary2: boundaryPatterns.boundary2
+        }
       }
     })
   }).then(function (d) {

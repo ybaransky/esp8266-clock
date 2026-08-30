@@ -18,6 +18,9 @@ struct FridaySettings {
   // switch by applySettings(), so an empty name is the only "stay silent" test
   // the tick path needs.
   char sunsetSound[kSoundNameLength] = "";
+  bool boundaryAlertEnabled = false;  // Master-resolved generated-alert switch.
+  SoundConfig::BoundaryPatternConfig boundary1{};  // Friday-sunset pattern.
+  SoundConfig::BoundaryPatternConfig boundary2{};  // Saturday-sunset pattern.
 };
 
 // Computes Friday phases, caches weekly sunsets, and pushes view transitions.
@@ -25,7 +28,8 @@ class FridayModeController {
  public:
   void applySettings(const ClockConfig& config);
   void resetSchedule();
-  void tick(const DateTime& now, ModeOutputs& outputs);
+  void tick(const DateTime& now, uint32_t secondStartedAtMs,
+            ModeOutputs& outputs);
 
  private:
   static DateTime fridayDateFor(const DateTime& now);

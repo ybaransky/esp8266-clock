@@ -64,13 +64,14 @@ TradingBoundary evaluateTradingBoundary(uint32_t nowUnix,
           todayMidnightUnix + schedule.intervals[i].startMinute * 60UL;
       const uint32_t closeUnix =
           todayMidnightUnix + schedule.intervals[i].stopMinute * 60UL;
-      if (nowUnix < openUnix) return {TradingPhase::kToOpen, openUnix};
-      if (nowUnix < closeUnix) return {TradingPhase::kToClose, closeUnix};
+      if (nowUnix < openUnix) return {TradingPhase::kToOpen, openUnix, i};
+      if (nowUnix < closeUnix) return {TradingPhase::kToClose, closeUnix, i};
     }
   }
 
   const uint8_t daysAhead = daysUntilNextTradingDay(dayOfWeek);
   return {TradingPhase::kToOpen,
           todayMidnightUnix + daysAhead * kSecondsPerDay +
-              schedule.intervals[0].startMinute * 60UL};
+              schedule.intervals[0].startMinute * 60UL,
+          0};
 }

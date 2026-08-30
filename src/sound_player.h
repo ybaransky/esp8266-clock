@@ -39,8 +39,22 @@ class SoundPlayer {
   // special case at any call site.
   bool play(const char* name, uint32_t nowMs);
 
+  // Arms a generated four-phase alert for an absolute local-wall-clock
+  // boundary. Calling this once per RTC second starts at the correct point if
+  // the clock boots or is synchronized inside the alert window.
+  void updateBoundaryAlert(uint32_t targetUnix, uint32_t nowUnix,
+                           uint32_t secondStartedAtMs, uint16_t frequencyHz,
+                           uint16_t totalDurationSeconds,
+                           uint8_t startingBeatsHz);
+  void cancelBoundaryAlert();
+
+  // Plays a complete generated alert immediately for the sound-page preview.
+  void previewBoundaryAlert(uint16_t frequencyHz,
+                            uint16_t totalDurationSeconds,
+                            uint8_t startingBeatsHz, uint32_t nowMs);
+
   void stop();
-  bool isPlaying() const { return phase_ != Phase::kIdle; }
+  bool isPlaying() const { return playback_ != Playback::kIdle; }
 
   // Name of the sound currently playing, or an empty string when idle.
   const char* playingName() const { return playingName_; }
@@ -68,6 +82,10 @@ class SoundPlayer {
   // timed here because PWM, unlike tone(duration), runs until it is stopped.
   enum class Phase : uint8_t { kIdle, kSounding, kGap };
 
+  // Selects which deadline model tick() advances. Catalog notes use explicit
+  // note/gap deadlines; boundary alerts derive their state from elapsed time.
+  enum class Playback : uint8_t { kIdle, kCatalog, kBoundaryAlert };
+
   // One entry of the catalog directory.
   struct SongEntry {
     char name[kSoundNameLength] = "";  // Sound name; identity used everywhere.
@@ -86,17 +104,29 @@ class SoundPlayer {
   // end. `startMs` is the deadline the note is scheduled from, which is the
   // previous note's deadline rather than millis() so rounding cannot drift.
   bool startNextNote(uint32_t startMs);
+  void startBoundaryAlert(uint16_t frequencyHz,
+                          uint16_t totalDurationSeconds,
+                          uint8_t startingBeatsHz, uint32_t startMs,
+                          uint32_t elapsedMs);
+  void tickBoundaryAlert(uint32_t nowMs);
   void startTone(uint16_t frequencyHz);
   void stopTone();
   void endPlayback();
 
   File record_;  // Open catalog file while playing; closed by endPlayback().
+  Playback playback_ = Playback::kIdle;  // Active generated or catalog source.
   Phase phase_ = Phase::kIdle;  // Current playback phase.
   uint32_t phaseEndsAtMs_ = 0;  // Deadline for the current tone or gap.
   uint16_t gapMs_ = 0;          // Gap that follows the tone now sounding.
   uint16_t notesRemaining_ = 0;  // Notes left in the record being played.
   uint32_t wholeNoteMs_ = 0;  // Whole-note length; 0 selects simple timing.
   char playingName_[kSoundNameLength] = "";  // Name of the sound in progress.
+
+  uint32_t armedBoundaryUnix_ = 0;  // Wall-clock target, or 0 when unarmed.
+  uint32_t boundaryStartedAtMs_ = 0;  // Monotonic start of the four phases.
+  uint32_t boundaryDurationMs_ = 0;  // Total generated-pattern duration.
+  uint16_t boundaryFrequencyHz_ = 0;  // Pitch used throughout the pattern.
+  uint8_t boundaryStartingBeatsHz_ = 2;  // Phase-1 rate; doubles each phase.
 
   uint16_t pitchTable_[128] = {};  // Distinct frequencies, indexed by records.
   uint8_t pitchCount_ = 0;  // Valid entries in pitchTable_.

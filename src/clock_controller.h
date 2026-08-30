@@ -42,6 +42,9 @@ class ClockController {
   // caller is an explicit user action (a preview button), where refusing to
   // make a noise would just look broken. Returns false for an unknown name.
   bool playSound(const char* name);
+  void previewBoundaryAlert(uint16_t frequencyHz,
+                            uint16_t totalDurationSeconds,
+                            uint8_t startingBeatsHz);
   void stopSound();
 
   // Fills `array` with every catalog sound name of `kind`. False when no
@@ -51,6 +54,9 @@ class ClockController {
 
   // Playing time of a catalog sound in milliseconds; 0 when it is unknown.
   uint32_t soundDurationMs(const char* name);
+  static uint32_t boundaryAlertDurationMs(uint16_t totalDurationSeconds) {
+    return static_cast<uint32_t>(totalDurationSeconds) * 1000UL;
+  }
   Mode activeMode() const;
   View activeView() const;
   bool demoActive() const;

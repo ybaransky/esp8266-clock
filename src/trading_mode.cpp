@@ -11,6 +11,7 @@ constexpr int32_t kBoundaryMessageMs = 5000;
 // Couples the selected Trading phase with the countdown view that represents it.
 struct TradingScheduleResult {
   TradingPhase phase = TradingPhase::kToOpen;  // Next market boundary type.
+  uint8_t intervalIndex = 0;  // Session containing the selected boundary.
   ViewState view;  // Countdown view anchored at that boundary.
 };
 
@@ -21,6 +22,7 @@ TradingScheduleResult evaluateTradingSchedule(const DateTime& now,
   const TradingBoundary boundary = evaluateTradingBoundary(
       now.unixtime(), today.unixtime(), now.dayOfTheWeek(), config.schedule);
   result.phase = boundary.phase;
+  result.intervalIndex = boundary.intervalIndex;
   result.view = {View::kCountdown, DateTime(boundary.targetUnix), config.format,
                  config.formatOver24};
   return result;
@@ -49,6 +51,10 @@ void TradingModeController::applySettings(const ClockConfig& config) {
   strlcpy(settings_.closeSound,
           activeSoundName(config.sound, config.sound.tradingClose),
           sizeof(settings_.closeSound));
+  settings_.boundaryAlertEnabled =
+      config.sound.enabled && config.sound.boundaryAlert.enabled;
+  settings_.boundary1 = config.sound.boundaryAlert.boundary1;
+  settings_.boundary2 = config.sound.boundaryAlert.boundary2;
   resetSchedule();
 }
 
@@ -56,11 +62,34 @@ void TradingModeController::resetSchedule() {
   phaseTracker_.reset();
 }
 
-void TradingModeController::tick(const DateTime& now, ModeOutputs& outputs) {
+void TradingModeController::tick(const DateTime& now,
+                                 uint32_t secondStartedAtMs,
+                                 ModeOutputs& outputs) {
   if (settings_.activeMode != kModeTrading) return;
 
   const TradingScheduleResult result =
       evaluateTradingSchedule(now, settings_.config);
+  const bool isDayOpen =
+      (result.phase == TradingPhase::kToOpen) &&
+      (result.intervalIndex == 0);
+  const bool isDayClose =
+      (result.phase == TradingPhase::kToClose) &&
+      (result.intervalIndex + 1 == settings_.config.schedule.intervalCount);
+  if (!settings_.boundaryAlertEnabled) {
+    outputs.sound.cancelBoundaryAlert();
+  } else if (isDayOpen) {
+    outputs.sound.updateBoundaryAlert(result.view.anchor.unixtime(),
+        now.unixtime(), secondStartedAtMs, settings_.boundary1.toneHz,
+        settings_.boundary1.totalDurationSeconds,
+        settings_.boundary1.startingBeatsHz);
+  } else if (isDayClose) {
+    outputs.sound.updateBoundaryAlert(result.view.anchor.unixtime(),
+        now.unixtime(), secondStartedAtMs, settings_.boundary2.toneHz,
+        settings_.boundary2.totalDurationSeconds,
+        settings_.boundary2.startingBeatsHz);
+  } else {
+    outputs.sound.cancelBoundaryAlert();
+  }
   const uint32_t targetUnix = result.view.anchor.unixtime();
   if (!phaseTracker_.hasChanged(result.phase, targetUnix)) return;
 

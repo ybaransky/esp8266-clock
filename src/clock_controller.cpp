@@ -17,8 +17,12 @@ void ClockController::applyConfig(const ClockConfig& config) {
           sizeof(finalSound_));
   fridayMode_.applySettings(config);
   tradingMode_.applySettings(config);
-  fridayMode_.tick(rtc_.getNowCached(), outputs_);
-  tradingMode_.tick(rtc_.getNowCached(), outputs_);
+  sound_.cancelBoundaryAlert();
+  const uint32_t nowMs = millis();
+  const uint32_t secondStartedAtMs = nowMs - rtc_.msIntoSecond(nowMs);
+  const DateTime now = rtc_.getNowCached();
+  fridayMode_.tick(now, secondStartedAtMs, outputs_);
+  tradingMode_.tick(now, secondStartedAtMs, outputs_);
   // Installing a fresh countdown view can retire an unconsumed completion from
   // the previous configuration; drop it so the new countdown starts clean.
   displayManager_.consumeCountdownCompleted();
@@ -33,13 +37,17 @@ void ClockController::tick() {
 void ClockController::onSecondBoundary(const DateTime& now) {
   // Keep display rendering phase-locked to the accepted RTC SQW edge, then
   // update scheduled modes from the same cached wall-clock value.
-  displayManager_.notifySecondBoundary();
-  fridayMode_.tick(now, outputs_);
-  tradingMode_.tick(now, outputs_);
+  const bool topOfHour = (now.minute() == 0) && (now.second() == 0);
+  displayManager_.notifySecondBoundary(topOfHour);
+  const uint32_t nowMs = millis();
+  const uint32_t secondStartedAtMs = nowMs - rtc_.msIntoSecond(nowMs);
+  fridayMode_.tick(now, secondStartedAtMs, outputs_);
+  tradingMode_.tick(now, secondStartedAtMs, outputs_);
 }
 
 void ClockController::setTime(const DateTime& now) {
   rtc_.setNow(now);
+  sound_.cancelBoundaryAlert();
   fridayMode_.resetSchedule();
   tradingMode_.resetSchedule();
 }
@@ -62,6 +70,13 @@ void ClockController::showSplash(const char* message) {
 
 bool ClockController::playSound(const char* name) {
   return sound_.play(name, millis());
+}
+
+void ClockController::previewBoundaryAlert(uint16_t frequencyHz,
+                                           uint16_t totalDurationSeconds,
+                                           uint8_t startingBeatsHz) {
+  sound_.previewBoundaryAlert(frequencyHz, totalDurationSeconds,
+                              startingBeatsHz, millis());
 }
 
 void ClockController::stopSound() {
