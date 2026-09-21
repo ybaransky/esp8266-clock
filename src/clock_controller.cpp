@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "config_validation.h"
+#include "datetime_validation.h"
 #include "display_manager.h"
 #include "rtc_ds3231.h"
 #include "sound_player.h"
@@ -10,46 +11,81 @@
 // ClockController
 // -----------------------------------------------------------------------------
 
-void ClockController::applyConfig(const ClockConfig& config) {
-  displayManager_.applySettings(config);
-  sound_.setVolume(config.sound.volumePercent);
-  strlcpy(finalSound_, activeSoundName(config.sound, config.sound.final),
-          sizeof(finalSound_));
-  fridayMode_.applySettings(config);
-  tradingMode_.applySettings(config);
-  sound_.cancelBoundaryAlert();
-  const uint32_t nowMs = millis();
-  const uint32_t secondStartedAtMs = nowMs - rtc_.msIntoSecond(nowMs);
-  const DateTime now = rtc_.getNowCached();
-  fridayMode_.tick(now, secondStartedAtMs, outputs_);
-  tradingMode_.tick(now, secondStartedAtMs, outputs_);
-  // Installing a fresh countdown view can retire an unconsumed completion from
-  // the previous configuration; drop it so the new countdown starts clean.
-  displayManager_.consumeCountdownCompleted();
-}
-
-void ClockController::tick() {
-  if (displayManager_.consumeCountdownCompleted()) {
-    sound_.play(finalSound_, millis());
+ViewState ClockController::initialView(const ClockConfig& config, const DateTime& now) {
+  ViewState view;
+  switch (mode_) {
+    case kModeFriday:
+    case kModeTrading:
+      return scheduledMode_.start(now);
+    case kModeCountdown:
+      view.view = View::kCountdown;
+      parseLocalDateTime(config.countdown.end, view.anchor);
+      view.formatIndex = config.countdown.format;
+      break;
+    case kModeCountup:
+      view.view = View::kCountup;
+      view.anchor = now;
+      if (strcmp(config.countup.start, "now") != 0) {
+        parseLocalDateTime(config.countup.start, view.anchor);
+      }
+      view.formatIndex = config.countup.format;
+      break;
+    case kModeClock:
+      view.formatIndex = config.display.clockFmt;
+      break;
   }
+  return view;
 }
 
-void ClockController::onSecondBoundary(const DateTime& now) {
-  // Keep display rendering phase-locked to the accepted RTC SQW edge, then
-  // update scheduled modes from the same cached wall-clock value.
-  const bool topOfHour = (now.minute() == 0) && (now.second() == 0);
-  displayManager_.notifySecondBoundary(topOfHour);
+void ClockController::applyConfig(const ClockConfig& config) {
+  mode_ = config.activeMode;
+  sound_.setVolume(config.sound.volumePercent);
+  strlcpy(finalSound_, activeSoundName(config.sound, config.sound.final), sizeof(finalSound_));
+  sound_.cancelBoundaryAlert();
+  scheduledMode_.applySettings(config);
+  const DateTime now = rtc_.getNowCached();
+  const ViewState view = initialView(config, now);
+  countdownEnd_ = view.anchor;
+  countdownComplete_ = false;
+  displayManager_.applySettings(config, view);
+  updateCountdown(now, false);
   const uint32_t nowMs = millis();
-  const uint32_t secondStartedAtMs = nowMs - rtc_.msIntoSecond(nowMs);
-  fridayMode_.tick(now, secondStartedAtMs, outputs_);
-  tradingMode_.tick(now, secondStartedAtMs, outputs_);
+  refreshSchedule(now, nowMs - rtc_.msIntoSecond(nowMs));
+}
+
+void ClockController::updateCountdown(const DateTime& now, bool announce) {
+  if (mode_ != kModeCountdown) return;
+  const bool complete = now.unixtime() >= countdownEnd_.unixtime();
+  if (complete == countdownComplete_) return;
+  countdownComplete_ = complete;
+  displayManager_.setCountdownComplete(complete);
+  if (complete && announce) sound_.play(finalSound_, millis());
+}
+
+void ClockController::refreshSchedule(const DateTime& now, uint32_t secondStartedAtMs) {
+  scheduledMode_.tick(now, secondStartedAtMs, displayManager_, sound_);
+}
+
+void ClockController::onSecondBoundary(const RtcTick& tick) {
+  const bool topOfHour = (tick.now.minute() == 0) && (tick.now.second() == 0);
+  displayManager_.notifySecondBoundary(topOfHour);
+  if (tick.discontinuity) {
+    scheduledMode_.reset();
+    sound_.cancelBoundaryAlert();
+  }
+  refreshSchedule(tick.now, tick.secondStartedAtMs);
+  updateCountdown(tick.now, !tick.discontinuity);
 }
 
 void ClockController::setTime(const DateTime& now) {
   rtc_.setNow(now);
   sound_.cancelBoundaryAlert();
-  fridayMode_.resetSchedule();
-  tradingMode_.resetSchedule();
+  scheduledMode_.reset();
+  const DateTime actualNow = rtc_.getNowCached();
+  const uint32_t nowMs = millis();
+  refreshSchedule(actualNow, nowMs - rtc_.msIntoSecond(nowMs));
+  updateCountdown(actualNow, false);
+  displayManager_.notifySecondBoundary();
 }
 
 void ClockController::setBrightness(uint8_t brightness) {
@@ -89,10 +125,6 @@ bool ClockController::soundNamesAsJson(JsonArray array, SoundKind kind) {
 
 uint32_t ClockController::soundDurationMs(const char* name) {
   return sound_.durationMs(name);
-}
-
-Mode ClockController::activeMode() const {
-  return displayManager_.activeMode();
 }
 
 View ClockController::activeView() const {

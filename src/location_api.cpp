@@ -3,56 +3,10 @@
 #include <math.h>
 
 #include "config_validation.h"
+#include "datetime_validation.h"
 #include "log.h"
 #include "sunset_calculator.h"
 #include "zipcode.h"
-
-namespace {
-
-bool isLeapYear(int year) {
-  return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-}
-
-int daysInMonth(int year, int month) {
-  static const uint8_t kDaysByMonth[] = {
-      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-  if ((month < 1) || (month > 12)) return 0;
-  if ((month == 2) && isLeapYear(year)) return 29;
-  return kDaysByMonth[month - 1];
-}
-
-bool parseIsoDate(const char* text, int* year, int* month, int* day) {
-  int consumed = 0;
-  if ((text == nullptr) ||
-      (sscanf(text, "%d-%d-%d%n", year, month, day, &consumed) != 3) ||
-      (text[consumed] != '\0')) {
-    return false;
-  }
-  return (*year >= 2020) && (*year <= 2099) &&
-         (*month >= 1) && (*month <= 12) &&
-         (*day >= 1) && (*day <= daysInMonth(*year, *month));
-}
-
-bool parseTimeOfDay(const char* text, int* hour, int* minute, int* second) {
-  int consumed = 0;
-  *second = 0;
-  if (text == nullptr) return false;
-
-  const int matchedWithSeconds =
-      sscanf(text, "%d:%d:%d%n", hour, minute, second, &consumed);
-  if ((matchedWithSeconds != 3) || (text[consumed] != '\0')) {
-    consumed = 0;
-    if ((sscanf(text, "%d:%d%n", hour, minute, &consumed) != 2) ||
-        (text[consumed] != '\0')) {
-      return false;
-    }
-  }
-  return (*hour >= 0) && (*hour <= 23) &&
-         (*minute >= 0) && (*minute <= 59) &&
-         (*second >= 0) && (*second <= 59);
-}
-
-}  // namespace
 
 // -----------------------------------------------------------------------------
 // LocationApi
@@ -108,14 +62,14 @@ void LocationApi::handleSunset() {
   }
 
   int year = 0, month = 0, day = 0;
-  if (!parseIsoDate(dateTextArg, &year, &month, &day)) {
+  if ((!parseIsoDate(dateTextArg, &year, &month, &day) || (year < 2020))) {
     LOG_PRINTF("/api/sunset failed: invalid date=\"%s\"", dateTextArg);
     responder_.sendJsonError(400, "Date is invalid");
     return;
   }
 
   int hour = 0, minute = 0, second = 0;
-  if (!parseTimeOfDay(timeTextArg, &hour, &minute, &second)) {
+  if (!parseClockTime(timeTextArg, &hour, &minute, &second)) {
     LOG_PRINTF("/api/sunset failed: invalid time=\"%s\"", timeTextArg);
     responder_.sendJsonError(400, "Time is invalid");
     return;

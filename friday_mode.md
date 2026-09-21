@@ -16,10 +16,10 @@ are local wall-clock values from the DS3231.
 
 ## Ownership
 
-- `schedule.h/cpp` owns pure Friday phase and date-boundary calculations.
+- `schedule.h/cpp` owns pure Friday decisions and date-boundary calculations.
 - `sunset_calculator.h/cpp` calculates local sunset from coordinates and the
   configured numeric UTC offset.
-- `FridayModeController` owns cached sunset targets and remembered phase.
+- `ScheduledModeController` owns cached sunsets and the shared boundary tracker.
 - `ClockController` applies configuration and ticks Friday mode on every
   accepted 1 Hz RTC SQW pulse.
 - `DisplayManager` owns the base view and any temporary overlay.
@@ -32,9 +32,10 @@ that overlay ends.
 
 Crossing Friday sunset while the firmware is already running installs the
 Saturday-sunset countdown and then blinks `messages.fridaySunset` for five
-seconds. Boot, configuration reload, and browser time synchronization reset
-the remembered phase to `kNone`, so merely arriving in that phase never
-synthesizes a transition message.
+seconds. Boot, configuration reload, browser time synchronization, and RTC
+discontinuities reset the shared boundary tracker and install state silently.
+A live announcement may be at most five seconds late and must not skip another
+boundary.
 
 ## Location and cache
 

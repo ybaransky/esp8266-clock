@@ -137,13 +137,13 @@ struct ClockConfig {
   CountupConfig countup;  // Count-up origin and format.
 };
 
-// Groups both persisted configuration domains for atomic file serialization.
+// Groups both persisted configuration domains for complete file serialization.
 struct DeviceConfig {
   ClockConfig clock;  // Clock configuration section.
   WifiConfig wifi;    // WiFi configuration section.
 };
 
-// Owns the cached device configuration and persists sanitized updates atomically.
+// Owns cached configuration and persists sanitized updates with backup recovery.
 class ConfigManager {
 public:
     WifiConfig  loadWifiConfig();

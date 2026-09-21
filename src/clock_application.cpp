@@ -146,10 +146,10 @@ void ClockApplication::initializeDisplayAndConfig() {
 
 void ClockApplication::reportInitialRtcStatus(const RtcStatus& status) {
   if (!status.present) {
-    displayManager_.showInfo(kMsgNoRtc);
+    displayManager_.showFault(kMsgNoRtc);
     LOG_PRINTLN("RTC not found - showing no rtc");
   } else if (status.lowBattery) {
-    displayManager_.showInfo(kMsgLowBat);
+    displayManager_.showFault(kMsgLowBat);
     LOG_PRINTLN("Low battery - showing info state");
   }
 }
@@ -157,26 +157,20 @@ void ClockApplication::reportInitialRtcStatus(const RtcStatus& status) {
 void ClockApplication::tick(uint32_t nowMs) {
   buttonTick();
   processButtonEvents();
-  if (rtc_.consumeSqwPulse()) {
-    clockController_.onSecondBoundary(rtc_.getNowCached());
-    // isLogIntervalDue() keeps running at its own cadence because that call is
-    // also what resyncs the RTC cache; only the state line is throttled to the
-    // minute. The second is read before the call, since the resync replaces the
-    // cached value this test is based on.
-    const uint8_t cachedSecond = rtc_.getNowCached().second();
-    if (rtc_.isLogIntervalDue() && (cachedSecond == 0)) {
+  RtcTick rtcTick;
+  if (rtc_.consumeSqwPulse(rtcTick)) {
+    clockController_.onSecondBoundary(rtcTick);
+    if (rtcTick.now.second() == 0) {
       LOG_PRINTF("SQW: mode=%s view=%s",
-                 modeName(displayManager_.activeMode()),
-                 viewName(displayManager_.activeView()));
+                 modeName(clockController_.activeMode()),
+                 viewName(clockController_.activeView()));
     }
   }
 
   logModeOrViewTransition();
   checkRtcHealth(nowMs);
+  nowMs = millis();
   displayManager_.tick(nowMs);
-  // After the display tick, so a countdown that just hit zero is announced in
-  // the same loop pass that put its final message on the segments.
-  clockController_.tick();
   soundPlayer_.tick(nowMs);
   wifiConnectionManager_.tick();
   webPortal_.handleClients();
@@ -195,12 +189,14 @@ void ClockApplication::checkRtcHealth(uint32_t nowMs) {
   const bool healthy = rtc_.isHealthy();
   if (!healthy) {
     if (rtcWasHealthy_) LOG_PRINTLN("RTC health lost");
-    displayManager_.showInfo(kMsgNoRtc);
-  } else if (!rtcWasHealthy_) {
-    // A no-RTC overlay has no expiration, so clear it after recovery to reveal
-    // the current base view (including any Friday-mode phase correction).
-    LOG_PRINTLN("RTC health restored");
-    displayManager_.clearOverlay();
+    displayManager_.showFault(kMsgNoRtc);
+  } else {
+    if (!rtcWasHealthy_) LOG_PRINTLN("RTC health restored");
+    if (rtc_.getStatus().lowBattery) {
+      displayManager_.showFault(kMsgLowBat);
+    } else {
+      displayManager_.clearFault();
+    }
   }
   rtcWasHealthy_ = healthy;
 }

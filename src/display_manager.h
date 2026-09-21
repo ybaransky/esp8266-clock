@@ -24,6 +24,7 @@ class DisplayScheduler {
   bool colonVisible_ = true;  // Current visibility phase for animated colons.
   uint32_t colonMs_ = 0;  // Last colon transition time.
   uint32_t lastRenderMs_ = 0;  // Last accepted render time.
+  bool renderInvalidated_ = true;  // Forces the next frame, independent of millis() wrap.
 };
 
 class SegmentDisplay;
@@ -82,7 +83,7 @@ enum class Overlay : uint8_t {
   kNone,
   kSplash,
   kBlinkingMessage,
-  kCountdownComplete,
+  kHardwareFault,
   kDemoCountdown,
   kDemoFinalMessage,
   kPagedMessage,
@@ -128,23 +129,18 @@ struct OverlayState {
 // Snapshot of only the configuration fields display rendering consumes.
 // Copied from ClockConfig by applySettings() to avoid holding the full config.
 struct DisplaySettings {
-  Mode activeMode = kModeClock;  // Persisted mode driving the base view.
-  DisplayConfig display{};  // Clock format, brightness, and 12-hour flag.
-  CountdownConfig countdown{};  // Countdown target and format.
-  uint8_t countupFormat = 0;  // Count-up counting-format index.
-  uint8_t fridayClockFmt = 0;  // Initial clock format for Friday mode.
-  TradingConfig trading{};  // Trading-mode placeholder countdown formats.
+  DisplayConfig display{};  // Brightness and 12-hour presentation.
   char finalMessage[64] = "";  // Shown on countdown completion and demo end.
 
   static DisplaySettings fromConfig(const ClockConfig& config);
 };
 
-// Resolves configured modes into base views and renders temporary overlays above them.
+// Renders the application-supplied base view and temporary overlays above it.
 class DisplayManager {
  public:
   DisplayManager(SegmentDisplay& display, RtcService& rtc)
       : display_(display), rtc_(rtc) {}
-  void applySettings(const ClockConfig& config);
+  void applySettings(const ClockConfig& config, const ViewState& initialView);
   void setBrightness(uint8_t brightness);
   void tick(uint32_t nowMs);
 
@@ -162,7 +158,9 @@ class DisplayManager {
   void showPages(const DisplayPage* pages, uint8_t pageCount,
                  uint16_t pageDurationMs = kDefaultPageDurationMs,
                  bool repeat = false);
-  void clearOverlay();
+  void showFault(const char* message);
+  void clearFault();
+  void setCountdownComplete(bool complete);
 
   // Replaces the base view (what's shown whenever no overlay is active).
   // If no overlay is active, also updates the current display immediately.
@@ -175,43 +173,21 @@ class DisplayManager {
   const char* renderedName() const;
   bool demoActive() const;
 
-  // True exactly once after a countdown reaches zero and the completion
-  // overlay is installed, then false until the next completion. Lets a caller
-  // pair an announcement with the event without DisplayManager having to know
-  // what an announcement is - the display layer stays free of sound.
-  bool consumeCountdownCompleted();
-
-  // The persistent mode from config.
-  Mode activeMode() const { return settings_.activeMode; }
-
   // The View backing the base view (i.e. baseView_, not whatever overlay -
   // if any - is currently covering it, so a splash/info/demo overlay never
-  // counts as a view change). Fixed by activeMode() for countdown, countup,
+  // counts as a view change). Fixed by the configured mode for countdown, countup,
   // and clock modes; Friday and Trading schedule controllers vary it over
   // time by calling setView().
   View activeView() const { return baseView_.view; }
 
  private:
-  ViewState viewForMode(Mode mode) const;
   void logTransition(const char* from, const char* to, const char* reason) const;
 
-  // Applies an overlay/view-visibility transition: captures the current
-  // rendered name for logging, runs `mutate` to update overlay_/baseView_,
-  // invalidates the render throttle, optionally resets the blink phase, logs
-  // the transition against the resulting rendered name, and optionally
-  // forces an immediate render. Shared by every place that flips what's
-  // currently on the segments, so that sequence can't drift between them.
-  template <typename MutateFn>
-  void transitionTo(uint32_t nowMs, bool resetBlinkPhase, bool forceRender,
-                    const char* reason, MutateFn mutate);
-
   void installOverlay(const OverlayState& state, uint32_t nowMs);
-  void installView(uint32_t nowMs, bool forceRender = true);
   void finishOverlay(uint32_t nowMs);
   void clearOverlayAndRenderView(uint32_t nowMs);
   void startDemoMessageOverlay(uint32_t nowMs);
 
-  void updateCountupOrigin(const ClockConfig& config);
   uint8_t activeCountingFormatIndex() const;
   // True while the base view's blink window covers the current time. Resolved
   // fresh on every render - like activeCountingFormatIndex(), the window ends
@@ -230,18 +206,12 @@ class DisplayManager {
   bool buildMessageFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
   bool buildPagedMessageFrame(uint32_t nowMs, bool force,
                               DisplayFrame& frame);
-  // Countdown reaching zero is itself a view transition (base view ->
-  // completion overlay), detected here rather than in tick() so it fires at
-  // the same throttled cadence as every other countdown redraw.
-  bool installCountdownCompleteOverlay(uint32_t nowMs, DisplayFrame& frame);
-
   DisplaySettings settings_ =
       DisplaySettings::fromConfig(defaultClockConfig());  // Applied settings snapshot.
   ViewState baseView_;                           // What to show when no overlay is active.
   OverlayState overlay_;                         // kNone unless an overlay is active.
 
-  bool countdownCompleted_ = false;  // Set on completion, cleared when consumed.
-  DateTime countupOrigin_;       // Captured start time for count-up views using "now".
+  bool countdownComplete_ = false;  // Application says to show the final base message.
   DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
   SegmentDisplay& display_;  // Hardware target for completed frames.
   RtcService& rtc_;  // Cached time and SQW phase source for renderers.

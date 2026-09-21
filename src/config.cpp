@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include "config_serializer.h"
 #include "config_validation.h"
+#include "datetime_validation.h"
 #include "defaults.h"
 #include "log.h"
 #include "storage_manager.h"
@@ -33,22 +34,45 @@ bool ConfigManager::ensureLoaded() {
 bool ConfigManager::readAll(DeviceConfig& config) {
     const uint32_t startedUs = micros();
     if (!storageManager.ensureMounted("read complete config")) return false;
-    File file = STORAGE.open(kConfigPath, "r");
-    if (!file) {
-        LOG_PRINTLN("config.json not found - creating complete default document");
-        const bool saved = writeAll(config, "create default config");
-        if (!saved) LOG_PRINTLN("Default config creation failed - using memory defaults");
-        return saved;
-    }
-    const size_t bytes = file.size();
     JsonDocument doc;
-    const DeserializationError error = deserializeJson(doc, file);
-    file.close();
-    if (error) {
-        LOG_PRINTF("Complete config read failed: %s bytes=%u time=%.2f ms",
-                   error.c_str(), static_cast<unsigned>(bytes),
-                   (micros() - startedUs) / 1000.0f);
-        return false;
+    size_t bytes = 0;
+    bool loaded = false;
+    const bool hadFile = STORAGE.exists(kConfigPath) || STORAGE.exists(kConfigBackupPath);
+    const char* candidates[] = {kConfigPath, kConfigBackupPath};
+    for (const char* path : candidates) {
+        File file = STORAGE.open(path, "r");
+        if (!file) continue;
+        bytes = file.size();
+        doc.clear();
+        const DeserializationError error = deserializeJson(doc, file);
+        file.close();
+        if (error || !doc.is<JsonObject>()) {
+            LOG_PRINTF("Config read failed: %s (%s)", path,
+                       error ? error.c_str() : "expected JSON object");
+            continue;
+        }
+        loaded = true;
+        if (path == kConfigBackupPath) {
+            // Keep the backup intact if restoration fails; it remains the
+            // recovery source on the next boot and throughout the next save.
+            if ((STORAGE.exists(kConfigPath) && !STORAGE.remove(kConfigPath)) ||
+                !STORAGE.rename(kConfigBackupPath, kConfigPath)) {
+                LOG_PRINTLN("Config backup loaded; file restoration deferred");
+            } else {
+                LOG_PRINTLN("Config restored from backup");
+            }
+        } else {
+            STORAGE.remove(kConfigBackupPath);  // A valid primary wins after a completed save.
+        }
+        break;
+    }
+    if (!loaded) {
+        if (hadFile) {
+            LOG_PRINTLN("No readable config or backup; using memory defaults, preserving files");
+            return false;
+        }
+        LOG_PRINTLN("No config found; creating defaults");
+        return writeAll(config, "create default config");
     }
     const char* validationError =
         applyJsonToClockConfig(doc.as<JsonVariantConst>(), config.clock);
@@ -99,15 +123,21 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
         return false;
     }
 
-    STORAGE.remove(kConfigBackupPath);
     const bool hadOriginal = STORAGE.exists(kConfigPath);
-    if (hadOriginal && !STORAGE.rename(kConfigPath, kConfigBackupPath)) {
-        STORAGE.remove(kConfigTmpPath);
-        LOG_PRINTF("Complete config write failed: cannot create backup context=%s", context);
-        return false;
+    const bool hadBackup = STORAGE.exists(kConfigBackupPath);
+    // A surviving backup may be our only good copy after a failed recovery.
+    // Never discard it before the verified replacement is installed.
+    if (hadOriginal) {
+        const bool preserved = hadBackup ? STORAGE.remove(kConfigPath)
+                                         : STORAGE.rename(kConfigPath, kConfigBackupPath);
+        if (!preserved) {
+            STORAGE.remove(kConfigTmpPath);
+            LOG_PRINTF("Config write failed: cannot preserve original context=%s", context);
+            return false;
+        }
     }
     if (!STORAGE.rename(kConfigTmpPath, kConfigPath)) {
-        if (hadOriginal) STORAGE.rename(kConfigBackupPath, kConfigPath);
+        if (hadOriginal || hadBackup) STORAGE.rename(kConfigBackupPath, kConfigPath);
         STORAGE.remove(kConfigTmpPath);
         LOG_PRINTF("Complete config write failed: cannot install temp file context=%s", context);
         return false;
@@ -163,6 +193,14 @@ bool ConfigManager::saveConfig(ClockConfig& clock, const WifiConfig& wifi) {
 void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
     const ClockConfig defaults = defaultClockConfig();
     cfg.activeMode = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
+    DateTime parsed;
+    if (!parseLocalDateTime(cfg.countdown.end, parsed)) {
+        strlcpy(cfg.countdown.end, defaults.countdown.end, sizeof(cfg.countdown.end));
+    }
+    if ((strcmp(cfg.countup.start, "now") != 0) &&
+        !parseLocalDateTime(cfg.countup.start, parsed)) {
+        strlcpy(cfg.countup.start, defaults.countup.start, sizeof(cfg.countup.start));
+    }
     sanitizeFormatFields(cfg, defaults);
     if (!isValidTradingSchedule(cfg.trading.schedule)) {
       cfg.trading.schedule = defaults.trading.schedule;

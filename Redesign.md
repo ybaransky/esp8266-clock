@@ -15,16 +15,16 @@ ClockApplication
   |-- SegmentDisplay
   |-- DisplayManager
   |-- ClockController
-  |     |-- FridayModeController
-  |     `-- TradingModeController
+  |     `-- ScheduledModeController
   |-- ConfigManager
   |-- WifiConnectionManager
   |-- WebPortal and domain APIs
   `-- PageManager
 ```
 
-There are no application-wide service singletons. Dependencies are supplied by
-the owning application object.
+Application services receive their dependencies from the owning object. RTC
+hardware/SQW state remains file-static for its ISR bridge; storage and the I2C
+scanner also retain small global services.
 
 ## Display model
 
@@ -38,18 +38,21 @@ derived from panel shapes, and `SegmentDisplay` is the only TM1637 I/O layer.
 
 ## Scheduled modes
 
-Pure Friday and Trading boundary calculations live in `schedule.h/cpp`.
-Controllers own remembered phases, cached targets, display updates, logs, and
-live-boundary announcements. Both are ticked from accepted 1 Hz RTC SQW pulses,
-not from the throttled logging interval.
+Pure Friday and Trading calculations return a `ScheduleDecision`: current view
+kind and next named boundary. One `ScheduledModeController` owns the sunset
+cache, previous decision/time, output mapping, and shared crossing policy.
+It is called on coherent `RtcTick` samples. RTC servicing handles backlog
+recovery and 30-second resync; logging has no timekeeping side effects.
 
-Trading uses a fixed-capacity `TradingSchedule`: two retained interval slots
-and an enabled `intervalCount`. Session 1 is mandatory and session 2 optional.
+The application resolves initial views and owns ordinary countdown completion,
+including under overlays. Hardware faults have explicit display priority.
+Trading retains both configured session slots even when session 2 is disabled.
 
 ## Configuration
 
-`ConfigManager` owns a cached `DeviceConfig` and atomically persists the entire
-document through a temporary file and rename. `config_serializer` owns JSON
+`ConfigManager` owns a cached `DeviceConfig` and persists the entire
+document through a verified temporary file and recoverable backup/rename
+sequence. Boot tries the primary, then the backup, before using defaults. `config_serializer` owns JSON
 field names and patch semantics. Clock and WiFi sections are preserved when the
 other is updated.
 
@@ -63,3 +66,6 @@ JSON APIs; handlers never assemble HTML.
 
 The firmware is built with `pio run`. Hardware-sensitive behavior is validated
 on the device using serial logs and the web UI.
+
+The implemented policy and device validation notes are in
+[Scheduling review](docs/scheduling-review.md). No host test code is required.

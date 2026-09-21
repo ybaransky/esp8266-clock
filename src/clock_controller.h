@@ -4,9 +4,8 @@
 #include <ArduinoJson.h>
 #include <RTClib.h>
 
-#include "friday_mode.h"
-#include "mode_outputs.h"
-#include "trading_mode.h"
+#include "scheduled_mode.h"
+#include "rtc_ds3231.h"
 
 struct ClockConfig;
 enum Mode : uint8_t;
@@ -21,17 +20,11 @@ class ClockController {
  public:
   ClockController(DisplayManager& displayManager, RtcService& rtc,
                   SoundPlayer& soundPlayer)
-      : displayManager_(displayManager), rtc_(rtc), sound_(soundPlayer),
-        outputs_{displayManager, soundPlayer} {}
+      : displayManager_(displayManager), rtc_(rtc), sound_(soundPlayer) {}
 
   void applyConfig(const ClockConfig& config);
 
-  // Per-loop work that is not tied to an RTC second: currently just the
-  // countdown-completion announcement, which is detected on the display's own
-  // render cadence and would otherwise wait up to a second to be noticed.
-  void tick();
-
-  void onSecondBoundary(const DateTime& now);
+  void onSecondBoundary(const RtcTick& tick);
   void setTime(const DateTime& now);
   void setBrightness(uint8_t brightness);
   void showDemo();
@@ -57,19 +50,21 @@ class ClockController {
   static uint32_t boundaryAlertDurationMs(uint16_t totalDurationSeconds) {
     return static_cast<uint32_t>(totalDurationSeconds) * 1000UL;
   }
-  Mode activeMode() const;
+  Mode activeMode() const { return mode_; }
   View activeView() const;
   bool demoActive() const;
 
  private:
+  ViewState initialView(const ClockConfig& config, const DateTime& now);
+  void updateCountdown(const DateTime& now, bool announce);
+  void refreshSchedule(const DateTime& now, uint32_t secondStartedAtMs);
+
   DisplayManager& displayManager_;  // Applies view, overlay, and brightness actions.
   RtcService& rtc_;  // Reads and updates the hardware clock.
   SoundPlayer& sound_;  // Plays catalog sounds for previews and cues.
-  ModeOutputs outputs_;  // The pair handed to each scheduled mode on tick.
-  FridayModeController fridayMode_;  // Owns Friday schedule state and cache.
-  TradingModeController tradingMode_;  // Owns Trading schedule state.
-  // Cue for countdown completion, resolved against the master sound switch by
-  // applyConfig(). Countdown completion is the one announced event with no
-  // schedule controller to hold its settings snapshot, so it lives here.
-  char finalSound_[kSoundNameLength] = "";
+  ScheduledModeController scheduledMode_;  // Shared Friday/Trading boundary tracking.
+  Mode mode_ = kModeClock;  // Persisted selection applied to the application.
+  DateTime countdownEnd_;  // Application deadline for ordinary Countdown mode.
+  bool countdownComplete_ = false;  // One-shot completion state, independent of rendering.
+  char finalSound_[kSoundNameLength] = "";  // Master-resolved completion cue.
 };

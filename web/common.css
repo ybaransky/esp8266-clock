@@ -93,6 +93,9 @@ button.secondary:active { background: #246; }
 .choices label { margin-top: 0; }
 
 /* ---- Settings page: navigation buttons ---- */
+.sectionDivider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
+.sectionDivider h2 { margin: 0; }
+.sectionDivider hr { flex: 1; margin: 0; }
 .btn {
   display: block;
   padding: 13px;

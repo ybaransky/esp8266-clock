@@ -2,17 +2,29 @@
 
 #include <stdint.h>
 
-enum class FridayPhase : uint8_t {
-  kNone,
-  kClock,
-  kToFridaySunset,
-  kToSaturdaySunset,
+// Content selected by a schedule; presentation is supplied by the controller.
+enum class ScheduleView : uint8_t { kClock, kCountdown };
+
+// Names the event at a boundary, rather than the phase approaching it.
+enum class BoundaryKind : uint8_t {
+  kFridayMidnight,
+  kFridaySunset,
+  kSaturdaySunset,
+  kTradingOpen,
+  kTradingClose,
 };
 
-enum class TradingPhase : uint8_t {
-  kNone,
-  kToOpen,
-  kToClose,
+// Identifies one occurrence in local wall-clock seconds (not a UTC instant).
+struct ScheduleBoundary {
+  BoundaryKind kind = BoundaryKind::kFridayMidnight;  // Event at the boundary.
+  uint32_t atLocalSeconds = 0;  // Local wall-clock timestamp.
+  uint8_t sessionIndex = 0;  // Trading session; ignored for Friday.
+};
+
+// Pure answer to what to show now and which boundary comes next.
+struct ScheduleDecision {
+  ScheduleView view = ScheduleView::kClock;  // Clock or countdown to next.
+  ScheduleBoundary next;  // Strictly future boundary for valid schedule inputs.
 };
 
 static constexpr uint8_t kMaxTradingIntervals = 2;
@@ -30,21 +42,15 @@ struct TradingSchedule {
   TradingInterval intervals[kMaxTradingIntervals]{};
 };
 
-// Describes the next Trading boundary using local wall-clock Unix seconds.
-struct TradingBoundary {
-  TradingPhase phase = TradingPhase::kToOpen;  // Boundary being approached.
-  uint32_t targetUnix = 0;  // Local wall-clock boundary timestamp.
-  uint8_t intervalIndex = 0;  // Session whose open or close is targeted.
-};
-
-// Pure schedule calculations. They contain no Arduino, RTC, display, or I/O code.
-FridayPhase evaluateFridayPhase(uint32_t nowUnix,
-                                uint32_t fridaySunsetUnix,
-                                uint32_t saturdaySunsetUnix);
-uint32_t mostRecentFridayMidnight(uint32_t todayMidnightUnix,
-                                  uint8_t dayOfWeek);
+// Friday sunsets belong to the week beginning at fridayMidnight.
+ScheduleDecision evaluateFridaySchedule(uint32_t nowLocalSeconds,
+                                        uint32_t fridayMidnight,
+                                        uint32_t fridaySunset,
+                                        uint32_t saturdaySunset);
+uint32_t mostRecentFridayMidnight(uint32_t todayMidnight, uint8_t dayOfWeek);
 bool isValidTradingSchedule(const TradingSchedule& schedule);
-TradingBoundary evaluateTradingBoundary(uint32_t nowUnix,
-                                        uint32_t todayMidnightUnix,
-                                        uint8_t dayOfWeek,
-                                        const TradingSchedule& schedule);
+ScheduleDecision evaluateTradingSchedule(uint32_t nowLocalSeconds,
+                                         uint32_t todayMidnight,
+                                         uint8_t dayOfWeek,
+                                         const TradingSchedule& schedule);
+bool sameScheduleDecision(const ScheduleDecision& a, const ScheduleDecision& b);

@@ -30,7 +30,7 @@ boundary and minutes after midnight internally.
 ## Pure scheduling
 
 `schedule.h/cpp` owns `isValidTradingSchedule()` and
-`evaluateTradingBoundary()`. The evaluator walks enabled sessions in order:
+`evaluateTradingSchedule()`. The evaluator walks enabled sessions in order:
 
 ```text
 before start 1   -> countdown to start 1
@@ -44,22 +44,16 @@ Saturday and Sunday target Monday session 1. Holidays and early closes are not
 modeled. The pure scheduler contains no Arduino, RTC, display, logging, or
 storage operations.
 
-## Controller
+## Controller and announcements
 
-`TradingModeController` snapshots the Trading configuration and open/close
-messages. `ClockController` ticks it on every accepted RTC SQW second.
+`ScheduledModeController` applies the pure `ScheduleDecision` on accepted RTC
+samples. Its next boundary has a kind (`kTradingOpen` or `kTradingClose`), local
+wall-clock time, and session index. The display always counts down to that
+boundary, with the optional over-24-hour format resolved during rendering.
 
-The controller converts the next boundary into a countdown `ViewState` and
-installs it through `DisplayManager::setView()`. `TradingPhase::kToOpen` and
-`kToClose` describe the boundary type; the target timestamp distinguishes
-session 1, session 2, and future weekdays.
-
-## Live announcements
-
-A live `kToOpen -> kToClose` crossing blinks `messages.tradingOpen`. A live
-`kToClose -> kToOpen` crossing blinks `messages.tradingClose`. This applies to
-both configured sessions.
-
-Applying configuration, booting, or synchronizing the RTC resets the remembered
-phase to `kNone`. A transition from `kNone` initializes the view without
-announcing a boundary.
+Every live open/close can show its message and play its song. Only the first
+open and last close receive the generated approach patterns. Boot, settings
+changes, time synchronization, and RTC discontinuities rebase silently. The
+shared tracker allows one crossing at most five seconds late and suppresses
+multi-boundary gaps. See [scheduling-review.md](scheduling-review.md) for the
+common policy and device validation notes.

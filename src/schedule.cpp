@@ -20,19 +20,28 @@ uint8_t daysUntilNextTradingDay(uint8_t dayOfWeek) {
 
 }  // namespace
 
-FridayPhase evaluateFridayPhase(uint32_t nowUnix,
-                                uint32_t fridaySunsetUnix,
-                                uint32_t saturdaySunsetUnix) {
-  if (nowUnix < fridaySunsetUnix) return FridayPhase::kToFridaySunset;
-  if (nowUnix < saturdaySunsetUnix) return FridayPhase::kToSaturdaySunset;
-  return FridayPhase::kClock;
+ScheduleDecision evaluateFridaySchedule(uint32_t nowLocalSeconds,
+                                        uint32_t fridayMidnight,
+                                        uint32_t fridaySunset,
+                                        uint32_t saturdaySunset) {
+  if (nowLocalSeconds < fridayMidnight) {
+    return {ScheduleView::kClock, {BoundaryKind::kFridayMidnight, fridayMidnight, 0}};
+  }
+  if (nowLocalSeconds < fridaySunset) {
+    return {ScheduleView::kCountdown, {BoundaryKind::kFridaySunset, fridaySunset, 0}};
+  }
+  if (nowLocalSeconds < saturdaySunset) {
+    return {ScheduleView::kCountdown, {BoundaryKind::kSaturdaySunset, saturdaySunset, 0}};
+  }
+  return {ScheduleView::kClock,
+          {BoundaryKind::kFridayMidnight, fridayMidnight + 7 * kSecondsPerDay, 0}};
 }
 
-uint32_t mostRecentFridayMidnight(uint32_t todayMidnightUnix,
+uint32_t mostRecentFridayMidnight(uint32_t todayMidnight,
                                   uint8_t dayOfWeek) {
   const uint8_t daysSinceFriday =
       (dayOfWeek >= 5) ? (dayOfWeek - 5) : (dayOfWeek + 2);
-  return todayMidnightUnix - daysSinceFriday * kSecondsPerDay;
+  return todayMidnight - daysSinceFriday * kSecondsPerDay;
 }
 
 bool isValidTradingSchedule(const TradingSchedule& schedule) {
@@ -54,24 +63,34 @@ bool isValidTradingSchedule(const TradingSchedule& schedule) {
   return true;
 }
 
-TradingBoundary evaluateTradingBoundary(uint32_t nowUnix,
-                                        uint32_t todayMidnightUnix,
+ScheduleDecision evaluateTradingSchedule(uint32_t nowLocalSeconds,
+                                        uint32_t todayMidnight,
                                         uint8_t dayOfWeek,
                                         const TradingSchedule& schedule) {
   if (isTradingWeekday(dayOfWeek)) {
     for (uint8_t i = 0; i < schedule.intervalCount; ++i) {
-      const uint32_t openUnix =
-          todayMidnightUnix + schedule.intervals[i].startMinute * 60UL;
-      const uint32_t closeUnix =
-          todayMidnightUnix + schedule.intervals[i].stopMinute * 60UL;
-      if (nowUnix < openUnix) return {TradingPhase::kToOpen, openUnix, i};
-      if (nowUnix < closeUnix) return {TradingPhase::kToClose, closeUnix, i};
+      const uint32_t openAt =
+          todayMidnight + schedule.intervals[i].startMinute * 60UL;
+      const uint32_t closeAt =
+          todayMidnight + schedule.intervals[i].stopMinute * 60UL;
+      if (nowLocalSeconds < openAt) {
+        return {ScheduleView::kCountdown, {BoundaryKind::kTradingOpen, openAt, i}};
+      }
+      if (nowLocalSeconds < closeAt) {
+        return {ScheduleView::kCountdown, {BoundaryKind::kTradingClose, closeAt, i}};
+      }
     }
   }
 
   const uint8_t daysAhead = daysUntilNextTradingDay(dayOfWeek);
-  return {TradingPhase::kToOpen,
-          todayMidnightUnix + daysAhead * kSecondsPerDay +
+  return {ScheduleView::kCountdown, {BoundaryKind::kTradingOpen,
+          todayMidnight + daysAhead * kSecondsPerDay +
               schedule.intervals[0].startMinute * 60UL,
-          0};
+          0}};
+}
+
+bool sameScheduleDecision(const ScheduleDecision& a, const ScheduleDecision& b) {
+  return (a.view == b.view) && (a.next.kind == b.next.kind) &&
+         (a.next.atLocalSeconds == b.next.atLocalSeconds) &&
+         (a.next.sessionIndex == b.next.sessionIndex);
 }

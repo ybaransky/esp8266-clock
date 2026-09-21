@@ -56,6 +56,8 @@ public:
     }
 
     adjustWithLog(timeValue, "browser time sync");
+    status_.powerLost = false;
+    status_.lowBattery = false;
   }
 
 private:
@@ -152,24 +154,9 @@ bool RtcService::begin()              { return rtc.begin(); }
 RtcStatus RtcService::getStatus() const { return rtc.getStatus(); }
 DateTime RtcService::getNow()         { return rtc.now(); }
 
-// -- SQW 1 Hz interrupt processing ---------------------------------------------
-//
-// The SQW pin ticks once per RTC second, driven by the same crystal as the
-// DS3231's internal clock registers. rtcConsumeSqwPulse() uses that edge to
-// advance cachedNow_ by one second in software instead of re-reading the
-// clock over I2C every time â€” see rtcGetNowCached() below. This is what lets
-// display rendering gets second-resolution time at
-// effectively zero I2C cost instead of one I2C transaction per read.
-//
-// rtcConsumeSqwPulse() and rtcIsLogIntervalDue() are deliberately separate
-// functions: the former fires every real second and is what time-sensitive
-// logic (e.g. Friday-mode phase transitions) must gate on, while the latter
-// is only true on the :00 and :30 wall-clock second of each minute and
-// exists purely to pace the periodic health/state log line. Gating
-// time-sensitive logic on rtcIsLogIntervalDue() by mistake delays it by up
-// to kSqwLogIntervalSeconds.
-
-static constexpr uint8_t kSqwLogIntervalSeconds = 30;  // Log on :00 and :30 boundaries.
+// SQW edges advance the cache. RTC servicing owns the 30-second resync;
+// diagnostic logging never changes time.
+static constexpr uint8_t kSqwResyncSeconds = 30;
 static constexpr uint32_t kSqwStartupWarnMs = 3500;
 static constexpr uint32_t kSqwHealthLogIntervalMs = 10000;
 static constexpr uint32_t kSqwPulseStaleMs = 3000;
@@ -188,19 +175,22 @@ struct SqwState {
   uint32_t lastAcceptedPulseAtMs = 0;  // Phase reference used for tenths.
   uint32_t lastHealthLogMs = 0;  // Last missing-pulse warning time.
   DateTime cachedNow;            // Second-resolution time, advanced by SQW pulses.
-  bool cachedNowSynced = false;  // False until the first real read has seeded the cache.
+  bool cachedNowSynced = false;  // False until a live read seeds the cache.
+  bool resyncOnNextPulse = true;  // Realign after boot, time sync, or a read/edge race.
 };
 static SqwState sqw;
 
 void RtcService::setNow(const DateTime& timeValue) {
   rtc.setNow(timeValue);
-  if (rtc.getStatus().present) {
-    // Keep the second-resolution cache in step immediately, rather than
-    // leaving it to tick forward from the old time until the next periodic
-    // resync (see rtcConsumeSqwPulse()).
-    sqw.cachedNow = timeValue;
-    sqw.cachedNowSynced = true;
-  }
+  if (!rtc.getStatus().present) return;
+  noInterrupts();
+  sqw.pendingPulseCount = 0;
+  interrupts();
+  sqw.cachedNow = timeValue;
+  sqw.cachedNowSynced = true;
+  sqw.resyncOnNextPulse = true;
+  sqw.sawPulse = false;
+  sqw.processingStartedAtMs = millis();
 }
 
 static void IRAM_ATTR onRtcSqwPulse() {
@@ -216,14 +206,6 @@ static void warnIfSqwSharesInternalLed() {
   if (Hardware::Pins::RTC_SQW != Hardware::Pins::INTERNAL_LED) return;
   LOG_PRINTF("WARNING: SQW shares GPIO%u with INTERNAL_LED; DS3231 SQW may blink the onboard LED",
              Hardware::Pins::RTC_SQW);
-}
-
-static bool consumeSqwInterruptPulse() {
-  noInterrupts();
-  const bool pending = sqw.pendingPulseCount > 0;
-  if (pending) sqw.pendingPulseCount--;
-  interrupts();
-  return pending;
 }
 
 static uint32_t currentSqwIsrPulseCount() {
@@ -253,30 +235,6 @@ static void logSqwHealthIfNeeded(uint32_t nowMs) {
              static_cast<unsigned long>(currentSqwIsrPulseCount()));
 }
 
-static bool consumeAcceptedSqwPulse() {
-  const bool interruptPulse = consumeSqwInterruptPulse();
-  if (!interruptPulse) {
-    logSqwHealthIfNeeded(millis());
-    return false;
-  }
-
-  // Use the ISR-captured edge time, not millis() here: consumption can lag
-  // the physical edge by however long loop() was busy (e.g. serving an HTTP
-  // request), and this timestamp is the phase reference for rtcMsIntoSecond().
-  // A 32-bit aligned volatile read is atomic on the ESP8266.
-  const uint32_t edgeMs = sqw.edgeAtMs;
-  // DS3231 SQW is 1 Hz; ignore impossible back-to-back pulses caused by
-  // sampling races/noise so the cached time stays aligned to real seconds.
-  if (sqw.sawPulse && (static_cast<long>(edgeMs - sqw.lastAcceptedPulseAtMs) < 500L)) {
-    return false;
-  }
-
-  sqw.sawPulse = true;
-  sqw.lastPulseAtMs = edgeMs;
-  sqw.lastAcceptedPulseAtMs = edgeMs;
-  return true;
-}
-
 // True when a SQW pulse has been seen recently enough to trust sqw.cachedNow.
 // Shared by RtcService::isHealthy() (user-facing "no rtc" banner) and
 // RtcService::getNowCached() (falls back to a live I2C read when this is false).
@@ -296,6 +254,7 @@ void RtcService::beginSqwProcessing() {
   sqw.lastHealthLogMs = 0;
   sqw.sawPulse = false;
   sqw.processingStarted = true;
+  sqw.resyncOnNextPulse = true;
   noInterrupts();
   sqw.pendingPulseCount = 0;
   sqw.isrPulseCount = 0;
@@ -318,19 +277,54 @@ void RtcService::beginSqwProcessing() {
              initialLevel == HIGH ? "HIGH" : "LOW");
 }
 
-bool RtcService::consumeSqwPulse() {
-  if (!consumeAcceptedSqwPulse()) return false;
+bool RtcService::consumeSqwPulse(RtcTick& tick) {
+  noInterrupts();
+  const uint32_t count = sqw.pendingPulseCount;
+  const uint32_t edgeMs = sqw.edgeAtMs;
+  sqw.pendingPulseCount = 0;
+  interrupts();
+  const uint32_t nowMs = millis();
+  if (count == 0) {
+    logSqwHealthIfNeeded(nowMs);
+    return false;
+  }
+  if (nowMs - edgeMs >= kSqwPulseStaleMs) {
+    // A queued but stale edge cannot supply the phase of the current second.
+    sqw.resyncOnNextPulse = true;
+    logSqwHealthIfNeeded(nowMs);
+    return false;
+  }
+  // Reject impossible edges without treating them as elapsed RTC seconds.
+  if (sqw.sawPulse && (edgeMs - sqw.lastAcceptedPulseAtMs < 500UL)) return false;
 
-  // The pulse itself IS the "one second has elapsed" signal, so advance the
-  // cache in software rather than spending an I2C transaction to learn what
-  // we already know.
-  sqw.cachedNow = DateTime(sqw.cachedNow.unixtime() + 1);
-  return true;
-}
-
-bool RtcService::isLogIntervalDue() {
-  if (sqw.cachedNow.second() % kSqwLogIntervalSeconds != 0) return false;
-  sqw.cachedNow = rtc.now();  // Also resyncs the cache, correcting drift from any pulses missed.
+  bool discontinuity = sqw.resyncOnNextPulse || !sqw.sawPulse || (count > 1) ||
+      (sqw.sawPulse && (edgeMs - sqw.lastAcceptedPulseAtMs > 1500UL));
+  const DateTime expected(sqw.cachedNow.unixtime() + 1);
+  DateTime current = expected;
+  if (discontinuity || (expected.second() % kSqwResyncSeconds == 0)) {
+    current = rtc.now();
+    // If an edge arrived during I2C, the read may straddle two seconds. Leave
+    // that new pulse queued and resync on the next loop instead of guessing.
+    noInterrupts();
+    const bool edgeChanged = sqw.edgeAtMs != edgeMs;
+    interrupts();
+    if (edgeChanged) {
+      sqw.resyncOnNextPulse = true;
+      return false;
+    }
+    discontinuity = discontinuity || (current.unixtime() != expected.unixtime());
+  }
+  sqw.cachedNow = current;
+  sqw.cachedNowSynced = true;
+  sqw.resyncOnNextPulse = false;
+  sqw.sawPulse = true;
+  sqw.lastPulseAtMs = edgeMs;
+  sqw.lastAcceptedPulseAtMs = edgeMs;
+  tick = {current, edgeMs, discontinuity};
+  if (discontinuity) {
+    LOG_PRINTF("RTC resynced: pulses=%lu; past announcements suppressed",
+               static_cast<unsigned long>(count));
+  }
   return true;
 }
 
@@ -343,7 +337,7 @@ bool RtcService::isHealthy() const {
 // Second-resolution time backed by sqw.cachedNow, avoiding an I2C transaction
 // on the hot display-render path (see the SQW section comment above). Falls
 // back to a live rtc.now() read whenever the cache can't be trusted: before
-// rtcBeginSqwProcessing() has run, or if the SQW pulse has gone stale.
+// beginSqwProcessing() has run, or if the SQW pulse has gone stale.
 DateTime RtcService::getNowCached() {
   if (!sqw.cachedNowSynced || !sqwPulseIsFresh()) return rtc.now();
   return sqw.cachedNow;
@@ -355,7 +349,7 @@ DateTime RtcService::getNowCached() {
 // just before the next edge the raw value can read 1000+, and clamping parks
 // the tenths digit at 9 instead of wrapping to 0 early. Falls back to the
 // old millis()-phase behavior when the SQW pulse can't be trusted, matching
-// rtcGetNowCached()'s degradation.
+// getNowCached()'s degradation.
 uint32_t RtcService::msIntoSecond(uint32_t nowMs) const {
   if (!sqw.sawPulse || !sqwPulseIsFresh()) return nowMs % 1000UL;
   const uint32_t elapsed = nowMs - sqw.lastAcceptedPulseAtMs;

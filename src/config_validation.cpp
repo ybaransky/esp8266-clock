@@ -63,8 +63,8 @@ uint8_t sanitizeFormatIndex(FormatGroup group, int rawIndex, uint8_t fallback) {
   if ((group < 0) || (group >= kFmtGroupCount) || (rawIndex < 0)) {
     return fallback;
   }
-  const uint8_t index = static_cast<uint8_t>(rawIndex);
-  return index < displayFormatCount(group) ? index : fallback;
+  if (rawIndex >= displayFormatCount(group)) return fallback;
+  return static_cast<uint8_t>(rawIndex);
 }
 
 uint8_t sanitizeOptionalFormatIndex(FormatGroup group, int rawIndex,

@@ -1,6 +1,7 @@
 #include "time_api.h"
 
 #include "clock_controller.h"
+#include "datetime_validation.h"
 #include "log.h"
 #include "rtc_ds3231.h"
 
@@ -28,9 +29,8 @@ void TimeApi::handleTimeSync() {
   const int hour = doc["hour"] | 0;
   const int minute = doc["minute"] | 0;
   const int second = doc["second"] | 0;
-  if ((year < 2020) || (year > 2099) || (month < 1) || (month > 12) ||
-      (day < 1) || (day > 31) || (hour < 0) || (hour > 23) ||
-      (minute < 0) || (minute > 59) || (second < 0) || (second > 59)) {
+  if ((year < 2020) || !isValidDate(year, month, day) ||
+      !isValidTime(hour, minute, second)) {
     LOG_PRINTF("/api/time failed: invalid time %04d-%02d-%02d %02d:%02d:%02d",
                year, month, day, hour, minute, second);
     responder_.sendJsonError(400, "Invalid time");

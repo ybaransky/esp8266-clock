@@ -54,18 +54,10 @@ class SoundPlayer {
                             uint8_t startingBeatsHz, uint32_t nowMs);
 
   void stop();
-  bool isPlaying() const { return playback_ != Playback::kIdle; }
-
-  // Name of the sound currently playing, or an empty string when idle.
-  const char* playingName() const { return playingName_; }
-
-  // True when a valid catalog was found; false means every play() is silent.
-  bool catalogAvailable() const { return catalogLoaded_; }
 
   // 0-100. Scales the PWM duty cycle, so it takes effect within the current
   // note rather than at the next one.
   void setVolume(uint8_t percent);
-  uint8_t volume() const { return volumePercent_; }
 
   // Fills `array` with the name of every catalog entry of `kind`, in catalog
   // (alphabetical) order. Returns false when the catalog is unreadable.

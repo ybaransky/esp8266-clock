@@ -18,12 +18,6 @@ constexpr uint32_t kDemoCountdownMs = 5000;
 constexpr uint32_t kDemoMessageMs = 5000;
 constexpr long kLongRangeSeconds = 24L * 3600L;
 
-DateTime parseDateTime(const char* s) {
-  int y = 2000, mo = 1, d = 1, h = 0, mi = 0, sec = 0;
-  sscanf(s, "%d-%d-%d %d:%d:%d", &y, &mo, &d, &h, &mi, &sec);
-  return DateTime(y, mo, d, h, mi, sec);
-}
-
 uint32_t intervalForRefreshRate(RefreshRate rate) {
   return rate == RefreshRate::kOneTenth ? kTenthMs : kSecondMs;
 }
@@ -52,7 +46,8 @@ void DisplayScheduler::reset(uint32_t nowMs) {
   blinkMs_ = nowMs;
   colonVisible_ = true;
   colonMs_ = 0;
-  lastRenderMs_ = 0;
+  lastRenderMs_ = nowMs;
+  renderInvalidated_ = true;
 }
 
 void DisplayScheduler::resetBlink(uint32_t nowMs) {
@@ -60,12 +55,12 @@ void DisplayScheduler::resetBlink(uint32_t nowMs) {
   blinkMs_ = nowMs;
 }
 
-void DisplayScheduler::invalidateRender() { lastRenderMs_ = 0; }
+void DisplayScheduler::invalidateRender() { renderInvalidated_ = true; }
 
 bool DisplayScheduler::shouldRender(uint32_t nowMs, uint32_t intervalMs,
                                     bool force) {
-  if (!force && (static_cast<long>(nowMs - lastRenderMs_) <
-                 static_cast<long>(intervalMs))) return false;
+  if (!force && !renderInvalidated_ && (nowMs - lastRenderMs_ < intervalMs)) return false;
+  renderInvalidated_ = false;
   lastRenderMs_ = nowMs;
   return true;
 }
@@ -92,12 +87,7 @@ bool DisplayScheduler::toggleColonIfDue(uint32_t nowMs, uint32_t intervalMs) {
 
 DisplaySettings DisplaySettings::fromConfig(const ClockConfig& config) {
   DisplaySettings settings;
-  settings.activeMode = config.activeMode;
   settings.display = config.display;
-  settings.countdown = config.countdown;
-  settings.countupFormat = config.countup.format;
-  settings.fridayClockFmt = config.friday.clockFmt;
-  settings.trading = config.trading;
   strlcpy(settings.finalMessage, config.messages.final,
           sizeof(settings.finalMessage));
   return settings;
@@ -107,14 +97,18 @@ DisplaySettings DisplaySettings::fromConfig(const ClockConfig& config) {
 // DisplayManager
 // -----------------------------------------------------------------------------
 
-void DisplayManager::applySettings(const ClockConfig& config) {
+void DisplayManager::applySettings(const ClockConfig& config,
+                                    const ViewState& initialView) {
+  const char* oldName = renderedName();
   settings_ = DisplaySettings::fromConfig(config);
-  scheduler_.reset(millis());
-
-  updateCountupOrigin(config);
-  baseView_ = viewForMode(config.activeMode);
+  const uint32_t nowMs = millis();
+  scheduler_.reset(nowMs);
+  baseView_ = initialView;
+  countdownComplete_ = false;
+  if (overlay_.overlay != Overlay::kHardwareFault) overlay_.overlay = Overlay::kNone;
   display_.setBrightness(config.display.brightness);
-  installView(millis());
+  logTransition(oldName, renderedName(), "settings applied");
+  render(nowMs, true);
 }
 
 void DisplayManager::setBrightness(uint8_t brightness) {
@@ -208,56 +202,42 @@ void DisplayManager::showPages(const DisplayPage* pages,
   render(nowMs, true);
 }
 
-void DisplayManager::clearOverlay() {
-  if (hasOverlay() && (overlay_.overlay != Overlay::kDemoCountdown)) {
-    finishOverlay(millis());
-  }
-}
-
 bool DisplayManager::demoActive() const {
   return (overlay_.overlay == Overlay::kDemoCountdown) ||
          (overlay_.overlay == Overlay::kDemoFinalMessage);
 }
 
 const char* DisplayManager::renderedName() const {
-  return hasOverlay() ? overlayName(overlay_.overlay) : viewName(baseView_.view);
+  if (hasOverlay()) return overlayName(overlay_.overlay);
+  return countdownComplete_ ? "complete" : viewName(baseView_.view);
 }
 
-ViewState DisplayManager::viewForMode(Mode mode) const {
-  ViewState state;
+void DisplayManager::showFault(const char* message) {
+  if ((overlay_.overlay == Overlay::kHardwareFault) &&
+      (strcmp(overlay_.message, message) == 0)) return;
+  OverlayState state;
+  state.overlay = Overlay::kHardwareFault;
+  copyMessage(state.message, message);
+  const uint32_t nowMs = millis();
+  installOverlay(state, nowMs);
+  render(nowMs, true);
+}
 
-  switch (mode) {
-    case kModeCountup:
-      state.view = View::kCountup;
-      state.anchor = countupOrigin_;
-      state.formatIndex = settings_.countupFormat;
-      break;
-    case kModeClock:
-      state.view = View::kClock;
-      state.formatIndex = settings_.display.clockFmt;
-      break;
-    case kModeCountdown:
-      state.view = View::kCountdown;
-      state.anchor = parseDateTime(settings_.countdown.end);
-      state.formatIndex = settings_.countdown.format;
-      break;
-    case kModeFriday:
-      // FridayModeController will call setView() on the next tick.
-      // Use the friday clock format as a safe initial view.
-      state.view = View::kClock;
-      state.formatIndex = settings_.fridayClockFmt;
-      break;
-    case kModeTrading:
-      // TradingModeController replaces this placeholder immediately after a
-      // config apply and then at each live open/close boundary.
-      state.view = View::kCountdown;
-      state.anchor = rtc_.getNowCached() + TimeSpan(1);
-      state.formatIndex = settings_.trading.format;
-      state.longFormatIndex = settings_.trading.formatOver24;
-      break;
+void DisplayManager::clearFault() {
+  if (overlay_.overlay == Overlay::kHardwareFault) clearOverlayAndRenderView(millis());
+}
+
+void DisplayManager::setCountdownComplete(bool complete) {
+  if (countdownComplete_ == complete) return;
+  const char* oldName = renderedName();
+  countdownComplete_ = complete;
+  // Completion replaces ordinary information, but a hardware fault stays visible.
+  if (complete && (overlay_.overlay != Overlay::kHardwareFault)) {
+    overlay_.overlay = Overlay::kNone;
   }
-
-  return state;
+  scheduler_.invalidateRender();
+  logTransition(oldName, renderedName(), "countdown completion");
+  render(millis(), true);
 }
 
 void DisplayManager::setView(const ViewState& state) {
@@ -290,7 +270,7 @@ const char* overlayName(Overlay overlay) {
     case Overlay::kNone:              return "none";
     case Overlay::kSplash:            return "splash";
     case Overlay::kBlinkingMessage:   return "message";
-    case Overlay::kCountdownComplete: return "complete";
+    case Overlay::kHardwareFault:     return "hardware fault";
     case Overlay::kDemoCountdown:
     case Overlay::kDemoFinalMessage:  return "demo";
     case Overlay::kPagedMessage:      return "pages";
@@ -302,26 +282,14 @@ void DisplayManager::logTransition(const char* from, const char* to, const char*
   LOG_PRINTF("display: %s -> %s (%s)", from, to, reason);
 }
 
-template <typename MutateFn>
-void DisplayManager::transitionTo(uint32_t nowMs, bool resetBlinkPhase,
-                                  bool forceRender, const char* reason,
-                                  MutateFn mutate) {
-  const char* oldName = renderedName();
-  mutate();
-  scheduler_.invalidateRender();
-  if (resetBlinkPhase) scheduler_.resetBlink(nowMs);
-  logTransition(oldName, renderedName(), reason);
-  if (forceRender) render(nowMs, true);
-}
-
 void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
-  transitionTo(nowMs, /*resetBlinkPhase=*/true, /*forceRender=*/false,
-              "overlay", [&]() { overlay_ = state; });
-}
-
-void DisplayManager::installView(uint32_t nowMs, bool forceRender) {
-  transitionTo(nowMs, /*resetBlinkPhase=*/true, forceRender, "view install",
-              [&]() { overlay_.overlay = Overlay::kNone; });
+  if ((overlay_.overlay == Overlay::kHardwareFault) &&
+      (state.overlay != Overlay::kHardwareFault)) return;
+  const char* oldName = renderedName();
+  overlay_ = state;
+  scheduler_.invalidateRender();
+  scheduler_.resetBlink(nowMs);
+  logTransition(oldName, renderedName(), "overlay");
 }
 
 void DisplayManager::finishOverlay(uint32_t nowMs) {
@@ -334,10 +302,11 @@ void DisplayManager::finishOverlay(uint32_t nowMs) {
 }
 
 void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
-  // No blink-phase reset: the base view underneath doesn't use the message
-  // blink cadence (only the colon cadence, tracked separately).
-  transitionTo(nowMs, /*resetBlinkPhase=*/false, /*forceRender=*/true,
-              "overlay cleared", [&]() { overlay_.overlay = Overlay::kNone; });
+  const char* oldName = renderedName();
+  overlay_.overlay = Overlay::kNone;
+  scheduler_.invalidateRender();
+  logTransition(oldName, renderedName(), "overlay cleared");
+  render(nowMs, true);
 }
 
 void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
@@ -348,12 +317,6 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
 
   installOverlay(state, nowMs);
   render(nowMs, true);
-}
-
-void DisplayManager::updateCountupOrigin(const ClockConfig& config) {
-  countupOrigin_ = (strncmp(config.countup.start, "now", 3) == 0)
-      ? rtc_.getNowCached()
-      : parseDateTime(config.countup.start);
 }
 
 // Selects the counting format for the base view's current duration. Evaluated
@@ -385,6 +348,7 @@ bool DisplayManager::overlayExpired(uint32_t nowMs) const {
 
 bool DisplayManager::overlayBlinks() const {
   return (overlay_.overlay == Overlay::kBlinkingMessage) ||
+         (overlay_.overlay == Overlay::kHardwareFault) ||
          (overlay_.overlay == Overlay::kDemoFinalMessage);
 }
 
@@ -399,7 +363,7 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
         break;
       case Overlay::kSplash:
       case Overlay::kBlinkingMessage:
-      case Overlay::kCountdownComplete:
+      case Overlay::kHardwareFault:
       case Overlay::kDemoFinalMessage:
         frameReady = buildMessageFrame(nowMs, force, frame);
         break;
@@ -407,6 +371,9 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
         frameReady = buildPagedMessageFrame(nowMs, force, frame);
         break;
     }
+  } else if (countdownComplete_) {
+    frameReady = renderElapsed(nowMs, kSecondMs, force);
+    frame = renderMessageDisplayFrame(settings_.finalMessage, true);
   } else {
     // The blink phase advances before the build functions consult the render
     // throttle, so every toggle produces a frame of its own regardless of the
@@ -433,10 +400,7 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
         break;
     }
 
-    // hasOverlay() is re-checked because a build function may have installed
-    // one (countdown completion); that frame belongs to the overlay and is
-    // not subject to the view's blink window.
-    if (frameReady && blinking && !hasOverlay() && !scheduler_.blinkOn()) {
+    if (frameReady && blinking && !scheduler_.blinkOn()) {
       frame = renderBlankDisplayFrame();
     }
   }
@@ -481,36 +445,16 @@ bool DisplayManager::buildCountdownFrame(uint32_t nowMs, bool force,
   const DateTime now = rtc_.getNowCached();
   const long secs = static_cast<long>(baseView_.anchor.unixtime()) -
                     static_cast<long>(now.unixtime());
-  if (secs <= 0) return installCountdownCompleteOverlay(nowMs, frame);
+  // Completion and schedule changes belong to application logic. A delayed
+  // schedule sample can show zero here but cannot create a permanent overlay.
 
   uint8_t tenths = 0;
-  if (refreshRate == RefreshRate::kOneTenth) {
-    tenths = (secs > 0) ? (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10 : 0;
+  if ((refreshRate == RefreshRate::kOneTenth) && (secs > 0)) {
+    tenths = (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10;
   }
 
   frame = renderCountingFormat(formatIndex, secs, tenths);
   return true;
-}
-
-bool DisplayManager::installCountdownCompleteOverlay(uint32_t nowMs,
-                                                      DisplayFrame& frame) {
-  OverlayState state;
-  state.overlay = Overlay::kCountdownComplete;
-  copyMessage(state.message, settings_.finalMessage);
-  // No expiration set: the countdown has finished, so this stays up until
-  // the next mode/config change installs a new view.
-  installOverlay(state, nowMs);
-  // Reached only once per completion: the overlay now covers the base view, so
-  // the countdown frame builder that got here is not called again until
-  // something installs a new view.
-  countdownCompleted_ = true;
-  return buildMessageFrame(nowMs, true, frame);
-}
-
-bool DisplayManager::consumeCountdownCompleted() {
-  const bool completed = countdownCompleted_;
-  countdownCompleted_ = false;
-  return completed;
 }
 
 bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,

@@ -4,6 +4,7 @@
 
 #include "config.h"
 #include "config_validation.h"
+#include "datetime_validation.h"
 #include "zipcode.h"
 
 namespace {
@@ -298,14 +299,26 @@ void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockCo
     cfg.friday.blinkAfterMinutes =
         sanitizeBlinkMinutes(modes["friday"]["blinkAfterMinutes"].as<int>());
   }
-  if (!modes["countdown"]["end"].isNull()) {
-    snprintf(cfg.countdown.end, sizeof(cfg.countdown.end), "%s",
-             modes["countdown"]["end"].as<const char*>());
+}
+
+bool applyDateTimeField(JsonVariantConst value, char* destination,
+                        size_t size, bool allowNow) {
+  if (value.isNull()) return true;
+  const char* text = value.as<const char*>();
+  if (text == nullptr) return false;
+  if (allowNow && (strcmp(text, "now") == 0)) {
+    strlcpy(destination, "now", size);
+    return true;
   }
-  if (!modes["countup"]["start"].isNull()) {
-    snprintf(cfg.countup.start, sizeof(cfg.countup.start), "%s",
-             modes["countup"]["start"].as<const char*>());
-  }
+  DateTime parsed;
+  if (!parseLocalDateTime(text, parsed)) return false;
+  // Validation guarantees fixed-width digits; normalize browser minutes and T.
+  char canonical[20];
+  strlcpy(canonical, text, sizeof(canonical));
+  canonical[10] = ' ';
+  if (strlen(text) == 16) strlcpy(canonical + 16, ":00", 4);
+  strlcpy(destination, canonical, size);
+  return true;
 }
 
 bool applyTradingSchedule(JsonVariantConst trading, ClockConfig& cfg) {
@@ -436,6 +449,14 @@ const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
   }
 
   applyFormatFields(display, display["modes"], cfg);
+  const JsonVariantConst modes = display["modes"];
+  const bool countdownOk = applyDateTimeField(modes["countdown"]["end"],
+      cfg.countdown.end, sizeof(cfg.countdown.end), false);
+  const bool countupOk = applyDateTimeField(modes["countup"]["start"],
+      cfg.countup.start, sizeof(cfg.countup.start), true);
+  if ((!countdownOk || !countupOk) && (error == nullptr)) {
+    error = "{\"error\":\"Invalid countdown or count-up datetime\"}";
+  }
   if (!applyTradingSchedule(display["modes"]["trading"], cfg) &&
       (error == nullptr)) {
     error = "{\"error\":\"Trading sessions must be valid, ordered, and separated\"}";

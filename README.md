@@ -51,8 +51,8 @@ events + cached RTC time
 | Clock/counting format | `src/display_format.cpp` |
 | Display transition or overlay | `src/display_manager.cpp` |
 | Friday/Trading boundary math | `src/schedule.cpp` |
-| Friday sunset caching/announcement | `src/friday_mode.cpp` |
-| Trading sessions/announcements | `src/trading_mode.cpp` |
+| Friday sunset caching/announcement | `src/scheduled_mode.cpp` |
+| Trading sessions/announcements | `src/scheduled_mode.cpp` |
 | HTTP route registration | `src/web_server.cpp` |
 | JSON field name or config patching | `src/config_serializer.cpp` |
 | Web page | `web/pages/` and `tools/web_manifest.py` |
