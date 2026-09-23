@@ -1,0 +1,35 @@
+{
+  // Host unit tests run in WSL, not on Windows: Smart App Control is enforced on
+  // this machine and blocks unsigned executables, which rules out MinGW's
+  // (unsigned) cc1.exe/cc1plus.exe. Firmware builds stay on the Windows side -
+  // never run `pio run` through this task or in a WSL shell, or PlatformIO will
+  // fetch a second xtensa toolchain into Linux to build an image it cannot flash.
+  //
+  // `bash -lc` forces a login shell so ~/.local/bin (where pipx installs pio) is
+  // on PATH; a bare `wsl pio ...` fails with "command not found".
+  //
+  // The problem matcher overrides $gcc's default absolute fileLocation: the build
+  // emits repo-relative paths (src/display_format.cpp:93:1), and resolving them
+  // against ${workspaceFolder} is what makes an error clickable on the Windows
+  // side. Absolute paths would arrive as /mnt/c/... and fail to map.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Host tests (WSL)",
+      "detail": "pio test -e native — schedule, display formats, datetime",
+      "type": "shell",
+      "command": "wsl bash -lc \"pio test -e native\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": {
+        "base": "$gcc",
+        "fileLocation": ["relative", "${workspaceFolder}"]
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}

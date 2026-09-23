@@ -5,8 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 You are a senior software engineer with 15+ years of experience. When providing code solutions, follow these principles:
 
 ## DESIGN PRINCIPLES
-- Apply SOLID principles strictly (Single Responsibility, Open/Closed, Liskov, Interface Segregation, Dependency Inversion).
-- Minimize coupling between classes/modules. Prefer dependency injection over hard dependencies.
+- Apply SOLID principles, with one deliberate exception recorded below for Dependency Inversion.
+- **Constructor injection of concrete types**, not interfaces. Each collaborator has exactly one implementation and a vtable costs flash plus an indirect call on a render path that runs 10x/second, so the objects are injected but not abstracted. The logic actually worth substituting is already pure (`schedule.cpp`, the format renderers) and is tested directly on the host. The one interface that earns its keep is `RebootScheduler`, which exists to break an ownership cycle: `WebPortal` constructs the API handlers, so they must not depend back on `WebPortal`.
+- Objects own their state. A class that is really a façade over file-static globals is not injectable no matter how it is passed around; `RtcService` and `SegmentDisplay` hold their hardware and cache as members for this reason.
+- Minimize coupling between classes/modules.
 - Favor composition over inheritance.
 - Use clear abstractions and interfaces to separate concerns.
 - Within a file, prefer classes (including singletons). Across files, prefer functions for module boundaries.
@@ -62,9 +64,25 @@ python tools/pack_songs.py dump "Pacman Intro Theme"
 
 # Clean build artifacts
 pio run --target clean
+
+# Host unit tests for the pure modules (schedule, display formats, datetime).
+# Requires a host C++ compiler (g++/clang) on PATH; there is none on the
+# author's Windows box, so see the format-catalog guard below for the checks
+# that run everywhere.
+pio test -e native
+
+# Format-catalog invariants: key uniqueness, defaults resolvable, overflow
+# fallbacks present. Runs automatically as a pre-script on every `pio run`.
+python tools/check_formats.py
 ```
 
-There are no automated tests. Validation is done by flashing the firmware and observing behavior on device. Serial output at 74880 baud includes stack traces decoded by `monitor_filters = esp8266_exception_decoder`.
+Validation is primarily by flashing the firmware and observing behavior on device. Serial output at 74880 baud includes stack traces decoded by `monitor_filters = esp8266_exception_decoder`.
+
+Two automated layers back that up:
+- **`tools/check_formats.py`** runs on every build and fails it on a duplicate format key, a default naming a nonexistent format, or a combined `hhh:mm` format with no split fallback. It parses the C++ rather than compiling it, so it needs only Python.
+- **`test/` holds Unity suites** for `schedule.cpp`, `display_format.cpp`, and `datetime_validation.cpp` - the modules that are pure by design. They run via `pio test -e native` wherever a host compiler exists; `test/stubs/` supplies host stand-ins for `Arduino.h` and RTClib's `DateTime`.
+
+The firmware build is warning-clean with `-Wall -Wextra`. `-Wno-deprecated-copy` is applied to C++ only (via `tools/cxx_flags.py`) because RTClib declares `DateTime`'s copy constructor without its assignment operator, and eleven instances of that third-party defect would drown our own warnings.
 
 ## ESP8266 CLOCK PROJECT CONVENTIONS
 
@@ -93,7 +111,8 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 ### Serial / I2C / RTC time
 - Serial at 74880 baud for readable ESP8266 boot output.
 - Initialize I2C early in `setup()` with explicit SDA/SCL pins before probing the RTC.
-- `ClockApplication` owns `RtcService` from `rtc_ds3231.h` and injects it into the controller, display manager, and config API. The module keeps its ISR bridge and hardware state private.
+- `ClockApplication` owns `RtcService` from `rtc_ds3231.h` and injects it into the controller, display manager, and config API. **All of its state is in members**; the only file-static state is the three `volatile` counters the SQW ISR writes, which are genuinely singleton (one SQW pin) and kept out of the object so the `IRAM_ATTR` handler does not chase a pointer.
+  - `RtcStatus` is a trivially-copyable POD with a fixed `char error[48]`, not a `String`. `getStatus()` is used as a cheap predicate (`isHealthy()`, the 2s health poll), and a `String` member made every one of those calls allocate and free on the heap.
   - `begin()`, `getStatus()`, `getNow()` (live I2C read), and `setNow()` (also resyncs the cache) provide device operations.
   - SQW processing uses `beginSqwProcessing()` and `consumeSqwPulse(RtcTick&)`. The returned sample carries local time, its ISR phase reference, and a discontinuity flag.
   - RTC servicing owns the :00/:30 live-read resync, before schedules use the sample. Logging only prints at second zero. Pending count and latest edge are consumed together; backlogs, recovery, and corrected time jumps suppress past announcements. Stale queued edges wait for a fresh pulse; an edge during I2C defers resync to the next loop.
@@ -104,6 +123,7 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 
 ### Logging
 - `log.h` provides `LOG_PRINTLN(msg)` and `LOG_PRINTF(fmt, ...)` macros.
+- **A log line costs no I2C transaction and no heap allocation.** The timestamp comes from `RtcService`'s software cache via a static provider that never reads the chip; before the cache is seeded the logger prints `--:--:--` rather than falling back to a bus read. `RtcService::begin()` seeds the cache from the read it already performs, so boot lines still carry a real time. This matters because logging is the most frequent time consumer in the system, and it sits inside web handlers and the SQW consume path - the whole reason `getNowCached()` exists.
 - Each line is prefixed with `logCurrentTime()`, the peak cont-stack usage in bytes (bare value, of 4096), and `logSourceName(__FILE__):__LINE__`.
 - Both macros keep their strings in **flash** (`PSTR` + `Serial.printf_P`). On the ESP8266 a plain string literal occupies RAM for the life of the program; moving the log strings to flash is what holds static RAM under 50% (OTA headroom). Consequences:
   - `LOG_PRINTLN(msg)` and the `fmt` of `LOG_PRINTF` **must be string literals**. For a runtime string, use `LOG_PRINTF("%s", value)`.
@@ -114,8 +134,10 @@ There are no automated tests. Validation is done by flashing the firmware and ob
 The display system is layered as follows:
 
 1. **`display_format.h/cpp`** - the clock/counting format catalog and pure renderers (no I/O).
-   - `config.h` owns the persisted `Mode` enum. `display_format.h` owns `FormatGroup`, `DisplayFormatInfo`, `displayFormatCount()`, `displayFormatInfo()`, `renderCountingFormat()`, and `renderClockFormat()`.
-   - The **single source of truth** is in `display_format.cpp`: each `FormatSpec` is `{label, PanelSpec panels[3]}`, where a `PanelSpec` is a declarative `{Shape, Field a, Field b}` triple (e.g. `kColon` + `kHours`/`kMinutes`). The label is human-readable only; the panel shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are **derived** from the panel shapes (`kColonTenths` / `kColonBlink`), so a row's scheduling metadata can never drift from what it renders.
+   - `config.h` owns the persisted `Mode` enum. `display_format.h` owns `FormatGroup`, `DisplayFormatInfo`, `displayFormatCount()`, `displayFormatInfo()`, `displayFormatKey()`, `displayFormatLabel()`, `displayFormatIndexForKey()`, `renderCountingFormat()`, and `renderClockFormat()`.
+   - **A format's identity is its key, not its table position.** Each row has a stable `key` (e.g. `"yyyy-mmdd-hhmm"`) that is what `/config.json` stores and what the web dropdowns post; rows may be added, removed, or reordered freely. An index is an in-memory detail only, converted at the serialization boundary. This is the same rule sound names follow, and it exists because the old index-valued scheme had already produced three disagreeing claims about the default clock format. `tools/check_formats.py` enforces key uniqueness and default resolvability on every build.
+   - Keys and labels live in **parallel PROGMEM tables** (`kCountingKeys`/`kCountingLabels`/`kClockKeys`/`kClockLabels`), indexed identically to the spec table; `static_assert`s hold the three in lockstep. They are read by copying into a caller buffer (`kFormatKeyLength` / `kFormatLabelLength`) because a `const char*` member would only put the pointer in flash, not the text - 1.2KB of DRAM at stake. `displayFormatIndexForKey()` compares with `strncmp_P` and needs no buffer.
+   - The **single source of truth** for rendering is in `display_format.cpp`: each `FormatSpec` is `{PanelSpec panels[3]}`, where a `PanelSpec` is a declarative `{Shape, Field a, Field b}` triple (e.g. `kColon` + `kHours`/`kMinutes`). The label is human-readable only; the panel shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are **derived** from the panel shapes (`kColonTenths` / `kColonBlink`), so a row's scheduling metadata can never drift from what it renders.
    - Countdown and CountUp share `kCountingFormats`; the two modes cannot drift apart.
    - `renderCountingFormat()` and `renderClockFormat()` return a complete `DisplayFrame` by interpreting the panel shapes in `renderPanels()`.
    - Label tokens: counting uses `dd`/`hh`/`mm`/`ss`/`u` (tenths) and `hhh` (total hours = days*24+hours); clock uses `YYYY`/`MM`/`DD`/`DOW`/`hh`/`mm`/`ss`/`u`. `H` and `N` are labels rendered as lowercase `h`/`n`; `DOW` renders Sun/non/tu/uEd/thu/Fri/Sat (7-segment-safe forms).
@@ -124,7 +146,10 @@ The display system is layered as follows:
    - Counting formats hide leading zero panels via `suppressLeadingZeroPanels()`: panel 0 blanks when zero, panel 1 only when panel 0 is already blank; the last panel always renders.
    - Numeric-only panels are right-justified across the four characters (`7` renders as `"   7"`). For colon formats, the value left of the colon is blank-padded, not zero-padded (` 9:05`). When a blinking colon is off, the time renders without a separator (` 905`) so all digits remain visible.
 
-2. **`display.h/cpp`** - `ClockApplication` owns `SegmentDisplay`, which wraps 3 `TM1637Display` objects and is attached to `DisplayManager` during startup.
+2. **`display_frame.h`** - `DisplayFrame` plus the panel-count constants, and nothing else: no driver, no Arduino dependency. Split out of `display.h` so the pure renderers (and their host tests) can build frames without the TM1637 library.
+
+2b. **`display.h/cpp`** - `ClockApplication` owns `SegmentDisplay`, which owns 3 `TM1637Display` objects **as members** (brace-initialized with their pin pairs) and is attached to `DisplayManager` during startup.
+   - `ASCII_SEGMENTS` is `PROGMEM`, read through `pgm_read_byte()`; 96 bytes of DRAM for one flash read per rendered character.
    - `begin(brightness)`, `setBrightness(0-7)`, `showFrame(frame)` (takes the 3-panel `DisplayFrame` from `display.h`), `blank()`.
    - Panel strings use `:` or `;` between the second and third visible slots as non-consuming markup for the panel's center colon. This hardware has no decimal points; `.` has no special rendering behavior.
    - Caches last-written segments per panel; skips hardware write on identical content. At each wall-clock `:00:00`, `ClockController` asks `DisplayManager::notifySecondBoundary(true)` to invalidate this cache; the normal render in the same loop then resends all four digits on all three panels, correcting hardware state that drifted without visibly blanking the display.
@@ -144,13 +169,16 @@ The display system is layered as follows:
    - Tenths values come from the injected RTC service's `msIntoSecond(nowMs)`, not `millis() % 1000`. `notifySecondBoundary()` invalidates the render throttle on each accepted SQW pulse. Demo tenths remain deadline-derived.
    - When `ClockConfig.display.clockUse12Hour` is true, hours are converted to the 1-12 scale locally in the clock renderer only; countdown/countup are unaffected.
 
-4. **`clock_controller.h/cpp`** - owns mode resolution, ordinary countdown completion, and the shared `ScheduledModeController`. It resolves the complete initial view before applying display settings. Count-up's `now` origin is captured once per config apply and retained in the display's base view across time syncs. On each `RtcTick`, it advances the active schedule and ordinary countdown independently of overlays; discontinuities silently rebase both. Expired countdowns on config apply/time sync show the final message without a cue. Live completion replaces ordinary information but preserves a hardware fault. Display rendering never detects or announces completion.
+4. **`clock_controller.h/cpp`** - owns mode resolution, ordinary countdown completion, and the shared `ScheduledModeController`. It does **not** tunnel sound previews or catalog queries: six pass-throughs with no logic of their own had turned it into a service locator for the web handlers, so `ConfigApi` holds `SoundPlayer&` directly. It resolves the complete initial view before applying display settings. Count-up's `now` origin is captured once per config apply and retained in the display's base view across time syncs. On each `RtcTick`, it advances the active schedule and ordinary countdown independently of overlays; discontinuities silently rebase both. Expired countdowns on config apply/time sync show the final message without a cue. Live completion replaces ordinary information but preserves a hardware fault. Display rendering never detects or announces completion.
 5. **`time_api.h/cpp`** - owns `GET /api/time` and `POST /api/time`; reads through `RtcService` and synchronizes through `ClockController`.
 
 ### Scheduled modes
 
 - **`schedule.h/cpp`** owns pure `evaluateFridaySchedule()` and `evaluateTradingSchedule()` calculations. Both return `ScheduleDecision`: a clock/countdown view and a named next boundary (`kind`, `atLocalSeconds`, Trading `sessionIndex`). Exact boundaries belong to the following interval; targets are strictly future for valid inputs. Times are local wall-clock seconds, not UTC instants.
 - **`scheduled_mode.h/cpp`** owns one `ScheduledModeController`, including the shared previous-decision/time tracker, weekly sunset cache, view mapping, message/song pairing, and approach-alert selection. It is ticked on accepted RTC samples, never on a logging interval.
+- **`tick()` refreshes the sunset cache once, up front; `evaluate()` is `const` and pure with respect to it.** Previously `evaluate()` wrote the cache, so `crossedBoundary()` - a predicate - moved it as a side effect, and correctness depended on a documented statement order. `refreshSunsets()` is the only writer and returns early outside Friday mode.
+- **`viewFor()` dispatches to `fridayViewFor()` or `tradingViewFor()`.** The combined version reached for `friday_.clockFmt` on any clock decision, which was correct only because `evaluateTradingSchedule()` happens never to return one; the split makes that combination unrepresentable rather than latently wrong. `test_trading_always_counts_down` pins the underlying property down.
+- Two scheduled modes are deliberately **not** abstracted behind a strategy table. With exactly two, four function pointers and three context structs would add more machinery than the `mode_` branches cost. Revisit when a third mode actually exists.
 - A live crossing requires `previousTime < previousBoundary <= now`, is at most five seconds late, and must not have skipped another boundary. Boot, config apply, browser time sync, backward jumps, and RTC discontinuities install state silently. `reset()` invalidates both remembered state and the sunset cache. `start(now)` seeds the initial decision without announcing it.
 - Friday displays clock from Saturday sunset to Friday midnight, countdown to Friday sunset, then countdown to Saturday sunset. Friday midnight is a silent boundary. Only Friday sunset has a message/song; both sunsets have their respective generated approach alerts.
 - Sunset uses `calculateSunset()` with the physical device location and numeric UTC offset, cached for the most recent Friday. The 18:00 local anchor selects the correct UTC calculation date; invalid coordinates or NaN fall back to local 18:00.
@@ -202,9 +230,10 @@ The display system is layered as follows:
 
 ### Storage / config
 - `ClockConfig` (in `config.h`) holds: `activeMode`; display, counting, Friday, Trading, message, and location groups; and `timezone` with its IANA name and numeric UTC offset.
+- **Every config struct member has a default member initializer.** `defaults.cpp` then assigns only what differs from zero, so a field added later is initialized by construction rather than by remembering to add a line - the previous hand-maintained initializer could silently persist indeterminate bytes to `/config.json`.
 - `display.clockUse12Hour` serializes as `display.clock12Hour` (boolean) in `/config.json`. Default `false` (24-hour).
 - `ClockConfig.friday` adds `blinkBeforeMinutes` and `blinkAfterMinutes`, serialized as `display.modes.friday.blinkBeforeMinutes` / `blinkAfterMinutes` and clamped by `sanitizeBlinkMinutes` (0-240; default 0 = off, so existing `/config.json` files are unaffected).
-- `ClockConfig.messages` stores `splash`, `final`, `fridaySunset`, `tradingOpen`, and `tradingClose`; they serialize under `display.messages` and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Trading boundary defaults are `"OPEN"` and `"CLOSE"`.
+- `ClockConfig.messages` stores `splash`, `final`, `fridaySunset`, `tradingOpen`, and `tradingClose`; they serialize under `display.messages` and are sanitized with `sanitizeDisplayMessage` (max 12 printable ASCII characters). Every buffer in the chain - `MessageConfig`, `OverlayState::message`, `DisplaySettings::finalMessage`, `BoundaryCue::message` - is `kDisplayMessageLength` (`config.h`), the same one-constant-per-concept rule `kSoundNameLength` follows. The buffer is deliberately much larger than the 12-character cap: the shipped messages use leading spaces to position text across the three panels. Trading boundary defaults are `"OPEN"` and `"CLOSE"`.
 - `ClockConfig.sound` mirrors `MessageConfig` field-for-field (`startup`, `final`, `fridaySunset`, `tradingOpen`, `tradingClose`) plus `enabled`, `volumePercent`, and the generated `boundaryAlert` settings; it serializes under a top-level `sound` object, not under `display`. Names are sanitized with `sanitizePrintableText` into `kSoundNameLength` buffers. Patch semantics mean an existing `/config.json` with no `sound` object loads unchanged from the defaults.
 - `ClockConfig.trading` contains its normal/over-24h formats and a `TradingSchedule`. JSON stores `display.modes.trading.intervalCount` plus both entries in `intervals`, even when only session 1 is enabled, so disabling session 2 does not discard its configured times. Older array-only JSON remains readable: its array length becomes the enabled count.
 - `LocationInfo` contains `latitude`, `longitude`, and `zipcode[6]`. `ClockConfig.locations` keeps distinct `device` and `sunsetTest` values. `/config.json` retains separate `location` and `sunset` objects. Do not cross-read one for the other or use one as a fallback for the other.
@@ -214,6 +243,10 @@ The display system is layered as follows:
 - **`config_serializer.h/cpp` is the only home of the JSON schema, in both directions.** Never spell out config field paths anywhere else.
   - Struct → JSON: `serializeClockConfig(doc, config)`, `serializeWifiConfig(doc, wifi)` (full, for disk), `serializeWifiStatus(doc, wifi)` (no station password, for HTTP responses).
   - JSON → struct: `applyJsonToClockConfig(root, cfg)` and `applyJsonToWifiConfig(root, wifi)` use **patch semantics** (absent fields untouched). Loading `/config.json` (base = defaults) and applying a `POST /api/config` payload (base = loaded config) are the same operation through the same function. `applyJsonToClockConfig` returns `nullptr` or a static error-JSON for the first invalid value; it keeps applying the remaining fields so one bad value can't wipe the rest of the file on load, and API callers discard the partial cfg on error.
+- **`ConfigManager` hands out its cache by reference** (`clockConfig()`, `wifiConfig()`), not by value. `ClockConfig` is ~700 bytes and the ESP8266's cont stack is 4KB; a save path was holding three copies at once. A `static_assert` caps `sizeof(ClockConfig)` so the budget cannot rot the way the old comment did (it claimed ~450). Callers that mutate copy explicitly.
+- **`defaults.h` fills a caller's object** (`initDefaultClockConfig(out)`) and exposes individual defaults (`defaultActiveMode()`, `defaultTradingSchedule()`, `defaultClockFormatKey()`, ...) for validation paths that need one fallback. Neither a return-by-value nor a cached static instance was affordable: the first stacked ~700 bytes per call, the second cost the same permanently in DRAM.
+- `/config.json` carries `configVersion` (`kConfigSchemaVersion` in `config_serializer.h`). Bump it only for a change older firmware cannot read; adding a patch-semantics field does not need it, and reordering the format catalog is not a schema change because selections are stored as keys.
+- `writeAll()` is split into `serializeToTemp()` / `verifyTemp()` / `installVerifiedTemp()` so the serialization `JsonDocument` is destroyed before the verification one is built, instead of both being live.
 - `ClockApplication` owns `ConfigManager` and `WifiConnectionManager` and injects them into the web APIs. Configuration saves serialize the complete cached `DeviceConfig` through a verified temporary file and a recoverable backup/rename sequence. Boot prefers a readable JSON-object primary, then `/config.bak`; unreadable files remain intact if neither loads. A surviving backup is retained until the replacement is installed. This is recovery across multiple operations, not one atomic transaction.
 - **`storage_manager.h/cpp`** - `StorageManager::ensureMounted(context)` mounts LittleFS on demand with context-rich failure logging; use it instead of calling `LittleFS.begin()` directly.
 - **`datetime_validation.h/cpp`** validates real calendar dates (2000-2099) and times. RTC sync and sunset APIs retain their 2020 minimum; saved count-up/countdown dates may use 2000 onward. Config accepts `YYYY-MM-DD HH:MM[:SS]` (space or T), stores canonical seconds, and allows exactly `now` only for count-up. Invalid API dates are rejected; invalid disk fields retain defaults. Format indexes are range-checked before narrowing.
@@ -232,8 +265,10 @@ The display system is layered as follows:
   - `web/common.js` owns the shared page helpers (`$`, `api`/`apiPost`, `setStatus`, error/slow-load beacons to `POST /api/client-log`, `reportFieldMismatch`, `setFieldFromConfig`, `toggleSound`/`stopSound`); `web/common.css` is the single stylesheet. Both are served hash-versioned (`?v=`) with an immutable cache header, so each page transfers only its own small body; pages stay `no-cache`.
   - Runs `DNSServer` for captive portal only when in AP mode.
   - UI pages: `GET /`, `/settings`, `/files`, `/format`, `/time`, `/sunset`, `/messages`, `/sound`, `/location`, `/wifi`, `/view`.
+  - `GET /api/formats` returns `{countdown|countup|clock: [{key, label}]}`. The key is what the page posts back and what `config.json` stores; sending the index would make a dropdown's value depend on this firmware's table order.
   - REST API: `GET /api/status` (device name, configured mode, and live demo state for the home page), `POST /api/config`, `GET /api/config`, `GET /api/formats`, `GET /api/sounds`, `POST /api/sound/test`, `POST /api/mode`, `POST /api/brightness`, `GET|POST /api/time`, `POST /api/sunset`, `GET /api/zipcode/lookup`, `POST /api/demo/test`, `POST /api/message/test`, `POST /api/field-mismatch`, `GET /api/wifi/status`, `GET /api/wifi/scan`, `POST /api/wifi/connect`.
   - File management: `GET /api/files`, `GET|DELETE /api/file`, `POST /api/file/upload`.
+  - **`GET /api/file` refuses `/config.json` with 403.** That file stores the WiFi station password in plain text, which `serializeWifiStatus()` deliberately withholds from `/api/config`; streaming the raw bytes handed it straight back. `/view` reads `/api/config` for that one file. Deliberately a refusal rather than a sanitized body under the same URL - "GET this path returns something other than the bytes at this path" is the leaky abstraction this codebase avoids elsewhere. `FileApi::isCredentialBearingPath()` names the rule. Note that **no endpoint is authenticated**; the threat model is a trusted LAN and that decision is still open.
   - `GET /api/file` mirrors the served bytes to the serial monitor for **`/config.json` only** (`FileApi::logFileContent`); every other path returns immediately. Serial moves at ~7.5 KB/s, so mirroring whatever the browser opens would stall the loop for minutes (`/zipcodes.bin` is 164 KB) - that restriction is the point, and a 4 KB cap backs it up. It runs **after** the response is streamed, rewinds to the served offset, and `yield()`s per 64-byte chunk. `File::read()` returns `int`; never widen it into the `size_t` length for `Serial.write()`.
     - The bytes are re-indented on the way out by `JsonIndenter` (file-local, in `file_api.cpp`), a byte filter that inserts newlines and two-space indents without parsing. **Deliberately not a parse-then-`serializeJsonPretty()`**: this mirror exists to show what is actually on disk, and a config worth reading on the console is often one that no longer parses. A filter cannot fail, allocates nothing, and survives the 4 KB truncation mid-document. It discards existing whitespace rather than adding to it, passes string contents through untouched, and keeps `{}`/`[]` on one line - output verified byte-identical to `serializeJsonPretty()` on the real config.
   - AP-mode radio settings in `wifi_connection_manager.cpp` (11g phy mode, channel survey, 17 dBm TX) are evidence-backed fixes for transfer stalls with power-save phone clients; code comments record what was observed, including two settings that were tried and made things worse. Do not change them without new on-device evidence.
