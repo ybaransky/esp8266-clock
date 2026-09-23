@@ -5,8 +5,20 @@
   // never run `pio run` through this task or in a WSL shell, or PlatformIO will
   // fetch a second xtensa toolchain into Linux to build an image it cannot flash.
   //
-  // `bash -lc` forces a login shell so ~/.local/bin (where pipx installs pio) is
-  // on PATH; a bare `wsl pio ...` fails with "command not found".
+  // PLATFORMIO_BUILD_DIR is the important part. PlatformIO keeps ONE
+  // project.checksum for the whole build directory and wipes the directory when
+  // it does not match, so the Windows and Linux installs - which compute
+  // different checksums - were deleting each other's output every time you
+  // switched. Symptoms: a full firmware rebuild on every `pio run`, and the C/C++
+  // extension warning "Cannot find .pio/build/d1_mini" because
+  // c_cpp_properties.json points at a directory the test run had just removed.
+  // Giving WSL its own build dir on the Linux filesystem fixes that and is
+  // roughly 35% faster than building under /mnt/c.
+  //
+  // Single quotes around the bash command so PowerShell leaves $HOME alone and
+  // bash expands it inside WSL. `bash -lc` forces a login shell so ~/.local/bin
+  // (where pipx installs pio) is on PATH; a bare `wsl pio ...` fails with
+  // "command not found".
   //
   // The problem matcher overrides $gcc's default absolute fileLocation: the build
   // emits repo-relative paths (src/display_format.cpp:93:1), and resolving them
@@ -18,7 +30,7 @@
       "label": "Host tests (WSL)",
       "detail": "pio test -e native — schedule, display formats, datetime",
       "type": "shell",
-      "command": "wsl bash -lc \"pio test -e native\"",
+      "command": "wsl bash -lc 'PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native'",
       "options": { "cwd": "${workspaceFolder}" },
       "group": { "kind": "test", "isDefault": true },
       "problemMatcher": {

@@ -66,10 +66,12 @@ python tools/pack_songs.py dump "Pacman Intro Theme"
 pio run --target clean
 
 # Host unit tests for the pure modules (schedule, display formats, datetime).
-# Requires a host C++ compiler (g++/clang) on PATH; there is none on the
-# author's Windows box, so see the format-catalog guard below for the checks
-# that run everywhere.
-pio test -e native
+# Must run where a host C++ compiler exists. On the author's Windows box that
+# means WSL: Smart App Control is enforced and blocks unsigned executables, so
+# MinGW's cc1.exe/cc1plus.exe cannot launch. PLATFORMIO_BUILD_DIR is required -
+# see "Sharing .pio between two PlatformIO installs" below.
+PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native
+# Or in VS Code: Ctrl+Shift+P -> Tasks: Run Test Task (.vscode/tasks.json)
 
 # Format-catalog invariants: key uniqueness, defaults resolvable, overflow
 # fallbacks present. Runs automatically as a pre-script on every `pio run`.
@@ -81,6 +83,19 @@ Validation is primarily by flashing the firmware and observing behavior on devic
 Two automated layers back that up:
 - **`tools/check_formats.py`** runs on every build and fails it on a duplicate format key, a default naming a nonexistent format, or a combined `hhh:mm` format with no split fallback. It parses the C++ rather than compiling it, so it needs only Python.
 - **`test/` holds Unity suites** for `schedule.cpp`, `display_format.cpp`, and `datetime_validation.cpp` - the modules that are pure by design. They run via `pio test -e native` wherever a host compiler exists; `test/stubs/` supplies host stand-ins for `Arduino.h` and RTClib's `DateTime`.
+
+**Sharing `.pio` between two PlatformIO installs.** Firmware builds run under
+Windows and host tests run under WSL, so two PlatformIO cores operate on the
+same project. PlatformIO keeps a single `project.checksum` for the whole build
+directory and **wipes that directory when the checksum does not match** - and the
+two installs compute different checksums. Left alone they delete each other's
+output on every switch, which shows up as a full firmware rebuild on every
+`pio run` plus a C/C++ extension warning that `.pio/build/d1_mini` cannot be
+found (`c_cpp_properties.json` points at the directory the test run just
+removed). Always give the WSL side its own build directory via
+`PLATFORMIO_BUILD_DIR`, as the command above and `.vscode/tasks.json` do.
+Putting it on the Linux filesystem rather than under `/mnt/c` is also about 35%
+faster.
 
 The firmware build is warning-clean with `-Wall -Wextra`. `-Wno-deprecated-copy` is applied to C++ only (via `tools/cxx_flags.py`) because RTClib declares `DateTime`'s copy constructor without its assignment operator, and eleven instances of that third-party defect would drown our own warnings.
 
