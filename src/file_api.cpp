@@ -80,6 +80,15 @@ void JsonIndenter::write(uint8_t byte) {
 // FileApi
 // -----------------------------------------------------------------------------
 
+// Paths whose bytes must never leave the device over HTTP. Only /config.json
+// qualifies today: it is the one file that stores a secret (the WiFi station
+// password). Kept as a named predicate so a future secret-bearing file is one
+// line away from being covered, and so handleDeleteFile()/handleUpload() can
+// be pointed at it too if that is ever wanted.
+bool FileApi::isCredentialBearingPath(const String& path) {
+  return path == "/config.json";
+}
+
 const char* FileApi::mimeTypeForPath(const String& path) {
   const int dot = path.lastIndexOf('.');
   if (dot < 0) return "application/octet-stream";
@@ -213,6 +222,21 @@ void FileApi::handleReadFile() {
   const String path = normalizedFilePath(server_.arg("name"));
   if (path.isEmpty()) {
     responder_.sendText(400, "Invalid file name");
+    return;
+  }
+  // /config.json holds the WiFi station password in plain text. serializeWifi-
+  // Status() deliberately withholds that field from /api/config, and streaming
+  // the raw file here would hand it straight back - so this endpoint refuses
+  // the file outright and the viewer reads /api/config instead.
+  //
+  // Deliberately a refusal rather than serving a sanitized body under the same
+  // URL: "GET this path returns something other than the bytes at this path"
+  // is the kind of leaky abstraction that surprises the next reader. The serial
+  // mirror below still shows the real on-disk bytes, which is physically local.
+  if (isCredentialBearingPath(path)) {
+    LOG_PRINTF("/api/file refused %s: contains credentials; use /api/config",
+               path.c_str());
+    responder_.sendText(403, "Not served: contains credentials. Use /api/config");
     return;
   }
   if (!storageManager.ensureMounted("read file")) {

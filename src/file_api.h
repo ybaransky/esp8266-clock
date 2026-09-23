@@ -22,6 +22,9 @@ class FileApi {
   static const char* mimeTypeForPath(const String& path);
   static String normalizedFilePath(const String& requestedName);
   static String uploadFilePath(const String& uploadName);
+  // True for a file whose raw bytes must not be served over HTTP because it
+  // stores a secret. See handleReadFile().
+  static bool isCredentialBearingPath(const String& path);
   static void sendJsonEscapedString(ESP8266WebServer& server, const String& value);
 
   void closeUploadFile();
