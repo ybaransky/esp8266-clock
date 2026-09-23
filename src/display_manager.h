@@ -120,7 +120,7 @@ struct OverlayTransition {
 // Owns the payload and lifecycle flags for the currently installed overlay.
 struct OverlayState {
   Overlay overlay = Overlay::kNone;  // Active overlay type.
-  char message[64] = "";          // Text for message overlays; unused otherwise.
+  char message[kDisplayMessageLength] = "";  // Text for message overlays; unused otherwise.
   PagedDisplayPayload paged;      // kPagedMessage pages; unused otherwise.
   OverlayTransition transition;  // Automatic expiration policy.
 };
@@ -129,7 +129,7 @@ struct OverlayState {
 // Copied from ClockConfig by applySettings() to avoid holding the full config.
 struct DisplaySettings {
   DisplayConfig display{};  // Brightness and 12-hour presentation.
-  char finalMessage[64] = "";  // Shown on countdown completion and demo end.
+  char finalMessage[kDisplayMessageLength] = "";  // Shown on countdown completion and demo end.
 
   static DisplaySettings fromConfig(const ClockConfig& config);
 };

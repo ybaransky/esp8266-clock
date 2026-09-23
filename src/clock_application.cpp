@@ -184,8 +184,7 @@ void ClockApplication::processButtonEvents() {
 }
 
 void ClockApplication::checkRtcHealth(uint32_t nowMs) {
-  if (static_cast<long>(nowMs - lastRtcHealthCheckMs_) <
-      static_cast<long>(kRtcHealthPollIntervalMs)) return;
+  if ((nowMs - lastRtcHealthCheckMs_) < kRtcHealthPollIntervalMs) return;
   lastRtcHealthCheckMs_ = nowMs;
   const bool healthy = rtc_.isHealthy();
   if (!healthy) {

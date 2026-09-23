@@ -22,9 +22,13 @@ uint32_t intervalForRefreshRate(RefreshRate rate) {
   return rate == RefreshRate::kOneTenth ? kTenthMs : kSecondMs;
 }
 
-void copyMessage(char destination[64], const char* source) {
-  strncpy(destination, source, 63);
-  destination[63] = '\0';
+// Both the source (a config or BoundaryCue field) and the destination (an
+// OverlayState buffer) are kDisplayMessageLength, so one constant bounds the
+// whole chain instead of a 64 repeated at each end and a 63 in the middle.
+// The reference-to-array parameter makes the size part of the type, so a
+// caller cannot pass a shorter buffer.
+void copyMessage(char (&destination)[kDisplayMessageLength], const char* source) {
+  strlcpy(destination, source, kDisplayMessageLength);
 }
 
 void copyDisplayPanel(char destination[kDisplayPanelChars + 1], const char* source) {
@@ -66,16 +70,14 @@ bool DisplayScheduler::shouldRender(uint32_t nowMs, uint32_t intervalMs,
 }
 
 bool DisplayScheduler::toggleBlinkIfDue(uint32_t nowMs, uint32_t intervalMs) {
-  if (static_cast<long>(nowMs - blinkMs_) < static_cast<long>(intervalMs))
-    return false;
+  if ((nowMs - blinkMs_) < intervalMs) return false;
   blinkMs_ = nowMs;
   blinkOn_ = !blinkOn_;
   return true;
 }
 
 bool DisplayScheduler::toggleColonIfDue(uint32_t nowMs, uint32_t intervalMs) {
-  if (static_cast<long>(nowMs - colonMs_) < static_cast<long>(intervalMs))
-    return false;
+  if ((nowMs - colonMs_) < intervalMs) return false;
   colonMs_ = nowMs;
   colonVisible_ = !colonVisible_;
   return true;
@@ -342,8 +344,11 @@ bool DisplayManager::renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool for
 }
 
 bool DisplayManager::overlayExpired(uint32_t nowMs) const {
+  // Unsigned wraparound: "now is at or past the deadline" is the same test
+  // whether or not millis() has rolled over, as long as the deadline is less
+  // than ~24 days out. Every overlay duration here is seconds.
   return overlay_.transition.hasExpiration &&
-         static_cast<long>(nowMs - overlay_.transition.expiresAtMs) >= 0;
+         ((nowMs - overlay_.transition.expiresAtMs) < 0x80000000UL);
 }
 
 bool DisplayManager::overlayBlinks() const {
@@ -512,8 +517,7 @@ bool DisplayManager::buildPagedMessageFrame(uint32_t nowMs, bool force,
   }
 
   bool pageChanged = false;
-  if (static_cast<long>(nowMs - paged.pageStartedAtMs) >=
-      static_cast<long>(paged.pageDurationMs)) {
+  if ((nowMs - paged.pageStartedAtMs) >= paged.pageDurationMs) {
     const uint8_t nextPage = paged.currentPage + 1;
     if (nextPage < paged.pageCount) {
       paged.currentPage = nextPage;
