@@ -104,29 +104,6 @@ void ClockController::showSplash(const char* message) {
   displayManager_.showSplash(message);
 }
 
-bool ClockController::playSound(const char* name) {
-  return sound_.play(name, millis());
-}
-
-void ClockController::previewBoundaryAlert(uint16_t frequencyHz,
-                                           uint16_t totalDurationSeconds,
-                                           uint8_t startingBeatsHz) {
-  sound_.previewBoundaryAlert(frequencyHz, totalDurationSeconds,
-                              startingBeatsHz, millis());
-}
-
-void ClockController::stopSound() {
-  sound_.stop();
-}
-
-bool ClockController::soundNamesAsJson(JsonArray array, SoundKind kind) {
-  return sound_.namesAsJson(array, kind);
-}
-
-uint32_t ClockController::soundDurationMs(const char* name) {
-  return sound_.durationMs(name);
-}
-
 View ClockController::activeView() const {
   return displayManager_.activeView();
 }

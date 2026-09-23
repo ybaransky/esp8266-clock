@@ -8,8 +8,8 @@
 #include "config_serializer.h"
 #include "config_validation.h"
 #include "log.h"
-#include "sound_player.h"  // SoundKind
-#include "web_server.h"
+#include "sound_player.h"
+
 
 namespace {
 
@@ -43,7 +43,7 @@ void ConfigApi::handleMessageTest() {
   JsonDocument doc;
   if (!responder_.parseJsonBody(doc, "/api/message/test")) return;
 
-  char message[64];
+  char message[kDisplayMessageLength];
   sanitizeDisplayMessage(doc["message"] | "", message, sizeof(message));
   if (doc["blink"] | false) {
     // Preview with the same blinking treatment the message gets for real
@@ -130,9 +130,9 @@ void ConfigApi::handleSounds() {
   JsonArray songs = doc["songs"].to<JsonArray>();
   JsonArray alerts = doc["alerts"].to<JsonArray>();
   const bool songsRead =
-      clockController_.soundNamesAsJson(songs, SoundKind::kSong);
+      sound_.namesAsJson(songs, SoundKind::kSong);
   const bool alertsRead =
-      clockController_.soundNamesAsJson(alerts, SoundKind::kAlert);
+      sound_.namesAsJson(alerts, SoundKind::kAlert);
   // Reported separately from an empty array: a device with no /songs.bin is
   // missing its filesystem image, which is worth saying out loud on the page
   // rather than showing as a dropdown that happens to have no entries.
@@ -145,7 +145,7 @@ void ConfigApi::handleSoundTest() {
   if (!responder_.parseJsonBody(doc, "/api/sound/test")) return;
 
   if (doc["stop"] | false) {
-    clockController_.stopSound();
+    sound_.stop();
     responder_.sendJson(200, "{\"message\":\"Stopped\"}");
     return;
   }
@@ -165,12 +165,12 @@ void ConfigApi::handleSoundTest() {
         boundaryAlert["totalDurationSeconds"].as<int>());
     const uint8_t startingBeatsHz = sanitizeBoundaryStartingBeatsHz(
         boundaryAlert["startingBeatsHz"].as<int>());
-    clockController_.previewBoundaryAlert(frequencyHz, totalDurationSeconds,
-                                          startingBeatsHz);
+    sound_.previewBoundaryAlert(frequencyHz, totalDurationSeconds,
+                                startingBeatsHz, millis());
     JsonDocument response;
     response["message"] = "Playing boundary alert";
     response["durationMs"] =
-        ClockController::boundaryAlertDurationMs(totalDurationSeconds);
+        static_cast<uint32_t>(totalDurationSeconds) * 1000UL;
     responder_.sendJsonDocument(200, response);
     return;
   }
@@ -184,7 +184,7 @@ void ConfigApi::handleSoundTest() {
   // Deliberately bypasses the master sound switch: pressing preview is an
   // explicit request to hear something, and staying silent would read as a
   // broken button rather than as a setting.
-  if (!clockController_.playSound(name)) {
+  if (!sound_.play(name, millis())) {
     LOG_PRINTF("/api/sound/test failed: no sound named \"%s\"", name);
     responder_.sendJsonError(404, "No such sound");
     return;
@@ -195,7 +195,7 @@ void ConfigApi::handleSoundTest() {
   // path for hearing the sound.
   JsonDocument response;
   response["message"] = "Playing";
-  response["durationMs"] = clockController_.soundDurationMs(name);
+  response["durationMs"] = sound_.durationMs(name);
   responder_.sendJsonDocument(200, response);
 }
 
@@ -229,7 +229,7 @@ void ConfigApi::handleSaveConfig() {
 
   if (wifiChanged) {
     responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
-    webPortal_.scheduleReboot(kRebootDelayMs);
+    rebootScheduler_.scheduleReboot(kRebootDelayMs);
   } else {
     responder_.sendJson(200, "{\"message\":\"Saved\"}");
   }

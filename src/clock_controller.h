@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <RTClib.h>
 
 #include "scheduled_mode.h"
@@ -10,7 +9,6 @@
 struct ClockConfig;
 enum Mode : uint8_t;
 enum class View : uint8_t;
-enum class SoundKind : uint8_t;
 class DisplayManager;
 class RtcService;
 class SoundPlayer;
@@ -31,25 +29,9 @@ class ClockController {
   void showInfo(const char* message, int32_t durationMs);
   void showSplash(const char* message);
 
-  // Plays a catalog sound by name, ignoring the master sound switch: every
-  // caller is an explicit user action (a preview button), where refusing to
-  // make a noise would just look broken. Returns false for an unknown name.
-  bool playSound(const char* name);
-  void previewBoundaryAlert(uint16_t frequencyHz,
-                            uint16_t totalDurationSeconds,
-                            uint8_t startingBeatsHz);
-  void stopSound();
-
-  // Fills `array` with every catalog sound name of `kind`. False when no
-  // catalog is readable, which the page shows as "no sounds installed" rather
-  // than an empty dropdown that looks like a bug.
-  bool soundNamesAsJson(JsonArray array, SoundKind kind);
-
-  // Playing time of a catalog sound in milliseconds; 0 when it is unknown.
-  uint32_t soundDurationMs(const char* name);
-  static uint32_t boundaryAlertDurationMs(uint16_t totalDurationSeconds) {
-    return static_cast<uint32_t>(totalDurationSeconds) * 1000UL;
-  }
+  // Sound previews and catalog queries are NOT routed through here. They have
+  // no application logic to add, and tunnelling them turned this class into a
+  // service locator for the web handlers. ConfigApi holds SoundPlayer directly.
   Mode activeMode() const { return mode_; }
   View activeView() const;
   bool demoActive() const;

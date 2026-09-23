@@ -89,7 +89,8 @@ ClockApplication::ClockApplication()
     : displayManager_(segmentDisplay_, rtc_),
       clockController_(displayManager_, rtc_, soundPlayer_),
       pageManager_(displayManager_),
-      webPortal_(clockController_, configManager_, wifiConnectionManager_, rtc_) {}
+      webPortal_(clockController_, configManager_, wifiConnectionManager_, rtc_,
+                 soundPlayer_) {}
 
 void ClockApplication::begin() {
   Serial.begin(74880);

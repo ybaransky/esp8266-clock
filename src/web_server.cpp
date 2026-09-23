@@ -20,10 +20,12 @@
 WebPortal::WebPortal(ClockController& clockController,
                      ConfigManager& configManager,
                      WifiConnectionManager& wifiConnectionManager,
-                     RtcService& rtc)
+                     RtcService& rtc,
+                     SoundPlayer& soundPlayer)
     : server_(80),
       responder_(server_),
-      configApi_(server_, responder_, clockController, configManager, *this),
+      configApi_(server_, responder_, clockController, configManager,
+                 soundPlayer, *this),
       timeApi_(server_, responder_, clockController, rtc),
       fileApi_(server_, responder_),
       locationApi_(server_, responder_),

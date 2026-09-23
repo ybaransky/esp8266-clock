@@ -5,12 +5,13 @@
 #include <ESP8266WebServer.h>
 
 #include "http_responder.h"
+#include "reboot_scheduler.h"
 
 struct ClockConfig;
 struct WifiConfig;
 class ClockController;
 class ConfigManager;
-class WebPortal;
+class SoundPlayer;
 
 // Handles clock-configuration HTTP endpoints by validating input and invoking application actions.
 class ConfigApi {
@@ -18,12 +19,14 @@ class ConfigApi {
   ConfigApi(ESP8266WebServer& server, HttpResponder& responder,
             ClockController& clockController,
             ConfigManager& configManager,
-            WebPortal& webPortal)
+            SoundPlayer& soundPlayer,
+            RebootScheduler& rebootScheduler)
       : server_(server),
         responder_(responder),
         clockController_(clockController),
         configManager_(configManager),
-        webPortal_(webPortal) {}
+        sound_(soundPlayer),
+        rebootScheduler_(rebootScheduler) {}
 
   void handleDemoTest();
   void handleMessageTest();
@@ -47,5 +50,6 @@ class ConfigApi {
   HttpResponder& responder_;       // Sends JSON/HTML API responses.
   ClockController& clockController_;  // Executes application-level clock actions.
   ConfigManager& configManager_;      // Loads, validates, and saves configuration.
-  WebPortal& webPortal_;  // Schedules a reboot after WiFi changes.
+  SoundPlayer& sound_;  // Catalog queries and preview playback for /sound and /format.
+  RebootScheduler& rebootScheduler_;  // Schedules a reboot after WiFi changes.
 };

@@ -8,26 +8,32 @@
 #include "file_api.h"
 #include "http_responder.h"
 #include "location_api.h"
+#include "reboot_scheduler.h"
 #include "time_api.h"
 #include "wifi_api.h"
 
 class ClockController;
 class ConfigManager;
 class RtcService;
+class SoundPlayer;
 class WifiConnectionManager;
 
 // Owns the HTTP/DNS servers, registers routes, and dispatches requests.
-class WebPortal {
+//
+// Implements RebootScheduler so the API handlers it owns depend on that
+// one-method interface rather than back on this class.
+class WebPortal : public RebootScheduler {
  public:
   WebPortal(ClockController& clockController,
             ConfigManager& configManager,
             WifiConnectionManager& wifiConnectionManager,
-            RtcService& rtc);
+            RtcService& rtc,
+            SoundPlayer& soundPlayer);
 
   void begin();
   void handleClients();
   void getNetworkInfo(String& ssid, String& ip) const;
-  void scheduleReboot(uint32_t delayMs);
+  void scheduleReboot(uint32_t delayMs) override;
 
  private:
   void logTrafficSummary();

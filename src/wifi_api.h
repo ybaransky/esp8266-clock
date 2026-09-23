@@ -5,9 +5,9 @@
 #include <ESP8266WebServer.h>
 
 #include "http_responder.h"
+#include "reboot_scheduler.h"
 
 class ConfigManager;
-class WebPortal;
 class WifiConnectionManager;
 
 // Handles WiFi status, scan, and credential-change HTTP endpoints.
@@ -16,12 +16,12 @@ class WifiApi {
   WifiApi(ESP8266WebServer& server, HttpResponder& responder,
           ConfigManager& configManager,
           WifiConnectionManager& wifiConnectionManager,
-          WebPortal& webPortal)
+          RebootScheduler& rebootScheduler)
       : server_(server),
         responder_(responder),
         configManager_(configManager),
         wifiConnectionManager_(wifiConnectionManager),
-        webPortal_(webPortal) {}
+        rebootScheduler_(rebootScheduler) {}
 
   void handleStatus();
   void handleScan();
@@ -32,5 +32,5 @@ class WifiApi {
   HttpResponder& responder_;       // Sends WiFi API responses.
   ConfigManager& configManager_;   // Persists requested station credentials.
   WifiConnectionManager& wifiConnectionManager_;  // Performs scans and connection changes.
-  WebPortal& webPortal_;  // Schedules reboot after credentials are saved.
+  RebootScheduler& rebootScheduler_;  // Schedules reboot after credentials are saved.
 };
