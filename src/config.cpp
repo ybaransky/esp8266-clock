@@ -20,7 +20,9 @@ static constexpr const char* kConfigBackupPath = "/config.bak";
 bool ConfigManager::ensureLoaded() {
     if (loaded_) return true;
 
-    DeviceConfig next{defaultClockConfig(), defaultWifiConfig()};
+    DeviceConfig next;
+    initDefaultClockConfig(next.clock);
+    next.wifi = defaultWifiConfig();
     if (!readAll(next)) {
         current_ = next;
         loaded_ = true;
@@ -88,12 +90,15 @@ bool ConfigManager::readAll(DeviceConfig& config) {
     return true;
 }
 
-bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
-    const uint32_t startedUs = micros();
-    if (!storageManager.ensureMounted(context)) return false;
+// Serializes config to the temp file. The JsonDocument is scoped to this
+// function so its pool is released before verifyTemp() builds its own -
+// holding both at once roughly doubled the peak heap for a save.
+bool ConfigManager::serializeToTemp(const DeviceConfig& config,
+                                    const char* context, size_t& bytes) {
     JsonDocument doc;
     // Callers guarantee config.clock is sanitized (defaults, loaded config,
     // or a save path that sanitized in place) - no extra copy at this depth.
+    // config outlives doc, which serializeClockConfig() requires.
     serializeClockConfig(doc, config.clock);
     serializeWifiConfig(doc, config.wifi);
 
@@ -103,7 +108,7 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
         LOG_PRINTF("Complete config write failed: cannot open temp file context=%s", context);
         return false;
     }
-    const size_t bytes = serializeJson(doc, file);
+    bytes = serializeJson(doc, file);
     file.flush();
     file.close();
     if (bytes == 0) {
@@ -111,7 +116,12 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
         LOG_PRINTF("Complete config write failed: serialization context=%s", context);
         return false;
     }
+    return true;
+}
 
+// Reads the temp file back and confirms it parses, so a truncated or corrupt
+// write is never installed over a good config.
+bool ConfigManager::verifyTemp(const char* context) {
     File verifyFile = STORAGE.open(kConfigTmpPath, "r");
     JsonDocument verifyDoc;
     const DeserializationError verifyError = deserializeJson(verifyDoc, verifyFile);
@@ -122,7 +132,12 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
                    verifyError.c_str(), context);
         return false;
     }
+    return true;
+}
 
+// Moves the verified temp file into place, keeping a recoverable copy of the
+// previous config until the replacement is installed.
+bool ConfigManager::installVerifiedTemp(const char* context) {
     const bool hadOriginal = STORAGE.exists(kConfigPath);
     const bool hadBackup = STORAGE.exists(kConfigBackupPath);
     // A surviving backup may be our only good copy after a failed recovery.
@@ -143,6 +158,18 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
         return false;
     }
     STORAGE.remove(kConfigBackupPath);
+    return true;
+}
+
+bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
+    const uint32_t startedUs = micros();
+    if (!storageManager.ensureMounted(context)) return false;
+
+    size_t bytes = 0;
+    if (!serializeToTemp(config, context, bytes)) return false;
+    if (!verifyTemp(context)) return false;
+    if (!installVerifiedTemp(context)) return false;
+
     const uint32_t elapsedMs = (micros() - startedUs + 500U) / 1000U;
     LOG_PRINTF("Complete config write: bytes=%u time=%lu ms context=%s",
                static_cast<unsigned>(bytes),
@@ -150,7 +177,7 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
     return true;
 }
 
-WifiConfig ConfigManager::loadWifiConfig() {
+const WifiConfig& ConfigManager::wifiConfig() {
     ensureLoaded();
     return current_.wifi;
 }
@@ -165,7 +192,7 @@ bool ConfigManager::saveWifiConfig(const WifiConfig& cfg) {
     return true;
 }
 
-ClockConfig ConfigManager::loadClockConfig() {
+const ClockConfig& ConfigManager::clockConfig() {
     ensureLoaded();
     return current_.clock;
 }
@@ -191,19 +218,20 @@ bool ConfigManager::saveConfig(ClockConfig& clock, const WifiConfig& wifi) {
 }
 
 void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
-    const ClockConfig defaults = defaultClockConfig();
-    cfg.activeMode = sanitizeMode(static_cast<int>(cfg.activeMode), defaults.activeMode);
+    // Reads individual defaults rather than building a whole default
+    // ClockConfig: this runs on every save, on the 4KB cont stack.
+    cfg.activeMode = sanitizeMode(static_cast<int>(cfg.activeMode), defaultActiveMode());
     DateTime parsed;
     if (!parseLocalDateTime(cfg.countdown.end, parsed)) {
-        strlcpy(cfg.countdown.end, defaults.countdown.end, sizeof(cfg.countdown.end));
+        strlcpy(cfg.countdown.end, defaultCountdownEnd(), sizeof(cfg.countdown.end));
     }
     if ((strcmp(cfg.countup.start, "now") != 0) &&
         !parseLocalDateTime(cfg.countup.start, parsed)) {
-        strlcpy(cfg.countup.start, defaults.countup.start, sizeof(cfg.countup.start));
+        strlcpy(cfg.countup.start, defaultCountupStart(), sizeof(cfg.countup.start));
     }
     sanitizeFormatFields(cfg);
     if (!isValidTradingSchedule(cfg.trading.schedule)) {
-      cfg.trading.schedule = defaults.trading.schedule;
+      cfg.trading.schedule = defaultTradingSchedule();
     }
     cfg.display.brightness = sanitizeBrightness(cfg.display.brightness);
     cfg.friday.blinkBeforeMinutes =

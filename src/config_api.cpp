@@ -27,7 +27,7 @@ void ConfigApi::handleDemoTest() {
     if (!responder_.parseJsonBody(doc, "/api/demo/test")) return;
     JsonVariant finalMessage = doc["display"]["messages"]["final"];
     if (!finalMessage.isNull()) {
-      ClockConfig cfg = configManager_.loadClockConfig();
+      ClockConfig cfg = configManager_.clockConfig();
       sanitizeDisplayMessage(finalMessage.as<const char*>(),
                              cfg.messages.final,
                              sizeof(cfg.messages.final));
@@ -67,7 +67,7 @@ void ConfigApi::handleSetMode() {
     return;
   }
 
-  ClockConfig cfg = configManager_.loadClockConfig();
+  ClockConfig cfg = configManager_.clockConfig();
   cfg.activeMode = nextMode;
   if (!configManager_.saveClockConfig(cfg)) {
     LOG_PRINTLN("/api/mode failed: complete config write failed");
@@ -211,14 +211,14 @@ void ConfigApi::handleSaveConfig() {
   if (!responder_.parseJsonBody(doc, "/api/config")) return;
   JsonVariantConst payload = doc.as<JsonVariantConst>();
 
-  ClockConfig clockConfig = configManager_.loadClockConfig();
+  ClockConfig clockConfig = configManager_.clockConfig();
   const char* error = applyJsonToClockConfig(payload, clockConfig);
   if (error != nullptr) {
     LOG_PRINTF("/api/config rejected clock settings: %s", error);
     responder_.sendJson(400, error);
     return;
   }
-  WifiConfig wifiConfig = configManager_.loadWifiConfig();
+  WifiConfig wifiConfig = configManager_.wifiConfig();
   const bool wifiChanged = applyJsonToWifiConfig(payload, wifiConfig);
   if (!configManager_.saveConfig(clockConfig, wifiConfig)) {
     LOG_PRINTLN("/api/config failed: complete config write failed");
@@ -252,8 +252,8 @@ void ConfigApi::handleFieldMismatch() {
 }
 
 void ConfigApi::populateConfigJson(JsonDocument& doc) {
-  const ClockConfig clockConfig = configManager_.loadClockConfig();
-  const WifiConfig  wifiConfig  = configManager_.loadWifiConfig();
+  const ClockConfig& clockConfig = configManager_.clockConfig();
+  const WifiConfig&  wifiConfig  = configManager_.wifiConfig();
   LOG_PRINTF("/api/config response: mode=%s brightness=%u staSsid=\"%s\"",
              modeName(clockConfig.activeMode),
              clockConfig.display.brightness,

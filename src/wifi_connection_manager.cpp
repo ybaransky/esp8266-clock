@@ -165,7 +165,7 @@ bool WifiConnectionManager::connectAndSave(ConfigManager& configManager,
     return false;
   }
 
-  WifiConfig next = configManager.loadWifiConfig();
+  WifiConfig next = configManager.wifiConfig();
   next.staSsid = ssid;
   next.staPassword = password;
   if (!configManager.saveWifiConfig(next)) {

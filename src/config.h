@@ -153,25 +153,41 @@ struct DeviceConfig {
   WifiConfig wifi;    // WiFi configuration section.
 };
 
+// ClockConfig is copied onto the ESP8266's 4KB cont stack by any handler that
+// takes one by value, so its size is a budget, not a detail. The assert is here
+// rather than in a comment because the comment already rotted once (it claimed
+// ~450 bytes while the struct had grown past 700).
+static_assert(sizeof(ClockConfig) <= 768,
+              "ClockConfig grew past its stack budget; see ConfigManager");
+
 // Owns cached configuration and persists sanitized updates with backup recovery.
 class ConfigManager {
 public:
-    WifiConfig  loadWifiConfig();
-    bool        saveWifiConfig(const WifiConfig& cfg);
+    // Both accessors return the cached configuration by reference. The cache
+    // outlives every caller, and handing out a ~700-byte copy per call was
+    // stacking several of them at once on the 4KB cont stack during a save.
+    // Callers that need to modify a config copy it explicitly.
+    const WifiConfig&  wifiConfig();
+    const ClockConfig& clockConfig();
 
-    ClockConfig loadClockConfig();
+    bool        saveWifiConfig(const WifiConfig& cfg);
     // Sanitizes cfg in place before persisting, so the caller's copy always
     // matches what was written to disk - no separate re-sanitize step needed.
     bool        saveClockConfig(ClockConfig& cfg);
     bool        saveConfig(ClockConfig& clock, const WifiConfig& wifi);
-    // Sanitizes cfg in place. ClockConfig is ~450 bytes, and the web handlers
-    // that save/apply configs run on the ESP8266's 4KB cont stack - returning
-    // by value here stacked enough extra copies to overflow it.
+    // Sanitizes cfg in place, for the same stack reason as the accessors above.
     void        sanitizeClockConfig(ClockConfig& cfg) const;
 
 private:
     bool ensureLoaded();
     bool readAll(DeviceConfig& config);
+    // Writes config to the temp file and confirms it parses back. Split from
+    // installVerifiedTemp() so the serialization document is destroyed before
+    // the verification document is built, rather than both being live at once.
+    bool serializeToTemp(const DeviceConfig& config, const char* context,
+                         size_t& bytes);
+    bool verifyTemp(const char* context);
+    bool installVerifiedTemp(const char* context);
     bool writeAll(const DeviceConfig& config, const char* context);
 
     DeviceConfig current_;  // Cached configuration loaded from storage.

@@ -43,13 +43,11 @@ uint8_t formatIndexOrFirst(FormatGroup group, const char* key) {
   return index;
 }
 
-}  // namespace
-
-ClockConfig defaultClockConfig() {
+void fillDefaults(ClockConfig& s) {
     // Every field not assigned here already has a default member initializer in
     // config.h, so a field added later is initialized by construction rather
     // than by remembering to add a line to this function.
-    ClockConfig s;
+    s = ClockConfig{};
     s.activeMode    = kModeCountdown;
     s.countdown.format = formatIndexOrFirst(kFmtGroupCountdown, kDefaultCountingFormat);
     s.countup.format   = formatIndexOrFirst(kFmtGroupCountUp, kDefaultCountingFormat);
@@ -58,9 +56,7 @@ ClockConfig defaultClockConfig() {
     s.friday.toFridaySunsetFmt   = s.countdown.format;
     s.friday.toSaturdaySunsetFmt = s.countdown.format;
     s.trading.format             = s.countdown.format;
-    s.trading.schedule.intervalCount = 1;
-    s.trading.schedule.intervals[0]  = {9 * 60 + 30, 16 * 60};
-    s.trading.schedule.intervals[1]  = {17 * 60, 18 * 60};
+    s.trading.schedule = defaultTradingSchedule();
     snprintf(s.countdown.end, sizeof(s.countdown.end), "%s", kDefaultCountdownDatetime);
     snprintf(s.countup.start, sizeof(s.countup.start), "%s", kDefaultCountupDatetime);
     snprintf(s.messages.splash, sizeof(s.messages.splash), "%s", kDefaultSplashMessage);
@@ -79,11 +75,27 @@ ClockConfig defaultClockConfig() {
     // Boundary 2 is the only pattern that differs from the struct's own
     // defaults (880 Hz / 40 s / 2 Hz); it sits a fifth above Boundary 1.
     s.sound.boundaryAlert.boundary2.toneHz = 1320;
-    return s;
 }
 
+}  // namespace
+
+void initDefaultClockConfig(ClockConfig& out) {
+    fillDefaults(out);
+}
+
+Mode defaultActiveMode() { return kModeCountdown; }
+const char* defaultCountdownEnd() { return kDefaultCountdownDatetime; }
+const char* defaultCountupStart() { return kDefaultCountupDatetime; }
 const char* defaultClockFormatKey() { return kDefaultClockFormat; }
 const char* defaultCountingFormatKey() { return kDefaultCountingFormat; }
+
+TradingSchedule defaultTradingSchedule() {
+    TradingSchedule schedule;
+    schedule.intervalCount = 1;
+    schedule.intervals[0] = {9 * 60 + 30, 16 * 60};
+    schedule.intervals[1] = {17 * 60, 18 * 60};
+    return schedule;
+}
 
 WifiConfig defaultWifiConfig() {
     return WifiConfig{"", "", kDefaultApSsid, kDefaultApPassword};

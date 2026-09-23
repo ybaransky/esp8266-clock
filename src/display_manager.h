@@ -4,7 +4,6 @@
 #include <RTClib.h>
 
 #include "config.h"
-#include "defaults.h"
 
 // Tracks render deadlines and independently advances message and colon blink phases.
 class DisplayScheduler {
@@ -206,8 +205,10 @@ class DisplayManager {
   bool buildMessageFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
   bool buildPagedMessageFrame(uint32_t nowMs, bool force,
                               DisplayFrame& frame);
-  DisplaySettings settings_ =
-      DisplaySettings::fromConfig(defaultClockConfig());  // Applied settings snapshot.
+  // Default-constructed rather than built from a default ClockConfig: every
+  // member has its own initializer, and applySettings() overwrites all of them
+  // before the first render.
+  DisplaySettings settings_{};  // Applied settings snapshot.
   ViewState baseView_;                           // What to show when no overlay is active.
   OverlayState overlay_;                         // kNone unless an overlay is active.
 

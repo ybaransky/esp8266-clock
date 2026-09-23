@@ -102,7 +102,7 @@ void ClockApplication::begin() {
   initializeDisplayAndConfig();
   reportInitialRtcStatus(rtc_.getStatus());
 
-  WifiConfig cfg = configManager_.loadWifiConfig();
+  const WifiConfig& cfg = configManager_.wifiConfig();
   wifiConnectionManager_.begin(cfg);
   webPortal_.begin();
 
@@ -127,7 +127,7 @@ void ClockApplication::initializeRtc() {
 }
 
 void ClockApplication::initializeDisplayAndConfig() {
-  ClockConfig cs = configManager_.loadClockConfig();
+  const ClockConfig& cs = configManager_.clockConfig();
   segmentDisplay_.begin(cs.display.brightness);
   soundPlayer_.begin();
   LOG_PRINTF("Mode %u, brightness %u",
