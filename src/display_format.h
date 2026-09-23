@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
-#include "display.h"
+#include "display_frame.h"
 
 enum FormatGroup : uint8_t {
   kFmtGroupCountdown = 0,

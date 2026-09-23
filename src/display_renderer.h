@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include "display.h"
+#include "display_frame.h"
 
 // Pure rendering functions. Each converts explicit application data into a
 // hardware-independent frame and performs no I/O or scheduling.

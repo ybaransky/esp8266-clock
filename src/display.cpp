@@ -9,15 +9,13 @@ constexpr uint8_t SEG_BLANK = 0x00;
 constexpr uint8_t SEG_MINUS = 0x40;
 constexpr uint8_t SEG_COLON = 0x80;
 constexpr uint8_t SEG_VALUE_MASK = 0x7F;
-constexpr size_t PANEL_COUNT = 3;
+constexpr size_t PANEL_COUNT = kDisplayPanelCount;
 constexpr size_t PANEL_WIDTH = 4;
-TM1637Display displays[PANEL_COUNT] = {
-    TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[0]),
-    TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[1]),
-    TM1637Display(Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[2]),
-};
 
-constexpr uint8_t ASCII_SEGMENTS[96] = {
+// PROGMEM, so this table lives in flash instead of costing 96 bytes of the
+// static RAM the project keeps under 50% for OTA headroom. Read through
+// pgm_read_byte() in segmentForChar(); one flash read per rendered character.
+const uint8_t ASCII_SEGMENTS[96] PROGMEM = {
   /*       a
    *      ---
    *  f |  g | b
@@ -129,7 +127,7 @@ constexpr uint8_t ASCII_SEGMENTS[96] = {
 uint8_t segmentForChar(char c) {
   const uint8_t code = static_cast<uint8_t>(c);
   if ((code < 32) || (code > 127)) return SEG_BLANK;
-  return ASCII_SEGMENTS[code - 32] & SEG_VALUE_MASK;
+  return pgm_read_byte(&ASCII_SEGMENTS[code - 32]) & SEG_VALUE_MASK;
 }
 
 void renderPanelSegments(const char *text, uint8_t segments[PANEL_WIDTH]) {
@@ -161,6 +159,11 @@ void copySegments(uint8_t destination[PANEL_WIDTH], const uint8_t source[PANEL_W
 // SegmentDisplay
 // -----------------------------------------------------------------------------
 
+SegmentDisplay::SegmentDisplay()
+    : panels_{{Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[0]},
+              {Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[1]},
+              {Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[2]}} {}
+
 void SegmentDisplay::begin(uint8_t brightness) {
   setBrightness(brightness);
   blank();
@@ -169,9 +172,9 @@ void SegmentDisplay::begin(uint8_t brightness) {
 void SegmentDisplay::setBrightness(uint8_t level) {
   const uint8_t clamped = min<uint8_t>(level, 7);
   for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
-    displays[panel].setBrightness(clamped);
+    panels_[panel].setBrightness(clamped);
     if (cacheValid_[panel]) {
-      displays[panel].setSegments(lastSegments_[panel]);
+      panels_[panel].setSegments(lastSegments_[panel]);
     }
   }
 }
@@ -182,7 +185,7 @@ void SegmentDisplay::showFrame(const DisplayFrame& frame) {
     renderPanelSegments(frame.panels[panel], segments);
 
     if (!cacheValid_[panel]) {
-      displays[panel].setSegments(segments);
+      panels_[panel].setSegments(segments);
       copySegments(lastSegments_[panel], segments);
       cacheValid_[panel] = true;
       continue;
@@ -201,7 +204,7 @@ void SegmentDisplay::showFrame(const DisplayFrame& frame) {
       }
 
       const uint8_t runLength = static_cast<uint8_t>(slot - runStart);
-      displays[panel].setSegments(&segments[runStart], runLength,
+      panels_[panel].setSegments(&segments[runStart], runLength,
                                   static_cast<uint8_t>(runStart));
     }
 
@@ -213,7 +216,7 @@ void SegmentDisplay::blank() {
   const uint8_t blankSegments[PANEL_WIDTH] = {};
 
   for (size_t panel = 0; panel < PANEL_COUNT; ++panel) {
-    displays[panel].setSegments(blankSegments);
+    panels_[panel].setSegments(blankSegments);
     copySegments(lastSegments_[panel], blankSegments);
     cacheValid_[panel] = true;
   }
