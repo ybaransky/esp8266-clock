@@ -8,7 +8,7 @@ class SoundPlayer;
 
 // Couples an event's display message with its master-resolved sound name.
 struct BoundaryCue {
-  char message[64] = "";  // Message shown for five seconds.
+  char message[kDisplayMessageLength] = "";  // Message shown for five seconds.
   char sound[kSoundNameLength] = "";  // Empty means silent.
 };
 
@@ -23,10 +23,14 @@ class ScheduledModeController {
             DisplayManager& display, SoundPlayer& sound);
 
  private:
-  ScheduleDecision evaluate(const DateTime& now);
+  // Pure with respect to the sunset cache. Callers refresh the cache first.
+  ScheduleDecision evaluate(const DateTime& now) const;
+  // The only writer of the weekly sunset cache; called once per tick.
   void refreshSunsets(const DateTime& now);
   ViewState viewFor(const ScheduleDecision& decision) const;
-  bool crossedBoundary(uint32_t nowLocalSeconds);
+  ViewState fridayViewFor(const ScheduleDecision& decision) const;
+  ViewState tradingViewFor(const ScheduleDecision& decision) const;
+  bool crossedBoundary(uint32_t nowLocalSeconds) const;
   const BoundaryCue* cueFor(BoundaryKind kind) const;
   const SoundConfig::BoundaryPatternConfig* patternFor(
       const ScheduleBoundary& boundary) const;

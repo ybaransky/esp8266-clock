@@ -50,6 +50,11 @@ void ScheduledModeController::reset() {
 }
 
 void ScheduledModeController::refreshSunsets(const DateTime& now) {
+  // Only Friday mode has sunsets. Callers refresh unconditionally so the cache
+  // is always current before an evaluation; returning early here keeps Trading
+  // mode from doing Friday's weekly bookkeeping on every RTC second.
+  if (mode_ != kModeFriday) return;
+
   const DateTime today(now.year(), now.month(), now.day());
   const uint32_t friday = mostRecentFridayMidnight(
       today.unixtime(), now.dayOfTheWeek());
@@ -60,9 +65,13 @@ void ScheduledModeController::refreshSunsets(const DateTime& now) {
   LOG_PRINTLN("friday mode: refreshed weekly sunsets");
 }
 
-ScheduleDecision ScheduledModeController::evaluate(const DateTime& now) {
+// Pure with respect to the sunset cache: callers refresh it once via
+// refreshSunsets() before evaluating. That is what lets crossedBoundary()
+// evaluate a past boundary without moving the cache out from under the
+// decision being installed - previously the two had to be sequenced carefully
+// and a comment had to explain the ordering.
+ScheduleDecision ScheduledModeController::evaluate(const DateTime& now) const {
   if (mode_ == kModeFriday) {
-    refreshSunsets(now);
     return evaluateFridaySchedule(now.unixtime(), fridayMidnight_,
                                   fridaySunset_, saturdaySunset_);
   }
@@ -71,7 +80,10 @@ ScheduleDecision ScheduledModeController::evaluate(const DateTime& now) {
                                  now.dayOfTheWeek(), trading_.schedule);
 }
 
-ViewState ScheduledModeController::viewFor(const ScheduleDecision& decision) const {
+// Friday presentation: a clock phase, or one of two countdowns, each with the
+// blink window that brackets Friday sunset.
+ViewState ScheduledModeController::fridayViewFor(
+    const ScheduleDecision& decision) const {
   ViewState view;
   if (decision.view == ScheduleView::kClock) {
     view.formatIndex = friday_.clockFmt;
@@ -79,10 +91,7 @@ ViewState ScheduledModeController::viewFor(const ScheduleDecision& decision) con
   }
   view.view = View::kCountdown;
   view.anchor = DateTime(decision.next.atLocalSeconds);
-  if (mode_ == kModeTrading) {
-    view.formatIndex = trading_.format;
-    view.longFormatIndex = trading_.formatOver24;
-  } else if (decision.next.kind == BoundaryKind::kFridaySunset) {
+  if (decision.next.kind == BoundaryKind::kFridaySunset) {
     view.formatIndex = friday_.toFridaySunsetFmt;
     view.blink = {fridaySunset_ - friday_.blinkBeforeMinutes * 60UL, fridaySunset_};
   } else {
@@ -92,14 +101,34 @@ ViewState ScheduledModeController::viewFor(const ScheduleDecision& decision) con
   return view;
 }
 
+// Trading presentation. evaluateTradingSchedule() only ever returns a
+// countdown (test_trading_always_counts_down pins that down), so there is no
+// clock branch here to accidentally borrow Friday's clock format - which is
+// what the single combined viewFor() used to do for any kClock decision.
+ViewState ScheduledModeController::tradingViewFor(
+    const ScheduleDecision& decision) const {
+  ViewState view;
+  view.view = View::kCountdown;
+  view.anchor = DateTime(decision.next.atLocalSeconds);
+  view.formatIndex = trading_.format;
+  view.longFormatIndex = trading_.formatOver24;
+  return view;
+}
+
+ViewState ScheduledModeController::viewFor(const ScheduleDecision& decision) const {
+  return (mode_ == kModeTrading) ? tradingViewFor(decision)
+                                 : fridayViewFor(decision);
+}
+
 ViewState ScheduledModeController::start(const DateTime& now) {
+  refreshSunsets(now);
   previous_ = evaluate(now);
   previousTime_ = now.unixtime();
   hasPrevious_ = true;
   return viewFor(previous_);
 }
 
-bool ScheduledModeController::crossedBoundary(uint32_t nowLocalSeconds) {
+bool ScheduledModeController::crossedBoundary(uint32_t nowLocalSeconds) const {
   if (!hasPrevious_ || (nowLocalSeconds < previousTime_)) return false;
   const uint32_t boundary = previous_.next.atLocalSeconds;
   if ((previousTime_ >= boundary) || (nowLocalSeconds < boundary) ||
@@ -137,8 +166,10 @@ const SoundConfig::BoundaryPatternConfig* ScheduledModeController::patternFor(
 void ScheduledModeController::tick(const DateTime& now, uint32_t secondStartedAtMs,
                                     DisplayManager& display, SoundPlayer& sound) {
   if ((mode_ != kModeFriday) && (mode_ != kModeTrading)) return;
+  // One cache refresh for the whole tick. Both evaluations below then read a
+  // cache that describes this instant, in either order.
+  refreshSunsets(now);
   const bool crossed = crossedBoundary(now.unixtime());
-  // Evaluate current time last so Friday's cache always describes this view.
   const ScheduleDecision decision = evaluate(now);
   if (!hasPrevious_ || !sameScheduleDecision(previous_, decision)) {
     display.setView(viewFor(decision));
