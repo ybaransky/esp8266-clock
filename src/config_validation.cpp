@@ -60,7 +60,8 @@ bool modeFromName(const String& name, Mode* mode) {
 }
 
 uint8_t sanitizeFormatIndex(FormatGroup group, int rawIndex, uint8_t fallback) {
-  if ((group < 0) || (group >= kFmtGroupCount) || (rawIndex < 0)) {
+  // FormatGroup is unsigned, so only the upper bound needs testing.
+  if ((group >= kFmtGroupCount) || (rawIndex < 0)) {
     return fallback;
   }
   if (rawIndex >= displayFormatCount(group)) return fallback;

@@ -34,9 +34,9 @@ enum class Shape : uint8_t {
 
 // Identifies the layout and source fields used to render one physical panel.
 struct PanelSpec {
-  Shape shape;  // Panel layout renderer.
-  Field a;  // Main or left-of-colon value.
-  Field b;  // Right-of-colon value; kNone otherwise.
+  Shape shape = Shape::kBlank;  // Panel layout renderer.
+  Field a = Field::kNone;  // Main or left-of-colon value.
+  Field b = Field::kNone;  // Right-of-colon value; kNone otherwise.
 };
 
 // Keeps a UI label and all three panel render specifications together.
