@@ -1,267 +1,253 @@
 #include "rtc_ds3231.h"
 
-#include "hardware.h"
-#include "log.h"
 #include <Wire.h>
 
-namespace {
-
-bool rtcLogTimeProvider(char* buffer, size_t bufferSize);
-
-}  // namespace
-
-// Wraps RTClib initialization, validation, recovery, and direct DS3231 access.
-class RtcDs3231 {
-public:
-  bool begin() {
-    status_ = {false, false, false, false, ""};
-    logSetTimeProvider(nullptr);
-
-    if (!probeAddress()) {
-      status_.error = "DS3231 not found on I2C address 0x68";
-      LOG_PRINTLN("ERROR: DS3231 not detected");
-      return false;
-    }
-
-    if (!rtc_.begin()) {
-      status_.error = "rtc.begin() failed";
-      LOG_PRINTLN("ERROR: rtc.begin() failed");
-      return false;
-    }
-
-    status_.present = true;
-    logSetTimeProvider(rtcLogTimeProvider);
-    logRtcTime("Current RTC time:", rtc_.now());
-
-    recoverIfPowerWasLost();
-    flagInvalidTimeIfNeeded();
-    configureSquareWaveOutput();
-
-    LOG_PRINTLN("DS3231 initialized, SQW output set to 1Hz");
-    return true;
-  }
-
-  RtcStatus getStatus() const {
-    return status_;
-  }
-
-  DateTime now() {
-    return status_.present ? rtc_.now() : DateTime(2000, 1, 1, 0, 0, 0);
-  }
-
-  void setNow(const DateTime &timeValue) {
-    if (!status_.present) {
-      LOG_PRINTLN("RTC time sync skipped: DS3231 not initialized");
-      return;
-    }
-
-    adjustWithLog(timeValue, "browser time sync");
-    status_.powerLost = false;
-    status_.lowBattery = false;
-  }
-
-private:
-  static constexpr uint8_t RTC_I2C_ADDRESS = Hardware::I2CAddress::DS3231;  // Fixed DS3231 bus address.
-
-  bool probeAddress() {
-    Wire.beginTransmission(RTC_I2C_ADDRESS);
-    return Wire.endTransmission() == 0;
-  }
-
-  static bool isLikelyInvalidTime(const DateTime &now) {
-    return now.year() < 2020 || now.year() > 2099;
-  }
-
-  static void logRtcTime(const char *label, const DateTime &timeValue) {
-    LOG_PRINTF("%s %04d-%02d-%02d %02d:%02d:%02d",
-               label,
-               timeValue.year(), timeValue.month(), timeValue.day(),
-               timeValue.hour(), timeValue.minute(), timeValue.second());
-  }
-
-  void adjustWithLog(const DateTime &newTime, const char *reason) {
-    const DateTime oldTime = rtc_.now();
-    LOG_PRINTF("Adjusting time (%s)", reason);
-    logRtcTime("Old:", oldTime);
-
-    rtc_.adjust(newTime);
-
-    const DateTime updatedTime = rtc_.now();
-    logRtcTime("New:", updatedTime);
-  }
-
-  void recoverIfPowerWasLost() {
-    if (!rtc_.lostPower()) return;
-
-    status_.powerLost = true;
-    status_.lowBattery = true;
-    LOG_PRINTLN("WARNING: RTC lost power (possible low/dead backup battery)");
-
-    // Set a known-valid time once to clear the DS3231 OSF/lostPower condition.
-    adjustWithLog(DateTime(F(__DATE__), F(__TIME__)), "lost power recovery");
-    status_.powerLost = false;
-    status_.lowBattery = false;
-    LOG_PRINTLN("INFO: RTC reset to build time to clear lost-power flag");
-  }
-
-  void flagInvalidTimeIfNeeded() {
-    const DateTime now = rtc_.now();
-    if (!isLikelyInvalidTime(now)) return;
-
-    status_.lowBattery = true;
-    LOG_PRINTF("WARNING: RTC time looks invalid: %04d-%02d-%02d %02d:%02d:%02d",
-               now.year(), now.month(), now.day(),
-               now.hour(), now.minute(), now.second());
-  }
-
-  void configureSquareWaveOutput() {
-    rtc_.disable32K();
-    rtc_.writeSqwPinMode(DS3231_SquareWave1Hz);
-    status_.sqwConfigured = true;
-  }
-
-  RTC_DS3231 rtc_;  // RTClib DS3231 driver instance.
-  RtcStatus status_ = {false, false, false, false, "Not initialized"};  // Cached RTC health.
-};
-
-static RtcDs3231 rtc;
+#include "hardware.h"
+#include "log.h"
 
 namespace {
 
-bool rtcLogTimeProvider(char* buffer, size_t bufferSize) {
-  if ((buffer == nullptr) || (bufferSize == 0)) {
-    return false;
-  }
-
-  const RtcStatus status = rtc.getStatus();
-  if (!status.present) {
-    return false;
-  }
-
-  const DateTime now = rtc.now();
-  snprintf(buffer, bufferSize, "%02d:%02d:%02d",
-           now.hour(), now.minute(), now.second());
-  return true;
-}
-
-}  // namespace
-
-// -----------------------------------------------------------------------------
-// RtcService
-// -----------------------------------------------------------------------------
-
-bool RtcService::begin()              { return rtc.begin(); }
-RtcStatus RtcService::getStatus() const { return rtc.getStatus(); }
-DateTime RtcService::getNow()         { return rtc.now(); }
+constexpr uint8_t kRtcI2cAddress = Hardware::I2CAddress::DS3231;
 
 // SQW edges advance the cache. RTC servicing owns the 30-second resync;
-// diagnostic logging never changes time.
-static constexpr uint8_t kSqwResyncSeconds = 30;
-static constexpr uint32_t kSqwStartupWarnMs = 3500;
-static constexpr uint32_t kSqwHealthLogIntervalMs = 10000;
-static constexpr uint32_t kSqwPulseStaleMs = 3000;
+// diagnostic logging never changes time and never reads the chip.
+constexpr uint8_t kSqwResyncSeconds = 30;
+constexpr uint32_t kSqwStartupWarnMs = 3500;
+constexpr uint32_t kSqwHealthLogIntervalMs = 10000;
+constexpr uint32_t kSqwPulseStaleMs = 3000;
 
-// All mutable state for SQW pulse tracking and the software-advanced time
-// cache: the RtcDs3231 class above talks to the chip; `sqw` tracks the 1 Hz
-// pulse and the cached time it drives.
-struct SqwState {
+// The only state shared with the ISR, and the only file-static state left in
+// this module. It is genuinely singleton - there is one SQW pin - and keeping
+// it out of the object means the IRAM_ATTR handler writes three fixed
+// addresses instead of dereferencing an instance pointer.
+struct SqwIsrCounters {
   volatile uint32_t pendingPulseCount = 0;  // Incremented by the ISR, consumed in loop.
-  volatile uint32_t isrPulseCount = 0;      // Lifetime ISR pulses (diagnostics).
-  volatile uint32_t edgeAtMs = 0;           // millis() stamped in the ISR at the last rising edge.
-  bool processingStarted = false;  // True after SQW interrupt setup begins.
-  bool sawPulse = false;  // True after accepting at least one real SQW edge.
-  uint32_t processingStartedAtMs = 0;  // millis() reference for startup health checks.
-  uint32_t lastPulseAtMs = 0;  // ISR timestamp of the last accepted pulse.
-  uint32_t lastAcceptedPulseAtMs = 0;  // Phase reference used for tenths.
-  uint32_t lastHealthLogMs = 0;  // Last missing-pulse warning time.
-  DateTime cachedNow;            // Second-resolution time, advanced by SQW pulses.
-  bool cachedNowSynced = false;  // False until a live read seeds the cache.
-  bool resyncOnNextPulse = true;  // Realign after boot, time sync, or a read/edge race.
+  volatile uint32_t lifetimePulseCount = 0;  // Lifetime ISR pulses (diagnostics).
+  volatile uint32_t edgeAtMs = 0;  // millis() stamped in the ISR at the last rising edge.
 };
-static SqwState sqw;
+SqwIsrCounters isrCounters;
 
-void RtcService::setNow(const DateTime& timeValue) {
-  rtc.setNow(timeValue);
-  if (!rtc.getStatus().present) return;
-  noInterrupts();
-  sqw.pendingPulseCount = 0;
-  interrupts();
-  sqw.cachedNow = timeValue;
-  sqw.cachedNowSynced = true;
-  sqw.resyncOnNextPulse = true;
-  sqw.sawPulse = false;
-  sqw.processingStartedAtMs = millis();
-}
+// The instance the log timestamp provider reads from. There is exactly one
+// RtcService, owned by ClockApplication; this is how a plain function pointer
+// reaches it.
+RtcService* loggingInstance = nullptr;
 
-static void IRAM_ATTR onRtcSqwPulse() {
+void IRAM_ATTR onRtcSqwPulse() {
   // The edge marks the instant the RTC second increments; capturing millis()
   // here (rather than when loop() consumes the pulse) keeps the phase
   // reference free of loop-servicing latency. millis() is ISR-safe.
-  sqw.edgeAtMs = millis();
-  sqw.pendingPulseCount++;
-  sqw.isrPulseCount++;
+  isrCounters.edgeAtMs = millis();
+  isrCounters.pendingPulseCount++;
+  isrCounters.lifetimePulseCount++;
 }
 
-static void warnIfSqwSharesInternalLed() {
+uint32_t lifetimePulseCount() {
+  noInterrupts();
+  const uint32_t count = isrCounters.lifetimePulseCount;
+  interrupts();
+  return count;
+}
+
+bool isLikelyInvalidTime(const DateTime& now) {
+  return (now.year() < 2020) || (now.year() > 2099);
+}
+
+void logRtcTime(const char* label, const DateTime& timeValue) {
+  LOG_PRINTF("%s %04d-%02d-%02d %02d:%02d:%02d",
+             label,
+             timeValue.year(), timeValue.month(), timeValue.day(),
+             timeValue.hour(), timeValue.minute(), timeValue.second());
+}
+
+void warnIfSqwSharesInternalLed() {
   if (Hardware::Pins::RTC_SQW != Hardware::Pins::INTERNAL_LED) return;
   LOG_PRINTF("WARNING: SQW shares GPIO%u with INTERNAL_LED; DS3231 SQW may blink the onboard LED",
              Hardware::Pins::RTC_SQW);
 }
 
-static uint32_t currentSqwIsrPulseCount() {
-  noInterrupts();
-  const uint32_t count = sqw.isrPulseCount;
-  interrupts();
-  return count;
+}  // namespace
+
+// -----------------------------------------------------------------------------
+// RtcService - hardware
+// -----------------------------------------------------------------------------
+
+void RtcService::setError(const char* text) {
+  strlcpy(status_.error, text, sizeof(status_.error));
 }
 
-static void logSqwHealthIfNeeded(uint32_t nowMs) {
-  if (!sqw.processingStarted) return;
+bool RtcService::probeAddress() {
+  Wire.beginTransmission(kRtcI2cAddress);
+  return Wire.endTransmission() == 0;
+}
 
-  const uint32_t referenceMs = sqw.sawPulse ? sqw.lastPulseAtMs : sqw.processingStartedAtMs;
-  if (static_cast<long>(nowMs - referenceMs) < static_cast<long>(kSqwStartupWarnMs)) {
+bool RtcService::begin() {
+  status_ = RtcStatus{};
+  logSetTimeProvider(nullptr);
+  loggingInstance = this;
+
+  if (!probeAddress()) {
+    setError("DS3231 not found on I2C address 0x68");
+    LOG_PRINTLN("ERROR: DS3231 not detected");
+    return false;
+  }
+
+  if (!rtc_.begin()) {
+    setError("rtc.begin() failed");
+    LOG_PRINTLN("ERROR: rtc.begin() failed");
+    return false;
+  }
+
+  status_.present = true;
+
+  // Seed the cache from this read before installing the log provider, so boot
+  // lines carry a real timestamp even though the provider itself never reads
+  // the chip. beginSqwProcessing() re-seeds once the pulse train starts.
+  const DateTime now = rtc_.now();
+  cachedNow_ = now;
+  cachedNowSynced_ = true;
+  logSetTimeProvider(&RtcService::logTimeProvider);
+  logRtcTime("Current RTC time:", now);
+
+  recoverIfPowerWasLost();
+  flagInvalidTimeIfNeeded();
+  configureSquareWaveOutput();
+
+  LOG_PRINTLN("DS3231 initialized, SQW output set to 1Hz");
+  return true;
+}
+
+void RtcService::adjustWithLog(const DateTime& newTime, const char* reason) {
+  const DateTime oldTime = rtc_.now();
+  LOG_PRINTF("Adjusting time (%s)", reason);
+  logRtcTime("Old:", oldTime);
+
+  rtc_.adjust(newTime);
+
+  const DateTime updatedTime = rtc_.now();
+  logRtcTime("New:", updatedTime);
+  // Keep the cache coherent with the chip we just moved, so the next log line
+  // does not report the pre-adjustment second.
+  cachedNow_ = updatedTime;
+  cachedNowSynced_ = true;
+}
+
+void RtcService::recoverIfPowerWasLost() {
+  if (!rtc_.lostPower()) return;
+
+  status_.powerLost = true;
+  status_.lowBattery = true;
+  LOG_PRINTLN("WARNING: RTC lost power (possible low/dead backup battery)");
+
+  // Set a known-valid time once to clear the DS3231 OSF/lostPower condition.
+  adjustWithLog(DateTime(F(__DATE__), F(__TIME__)), "lost power recovery");
+  status_.powerLost = false;
+  status_.lowBattery = false;
+  LOG_PRINTLN("INFO: RTC reset to build time to clear lost-power flag");
+}
+
+void RtcService::flagInvalidTimeIfNeeded() {
+  const DateTime now = rtc_.now();
+  if (!isLikelyInvalidTime(now)) return;
+
+  status_.lowBattery = true;
+  LOG_PRINTF("WARNING: RTC time looks invalid: %04d-%02d-%02d %02d:%02d:%02d",
+             now.year(), now.month(), now.day(),
+             now.hour(), now.minute(), now.second());
+}
+
+void RtcService::configureSquareWaveOutput() {
+  rtc_.disable32K();
+  rtc_.writeSqwPinMode(DS3231_SquareWave1Hz);
+  status_.sqwConfigured = true;
+}
+
+DateTime RtcService::getNow() {
+  return status_.present ? rtc_.now() : DateTime(2000, 1, 1, 0, 0, 0);
+}
+
+void RtcService::setNow(const DateTime& timeValue) {
+  if (!status_.present) {
+    LOG_PRINTLN("RTC time sync skipped: DS3231 not initialized");
     return;
   }
-  if (static_cast<long>(nowMs - sqw.lastHealthLogMs) <
-      static_cast<long>(kSqwHealthLogIntervalMs)) {
-    return;
+
+  adjustWithLog(timeValue, "browser time sync");
+  status_.powerLost = false;
+  status_.lowBattery = false;
+
+  noInterrupts();
+  isrCounters.pendingPulseCount = 0;
+  interrupts();
+  cachedNow_ = timeValue;
+  cachedNowSynced_ = true;
+  resyncOnNextPulse_ = true;
+  sawPulse_ = false;
+  processingStartedAtMs_ = millis();
+}
+
+// -----------------------------------------------------------------------------
+// RtcService - logging
+// -----------------------------------------------------------------------------
+
+// Reads only the software cache. Before begin() seeds it (or if no instance is
+// registered) this returns false and the logger prints its "--:--:--"
+// placeholder, which is strictly better than a bus transaction per log line.
+bool RtcService::logTimeProvider(char* buffer, size_t bufferSize) {
+  if ((buffer == nullptr) || (bufferSize == 0)) return false;
+  const RtcService* self = loggingInstance;
+  if ((self == nullptr) || !self->status_.present || !self->cachedNowSynced_) {
+    return false;
   }
 
-  sqw.lastHealthLogMs = nowMs;
+  const DateTime now = self->cachedNow_;
+  snprintf(buffer, bufferSize, "%02d:%02d:%02d",
+           now.hour(), now.minute(), now.second());
+  return true;
+}
+
+// -----------------------------------------------------------------------------
+// RtcService - SQW processing
+// -----------------------------------------------------------------------------
+
+bool RtcService::sqwPulseIsFresh() const {
+  if (!processingStarted_) return false;
+  const uint32_t lastEventMs = sawPulse_ ? lastPulseAtMs_ : processingStartedAtMs_;
+  return (millis() - lastEventMs) < kSqwPulseStaleMs;
+}
+
+void RtcService::logSqwHealthIfNeeded(uint32_t nowMs) {
+  if (!processingStarted_) return;
+
+  const uint32_t referenceMs = sawPulse_ ? lastPulseAtMs_ : processingStartedAtMs_;
+  if ((nowMs - referenceMs) < kSqwStartupWarnMs) return;
+  if ((nowMs - lastHealthLogMs_) < kSqwHealthLogIntervalMs) return;
+
+  lastHealthLogMs_ = nowMs;
   LOG_PRINTF("SQW health: no pulse on GPIO%u for %lu ms, pin=%s, isrCount=%lu",
              Hardware::Pins::RTC_SQW,
              static_cast<unsigned long>(nowMs - referenceMs),
              digitalRead(Hardware::Pins::RTC_SQW) == HIGH ? "HIGH" : "LOW",
-             static_cast<unsigned long>(currentSqwIsrPulseCount()));
-}
-
-// True when a SQW pulse has been seen recently enough to trust sqw.cachedNow.
-// Shared by RtcService::isHealthy() (user-facing "no rtc" banner) and
-// RtcService::getNowCached() (falls back to a live I2C read when this is false).
-static bool sqwPulseIsFresh() {
-  if (!sqw.processingStarted) return false;
-  const uint32_t lastEventMs = sqw.sawPulse ? sqw.lastPulseAtMs : sqw.processingStartedAtMs;
-  return static_cast<long>(millis() - lastEventMs) < static_cast<long>(kSqwPulseStaleMs);
+             static_cast<unsigned long>(lifetimePulseCount()));
 }
 
 void RtcService::beginSqwProcessing() {
   warnIfSqwSharesInternalLed();
   pinMode(Hardware::Pins::RTC_SQW, INPUT_PULLUP);
   const int initialLevel = digitalRead(Hardware::Pins::RTC_SQW);
-  sqw.processingStartedAtMs = millis();
-  sqw.lastPulseAtMs = sqw.processingStartedAtMs;
-  sqw.lastAcceptedPulseAtMs = 0;
-  sqw.lastHealthLogMs = 0;
-  sqw.sawPulse = false;
-  sqw.processingStarted = true;
-  sqw.resyncOnNextPulse = true;
+  processingStartedAtMs_ = millis();
+  lastPulseAtMs_ = processingStartedAtMs_;
+  lastAcceptedPulseAtMs_ = 0;
+  lastHealthLogMs_ = 0;
+  sawPulse_ = false;
+  processingStarted_ = true;
+  resyncOnNextPulse_ = true;
   noInterrupts();
-  sqw.pendingPulseCount = 0;
-  sqw.isrPulseCount = 0;
+  isrCounters.pendingPulseCount = 0;
+  isrCounters.lifetimePulseCount = 0;
   interrupts();
 
-  sqw.cachedNow = rtc.now();
-  sqw.cachedNowSynced = true;
+  cachedNow_ = rtc_.now();
+  cachedNowSynced_ = true;
 
   const int interruptNumber = digitalPinToInterrupt(Hardware::Pins::RTC_SQW);
   if (interruptNumber == NOT_AN_INTERRUPT) {
@@ -279,47 +265,47 @@ void RtcService::beginSqwProcessing() {
 
 bool RtcService::consumeSqwPulse(RtcTick& tick) {
   noInterrupts();
-  const uint32_t count = sqw.pendingPulseCount;
-  const uint32_t edgeMs = sqw.edgeAtMs;
-  sqw.pendingPulseCount = 0;
+  const uint32_t count = isrCounters.pendingPulseCount;
+  const uint32_t edgeMs = isrCounters.edgeAtMs;
+  isrCounters.pendingPulseCount = 0;
   interrupts();
   const uint32_t nowMs = millis();
   if (count == 0) {
     logSqwHealthIfNeeded(nowMs);
     return false;
   }
-  if (nowMs - edgeMs >= kSqwPulseStaleMs) {
+  if ((nowMs - edgeMs) >= kSqwPulseStaleMs) {
     // A queued but stale edge cannot supply the phase of the current second.
-    sqw.resyncOnNextPulse = true;
+    resyncOnNextPulse_ = true;
     logSqwHealthIfNeeded(nowMs);
     return false;
   }
   // Reject impossible edges without treating them as elapsed RTC seconds.
-  if (sqw.sawPulse && (edgeMs - sqw.lastAcceptedPulseAtMs < 500UL)) return false;
+  if (sawPulse_ && ((edgeMs - lastAcceptedPulseAtMs_) < 500UL)) return false;
 
-  bool discontinuity = sqw.resyncOnNextPulse || !sqw.sawPulse || (count > 1) ||
-      (sqw.sawPulse && (edgeMs - sqw.lastAcceptedPulseAtMs > 1500UL));
-  const DateTime expected(sqw.cachedNow.unixtime() + 1);
+  bool discontinuity = resyncOnNextPulse_ || !sawPulse_ || (count > 1) ||
+      (sawPulse_ && ((edgeMs - lastAcceptedPulseAtMs_) > 1500UL));
+  const DateTime expected(cachedNow_.unixtime() + 1);
   DateTime current = expected;
-  if (discontinuity || (expected.second() % kSqwResyncSeconds == 0)) {
-    current = rtc.now();
+  if (discontinuity || ((expected.second() % kSqwResyncSeconds) == 0)) {
+    current = rtc_.now();
     // If an edge arrived during I2C, the read may straddle two seconds. Leave
     // that new pulse queued and resync on the next loop instead of guessing.
     noInterrupts();
-    const bool edgeChanged = sqw.edgeAtMs != edgeMs;
+    const bool edgeChanged = isrCounters.edgeAtMs != edgeMs;
     interrupts();
     if (edgeChanged) {
-      sqw.resyncOnNextPulse = true;
+      resyncOnNextPulse_ = true;
       return false;
     }
     discontinuity = discontinuity || (current.unixtime() != expected.unixtime());
   }
-  sqw.cachedNow = current;
-  sqw.cachedNowSynced = true;
-  sqw.resyncOnNextPulse = false;
-  sqw.sawPulse = true;
-  sqw.lastPulseAtMs = edgeMs;
-  sqw.lastAcceptedPulseAtMs = edgeMs;
+  cachedNow_ = current;
+  cachedNowSynced_ = true;
+  resyncOnNextPulse_ = false;
+  sawPulse_ = true;
+  lastPulseAtMs_ = edgeMs;
+  lastAcceptedPulseAtMs_ = edgeMs;
   tick = {current, edgeMs, discontinuity};
   if (discontinuity) {
     LOG_PRINTF("RTC resynced: pulses=%lu; past announcements suppressed",
@@ -329,18 +315,18 @@ bool RtcService::consumeSqwPulse(RtcTick& tick) {
 }
 
 bool RtcService::isHealthy() const {
-  if (!rtc.getStatus().present) return false;
-  if (!sqw.processingStarted)   return true;
+  if (!status_.present) return false;
+  if (!processingStarted_) return true;
   return sqwPulseIsFresh();
 }
 
-// Second-resolution time backed by sqw.cachedNow, avoiding an I2C transaction
-// on the hot display-render path (see the SQW section comment above). Falls
-// back to a live rtc.now() read whenever the cache can't be trusted: before
-// beginSqwProcessing() has run, or if the SQW pulse has gone stale.
+// Second-resolution time backed by cachedNow_, avoiding an I2C transaction on
+// the hot display-render path. Falls back to a live rtc_.now() read whenever
+// the cache can't be trusted: before beginSqwProcessing() has run, or if the
+// SQW pulse has gone stale.
 DateTime RtcService::getNowCached() {
-  if (!sqw.cachedNowSynced || !sqwPulseIsFresh()) return rtc.now();
-  return sqw.cachedNow;
+  if (!cachedNowSynced_ || !sqwPulseIsFresh()) return rtc_.now();
+  return cachedNow_;
 }
 
 // Phase-locked "how far into the current RTC second are we": elapsed millis
@@ -351,7 +337,7 @@ DateTime RtcService::getNowCached() {
 // old millis()-phase behavior when the SQW pulse can't be trusted, matching
 // getNowCached()'s degradation.
 uint32_t RtcService::msIntoSecond(uint32_t nowMs) const {
-  if (!sqw.sawPulse || !sqwPulseIsFresh()) return nowMs % 1000UL;
-  const uint32_t elapsed = nowMs - sqw.lastAcceptedPulseAtMs;
+  if (!sawPulse_ || !sqwPulseIsFresh()) return nowMs % 1000UL;
+  const uint32_t elapsed = nowMs - lastAcceptedPulseAtMs_;
   return elapsed > 999UL ? 999UL : elapsed;
 }

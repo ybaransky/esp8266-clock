@@ -68,8 +68,8 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
                  status.powerLost ? "yes" : "no",
                  status.lowBattery ? "yes" : "no",
                  status.sqwConfigured ? "yes" : "no");
-      if (!status.error.isEmpty()) {
-        LOG_PRINTF("error: %s", status.error.c_str());
+      if (status.error[0] != 0) {
+        LOG_PRINTF("error: %s", status.error);
       }
       break;
     }
@@ -120,8 +120,8 @@ void ClockApplication::initializeRtc() {
     rtc_.beginSqwProcessing();
   } else {
     const RtcStatus status = rtc_.getStatus();
-    printRtcErrorBanner(status.error.c_str());
-    LOG_PRINTF("Init failed: %s", status.error.c_str());
+    printRtcErrorBanner(status.error);
+    LOG_PRINTF("Init failed: %s", status.error);
   }
   i2cBusScanner.scan();
 }
