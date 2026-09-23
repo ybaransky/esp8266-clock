@@ -1,4 +1,5 @@
 {
+  "configVersion": 1,
   "display": {
     "activeMode": "countdown",
     "brightness": 3,
@@ -8,15 +9,15 @@
     },
     "modes": {
       "countdown": {
-        "format": 0,
+        "format": "ddl-hhmm-ssu",
         "end": "2026-09-17 05:00:00"
       },
       "countup": {
-        "format": 0,
+        "format": "ddl-hhmm-ssu",
         "start": "now"
       },
       "clock": {
-        "format": 6
+        "format": "yyyy-mmdd-hhmm"
       }
     }
   },

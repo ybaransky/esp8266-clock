@@ -15,6 +15,16 @@ static constexpr uint8_t kSameFormat = 0xFF;
 // truncated into one that matches nothing.
 static constexpr size_t kSoundNameLength = 48;
 
+// Size of every stored display message, including the terminator. Like
+// kSoundNameLength this is one value for one concept: the same bound applies to
+// the persisted MessageConfig fields, the overlay buffer DisplayManager copies
+// them into, and the BoundaryCue a scheduled mode announces. The buffer is far
+// larger than sanitizeDisplayMessage's 12-character content cap on purpose -
+// the shipped messages are written with leading spaces to position text across
+// the three panels ("    Good Luc"), and the slack leaves room to widen that
+// convention without touching every buffer in the chain.
+static constexpr size_t kDisplayMessageLength = 64;
+
 // Persistent setting selected by the user. This is distinct from the
 // currently rendered View and any temporary Overlay (see display_manager.h).
 enum Mode : uint8_t {
@@ -42,38 +52,38 @@ struct LocationInfo {
 
 // Stores display presentation settings used by the clock renderer and hardware.
 struct DisplayConfig {
-  uint8_t clockFmt;      // Selected clock-format index.
-  uint8_t brightness;    // TM1637 brightness level from 0 through 7.
-  bool clockUse12Hour;   // True to render clock hours on a 12-hour scale.
+  uint8_t clockFmt = 0;        // Selected clock-format index.
+  uint8_t brightness = 3;      // TM1637 brightness level from 0 through 7.
+  bool clockUse12Hour = false; // True to render clock hours on a 12-hour scale.
 };
 
 // Stores the target and renderer selection for countdown mode.
 struct CountdownConfig {
-  char end[20];  // "YYYY-MM-DD HH:MM:SS"
-  uint8_t format;  // Selected counting-format index.
+  char end[20] = {};   // "YYYY-MM-DD HH:MM:SS"
+  uint8_t format = 0;  // Selected counting-format index.
 };
 
 // Stores the origin and renderer selection for count-up mode.
 struct CountupConfig {
-  char start[20];  // "YYYY-MM-DD HH:MM:SS" or "now"
-  uint8_t format;  // Selected counting-format index.
+  char start[20] = {};  // "YYYY-MM-DD HH:MM:SS" or "now"
+  uint8_t format = 0;   // Selected counting-format index.
 };
 
 // Stores the format selected for each phase of the Friday schedule, plus the
 // two blink windows that bracket Friday sunset.
 struct FridayConfig {
-  uint8_t clockFmt;             // Clock phase (Saturday sunset through Friday midnight).
-  uint8_t toFridaySunsetFmt;    // Friday-midnight to Friday-sunset countdown.
-  uint8_t toSaturdaySunsetFmt;  // Friday-sunset to Saturday-sunset countdown.
-  uint8_t blinkBeforeMinutes;   // Blink for this many minutes before Friday sunset; 0 = off.
-  uint8_t blinkAfterMinutes;    // Blink for this many minutes after Friday sunset; 0 = off.
+  uint8_t clockFmt = 0;             // Clock phase (Saturday sunset through Friday midnight).
+  uint8_t toFridaySunsetFmt = 0;    // Friday-midnight to Friday-sunset countdown.
+  uint8_t toSaturdaySunsetFmt = 0;  // Friday-sunset to Saturday-sunset countdown.
+  uint8_t blinkBeforeMinutes = 0;   // Blink for this many minutes before Friday sunset; 0 = off.
+  uint8_t blinkAfterMinutes = 0;    // Blink for this many minutes after Friday sunset; 0 = off.
 };
 
 // Stores Trading-mode presentation and its local-time session schedule.
 struct TradingConfig {
-  uint8_t format;        // Selected counting-format index.
-  uint8_t formatOver24;  // Format while >= 24h remain; kSameFormat = use format.
-  TradingSchedule schedule;  // Enabled count plus both retained session slots.
+  uint8_t format = 0;                   // Selected counting-format index.
+  uint8_t formatOver24 = kSameFormat;   // Format while >= 24h remain; kSameFormat = use format.
+  TradingSchedule schedule;             // Enabled count plus both retained session slots.
 };
 
 // Keeps the physical device location separate from sunset-page test input.
@@ -84,34 +94,34 @@ struct LocationConfig {
 
 // Stores configurable text shown by startup, completion, and scheduled overlays.
 struct MessageConfig {
-  char splash[64];        // Startup message shown on the displays.
-  char final[64];         // Message shown when countdown reaches zero.
-  char fridaySunset[64];  // Blinked when Friday sunset is crossed live.
-  char tradingOpen[64];   // Blinked when a Trading session starts live.
-  char tradingClose[64];  // Blinked when a Trading session stops live.
+  char splash[kDisplayMessageLength] = {};        // Startup message shown on the displays.
+  char final[kDisplayMessageLength] = {};         // Message shown when countdown reaches zero.
+  char fridaySunset[kDisplayMessageLength] = {};  // Blinked when Friday sunset is crossed live.
+  char tradingOpen[kDisplayMessageLength] = {};   // Blinked when a Trading session starts live.
+  char tradingClose[kDisplayMessageLength] = {};  // Blinked when a Trading session stops live.
 };
 
 // Stores the buzzer settings and the sound played at each announced boundary.
 // The name fields mirror MessageConfig one-for-one: every event that blinks a
 // message can also play a sound, and an empty name means that event is silent.
 struct SoundConfig {
-  bool enabled;             // Master switch; false silences every event cue.
-  uint8_t volumePercent;    // Loudness from 0 through 100.
-  char startup[kSoundNameLength];       // Played once at boot, under the splash.
-  char final[kSoundNameLength];         // Played when a countdown reaches zero.
-  char fridaySunset[kSoundNameLength];  // Played when Friday sunset is crossed live.
-  char tradingOpen[kSoundNameLength];   // Played when a Trading session starts live.
-  char tradingClose[kSoundNameLength];  // Played when a Trading session stops live.
+  bool enabled = true;          // Master switch; false silences every event cue.
+  uint8_t volumePercent = 40;   // Loudness from 0 through 100.
+  char startup[kSoundNameLength] = {};       // Played once at boot, under the splash.
+  char final[kSoundNameLength] = {};         // Played when a countdown reaches zero.
+  char fridaySunset[kSoundNameLength] = {};  // Played when Friday sunset is crossed live.
+  char tradingOpen[kSoundNameLength] = {};   // Played when a Trading session starts live.
+  char tradingClose[kSoundNameLength] = {};  // Played when a Trading session stops live.
   // One generated accelerating pattern selected by a scheduled boundary.
   struct BoundaryPatternConfig {
-    uint16_t toneHz;               // Pitch used throughout all four phases.
-    uint16_t totalDurationSeconds; // Total length, divided into four phases.
-    uint8_t startingBeatsHz;       // Beeps/sec in phase 1; doubles each phase.
+    uint16_t toneHz = 880;                // Pitch used throughout all four phases.
+    uint16_t totalDurationSeconds = 40;   // Total length, divided into four phases.
+    uint8_t startingBeatsHz = 2;          // Beeps/sec in phase 1; doubles each phase.
   };
 
   // Generated alerts that finish at scheduled mode boundaries.
   struct BoundaryAlertConfig {
-    bool enabled;  // Enables both generated pre-boundary patterns.
+    bool enabled = true;  // Enables both generated pre-boundary patterns.
     BoundaryPatternConfig boundary1;  // Trading open and Friday sunset.
     BoundaryPatternConfig boundary2;  // Trading close and Saturday sunset.
   } boundaryAlert;
@@ -119,13 +129,13 @@ struct SoundConfig {
 
 // Stores the local timezone identity and the numeric offset used by sunset math.
 struct TimezoneConfig {
-  char name[40];             // IANA timezone name supplied by the browser.
-  int16_t utcOffsetMinutes;  // Current local offset from UTC in minutes.
+  char name[40] = {};            // IANA timezone name supplied by the browser.
+  int16_t utcOffsetMinutes = 0;  // Current local offset from UTC in minutes.
 };
 
 // Aggregates all persisted clock behavior and presentation settings.
 struct ClockConfig {
-  Mode activeMode;  // Persistent mode restored after any temporary overlay.
+  Mode activeMode = kModeClock;  // Persistent mode restored after any temporary overlay.
   FridayConfig friday;  // Friday-mode phase formats.
   TradingConfig trading;  // Trading-mode countdown format.
   MessageConfig messages;  // User-configurable display messages.

@@ -39,9 +39,11 @@ struct PanelSpec {
   Field b = Field::kNone;  // Right-of-colon value; kNone otherwise.
 };
 
-// Keeps a UI label and all three panel render specifications together.
+// The render specification for one format. The matching key and label live in
+// the parallel PROGMEM tables below, indexed identically - keeping the strings
+// out of this struct is what keeps them out of DRAM, since a `const char*`
+// member would only move the pointer to flash, not the text.
 struct FormatSpec {
-  const char* label;  // Human-readable format token layout.
   PanelSpec panels[kDisplayPanelCount];  // Direct render specification per panel.
 };
 
@@ -55,49 +57,162 @@ using F = Field;
 // (kColonTenths / kColonBlink), so a row's metadata can never drift from what
 // it renders. The hhh:mm overflow fallback is resolved semantically in
 // resolveCountingOverflow(); no hardcoded indices.
+// Parallel to kCountingFormats, one row per format. PROGMEM: the key and label
+// strings together are ~1.2KB across both tables - flash we have, DRAM we
+// do not. Read with the accessors at the bottom of this file.
+const char kCountingKeys[][kFormatKeyLength] PROGMEM = {
+    "ddl-hhmm-ssu",
+    "ddl-hhmm-ss",
+    "ddl-hhl-mmss",
+    "ddl-hhl-mml",
+    "dd-hhmm-ssu",
+    "dd-hhmm-ss",
+    "dd-hh-mmss",
+    "dd-hh-mm",
+    "hhl-mml-ssu",
+    "hhl-mml-ss",
+    "thhl-mml-ssu",
+    "thhl-mml-ss",
+    "thh-mm-ssu",
+    "thh-mm-ss",
+    "thhmm-ssu",
+    "thhmm-ss",
+};
+
+const char kCountingLabels[][kFormatLabelLength] PROGMEM = {
+    " dd D |  hh:mm |  ss:u",
+    " dd D |  hh:mm |    ss",
+    " dd D |  hh  H | mm:ss",
+    " dd D |  hh  H |  mm N",
+    "   dd |  hh:mm |  ss:u",
+    "   dd |  hh:mm |    ss",
+    "   dd |     hh | mm:ss",
+    "   dd |     hh |    mm",
+    " hh H |   mm N |  ss:u",
+    " hh H |   mm N |    ss",
+    "hhh H |   mm N |  ss:u",
+    "hhh H |   mm N |    ss",
+    "  hhh |     mm |  ss:u",
+    "  hhh |     mm |    ss",
+    "      | hhh:mm |  ss:u",
+    "      | hhh:mm |    ss",
+};
+
 const FormatSpec kCountingFormats[] = {
-  {" dd D |  hh:mm |  ss:u", {{S::kLabel, F::kDays},        {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {" dd D |  hh:mm |    ss", {{S::kLabel, F::kDays},        {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {" dd D |  hh  H | mm:ss", {{S::kLabel, F::kDays},        {S::kLabel, F::kHours},                   {S::kColon, F::kMinutes, F::kSeconds}}},
-  {" dd D |  hh  H |  mm N", {{S::kLabel, F::kDays},        {S::kLabel, F::kHours},                   {S::kLabel, F::kMinutes}}},
-  {"   dd |  hh:mm |  ss:u", {{S::kNumber, F::kDays},       {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"   dd |  hh:mm |    ss", {{S::kNumber, F::kDays},       {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {"   dd |     hh | mm:ss", {{S::kNumber, F::kDays},       {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
-  {"   dd |     hh |    mm", {{S::kNumber, F::kDays},       {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
-  {" hh H |   mm N |  ss:u", {{S::kLabel, F::kHours},       {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {" hh H |   mm N |    ss", {{S::kLabel, F::kHours},       {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
-  {"hhh H |   mm N |  ss:u", {{S::kLabel, F::kTotalHours},  {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"hhh H |   mm N |    ss", {{S::kLabel, F::kTotalHours},  {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
-  {"  hhh |     mm |  ss:u", {{S::kNumber, F::kTotalHours}, {S::kNumber, F::kMinutes},                {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"  hhh |     mm |    ss", {{S::kNumber, F::kTotalHours}, {S::kNumber, F::kMinutes},                {S::kNumber, F::kSeconds}}},
-  {"      | hhh:mm |  ss:u", {{S::kBlank},                  {S::kColon, F::kTotalHours, F::kMinutes}, {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"      | hhh:mm |    ss", {{S::kBlank},                  {S::kColon, F::kTotalHours, F::kMinutes}, {S::kNumber, F::kSeconds}}},
+    {{{S::kLabel, F::kDays},        {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kLabel, F::kDays},        {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+    {{{S::kLabel, F::kDays},        {S::kLabel, F::kHours},                   {S::kColon, F::kMinutes, F::kSeconds}}},
+    {{{S::kLabel, F::kDays},        {S::kLabel, F::kHours},                   {S::kLabel, F::kMinutes}}},
+    {{{S::kNumber, F::kDays},       {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kNumber, F::kDays},       {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+    {{{S::kNumber, F::kDays},       {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
+    {{{S::kNumber, F::kDays},       {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
+    {{{S::kLabel, F::kHours},       {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kLabel, F::kHours},       {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
+    {{{S::kLabel, F::kTotalHours},  {S::kLabel, F::kMinutes},                 {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kLabel, F::kTotalHours},  {S::kLabel, F::kMinutes},                 {S::kNumber, F::kSeconds}}},
+    {{{S::kNumber, F::kTotalHours}, {S::kNumber, F::kMinutes},                {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kNumber, F::kTotalHours}, {S::kNumber, F::kMinutes},                {S::kNumber, F::kSeconds}}},
+    {{{S::kBlank},                  {S::kColon, F::kTotalHours, F::kMinutes}, {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kBlank},                  {S::kColon, F::kTotalHours, F::kMinutes}, {S::kNumber, F::kSeconds}}},
+};
+
+// Parallel to kClockFormats, one row per format. PROGMEM: the key and label
+// strings together are ~1.2KB across both tables - flash we have, DRAM we
+// do not. Read with the accessors at the bottom of this file.
+const char kClockKeys[][kFormatKeyLength] PROGMEM = {
+    "dow-mmdd-hhmm",
+    "dow-blank-hhmm",
+    "blank-dow-hhmm",
+    "dow-mm-dd",
+    "dow-hhmm-ssu",
+    "dow-hhmm-ss",
+    "dow-hhl-mmss",
+    "dow-hhl-mml",
+    "yyyy-mmdd-hhmm",
+    "yyyy-mm-dd",
+    "mm-dd-hhmm",
+    "mmdd-hhmm-ssu",
+    "mmdd-hhmm-ss",
+    "mmdd-hh-mmss",
+    "mmdd-hh-mm",
+    "dd-hhmm-ssu",
+    "dd-hhmm-ss",
+    "dd-hh-mmss",
+    "dd-hh-mm",
+};
+
+const char kClockLabels[][kFormatLabelLength] PROGMEM = {
+    " DOW  | MM:DD | hh;mm",
+    " DOW  |       | hh;mm",
+    "      |   DOW | hh;mm",
+    " DOW  |    MM |    DD",
+    " DOW  | hh:mm |  ss:u",
+    " DOW  | hh:mm |    ss",
+    " DOW  | hh  H | mm:ss",
+    " DOW  | hh  H |  mm N",
+    " YYYY | MM:DD | hh;mm",
+    " YYYY |    MM |    DD",
+    "   MM |    DD | hh;mm",
+    "MM:DD | hh:mm |  ss:u",
+    "MM:DD | hh:mm |    ss",
+    "MM:DD |    hh | mm:ss",
+    "MM:DD |    hh |    mm",
+    "   DD | hh:mm |  ss:u",
+    "   DD | hh:mm |    ss",
+    "   DD |    hh | mm:ss",
+    "   DD |    hh |    mm",
 };
 
 const FormatSpec kClockFormats[] = {
-  {" DOW  | MM:DD | hh;mm", {{S::kDow, F::kDow},              {S::kColon, F::kMonth, F::kDay},          {S::kColonBlink, F::kHours, F::kMinutes}}},
-  {" DOW  |       | hh;mm", {{S::kDow, F::kDow},              {S::kBlank},                              {S::kColonBlink, F::kHours, F::kMinutes}}},
-  {"      |   DOW | hh;mm", {{S::kBlank},                     {S::kDow, F::kDow},                       {S::kColonBlink, F::kHours, F::kMinutes}}},
-  {" DOW  |    MM |    DD", {{S::kDow, F::kDow},              {S::kNumber, F::kMonth},                  {S::kNumber, F::kDay}}},
-  {" DOW  | hh:mm |  ss:u", {{S::kDow, F::kDow},              {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {" DOW  | hh:mm |    ss", {{S::kDow, F::kDow},              {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {" DOW  | hh  H | mm:ss", {{S::kDow, F::kDow},              {S::kLabelBlankZero, F::kHours},          {S::kColon, F::kMinutes, F::kSeconds}}},
-  {" DOW  | hh  H |  mm N", {{S::kDow, F::kDow},              {S::kLabelBlankZero, F::kHours},          {S::kLabel, F::kMinutes}}},
-  {" YYYY | MM:DD | hh;mm", {{S::kNumber, F::kYear},          {S::kColon, F::kMonth, F::kDay},          {S::kColonBlink, F::kHours, F::kMinutes}}},
-  {" YYYY |    MM |    DD", {{S::kNumber, F::kYear},          {S::kNumber, F::kMonth},                  {S::kNumber, F::kDay}}},
-  {"   MM |    DD | hh;mm", {{S::kNumber, F::kMonth},         {S::kNumber, F::kDay},                    {S::kColonBlink, F::kHours, F::kMinutes}}},
-  {"MM:DD | hh:mm |  ss:u", {{S::kColon, F::kMonth, F::kDay}, {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"MM:DD | hh:mm |    ss", {{S::kColon, F::kMonth, F::kDay}, {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {"MM:DD |    hh | mm:ss", {{S::kColon, F::kMonth, F::kDay}, {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
-  {"MM:DD |    hh |    mm", {{S::kColon, F::kMonth, F::kDay}, {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
-  {"   DD | hh:mm |  ss:u", {{S::kNumber, F::kDay},           {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
-  {"   DD | hh:mm |    ss", {{S::kNumber, F::kDay},           {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
-  {"   DD |    hh | mm:ss", {{S::kNumber, F::kDay},           {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
-  {"   DD |    hh |    mm", {{S::kNumber, F::kDay},           {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
+    {{{S::kDow, F::kDow},              {S::kColon, F::kMonth, F::kDay},          {S::kColonBlink, F::kHours, F::kMinutes}}},
+    {{{S::kDow, F::kDow},              {S::kBlank},                              {S::kColonBlink, F::kHours, F::kMinutes}}},
+    {{{S::kBlank},                     {S::kDow, F::kDow},                       {S::kColonBlink, F::kHours, F::kMinutes}}},
+    {{{S::kDow, F::kDow},              {S::kNumber, F::kMonth},                  {S::kNumber, F::kDay}}},
+    {{{S::kDow, F::kDow},              {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kDow, F::kDow},              {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+    {{{S::kDow, F::kDow},              {S::kLabelBlankZero, F::kHours},          {S::kColon, F::kMinutes, F::kSeconds}}},
+    {{{S::kDow, F::kDow},              {S::kLabelBlankZero, F::kHours},          {S::kLabel, F::kMinutes}}},
+    {{{S::kNumber, F::kYear},          {S::kColon, F::kMonth, F::kDay},          {S::kColonBlink, F::kHours, F::kMinutes}}},
+    {{{S::kNumber, F::kYear},          {S::kNumber, F::kMonth},                  {S::kNumber, F::kDay}}},
+    {{{S::kNumber, F::kMonth},         {S::kNumber, F::kDay},                    {S::kColonBlink, F::kHours, F::kMinutes}}},
+    {{{S::kColon, F::kMonth, F::kDay}, {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kColon, F::kMonth, F::kDay}, {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+    {{{S::kColon, F::kMonth, F::kDay}, {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
+    {{{S::kColon, F::kMonth, F::kDay}, {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
+    {{{S::kNumber, F::kDay},           {S::kColon, F::kHours, F::kMinutes},      {S::kColonTenths, F::kSeconds, F::kTenths}}},
+    {{{S::kNumber, F::kDay},           {S::kColon, F::kHours, F::kMinutes},      {S::kNumber, F::kSeconds}}},
+    {{{S::kNumber, F::kDay},           {S::kNumber, F::kHours},                  {S::kColon, F::kMinutes, F::kSeconds}}},
+    {{{S::kNumber, F::kDay},           {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
 };
 
 constexpr uint8_t kCountingFormatCount = sizeof(kCountingFormats) / sizeof(kCountingFormats[0]);
 constexpr uint8_t kClockFormatCount = sizeof(kClockFormats) / sizeof(kClockFormats[0]);
+
+static_assert(sizeof(kCountingKeys) / kFormatKeyLength == kCountingFormatCount,
+              "counting key table must have one row per format");
+static_assert(sizeof(kCountingLabels) / kFormatLabelLength == kCountingFormatCount,
+              "counting label table must have one row per format");
+static_assert(sizeof(kClockKeys) / kFormatKeyLength == kClockFormatCount,
+              "clock key table must have one row per format");
+static_assert(sizeof(kClockLabels) / kFormatLabelLength == kClockFormatCount,
+              "clock label table must have one row per format");
+
+// The PROGMEM string row for one format, or the group's first row when the
+// index is out of range - matching how safeFormat() falls back.
+const char* keyRow(FormatGroup group, uint8_t index) {
+  if (group == kFmtGroupClock) {
+    return kClockKeys[index < kClockFormatCount ? index : 0];
+  }
+  return kCountingKeys[index < kCountingFormatCount ? index : 0];
+}
+
+const char* labelRow(FormatGroup group, uint8_t index) {
+  if (group == kFmtGroupClock) {
+    return kClockLabels[index < kClockFormatCount ? index : 0];
+  }
+  return kCountingLabels[index < kCountingFormatCount ? index : 0];
+}
 
 // Collects normalized renderer inputs so panel logic can read fields uniformly.
 struct RenderValues {
@@ -193,11 +308,21 @@ void renderPanel(const PanelSpec& spec, const RenderValues& v, char* out) {
   }
 }
 
-const FormatSpec& safeFormat(FormatGroup group, uint8_t index) {
+// The table backing a group, with its length. Countdown and CountUp share the
+// counting table, which is what keeps the two modes from drifting apart.
+const FormatSpec* formatTable(FormatGroup group, uint8_t& count) {
   if (group == kFmtGroupClock) {
-    return kClockFormats[index < kClockFormatCount ? index : 0];
+    count = kClockFormatCount;
+    return kClockFormats;
   }
-  return kCountingFormats[index < kCountingFormatCount ? index : 0];
+  count = kCountingFormatCount;
+  return kCountingFormats;
+}
+
+const FormatSpec& safeFormat(FormatGroup group, uint8_t index) {
+  uint8_t count = 0;
+  const FormatSpec* table = formatTable(group, count);
+  return table[index < count ? index : 0];
 }
 
 bool samePanel(const PanelSpec& a, const PanelSpec& b) {
@@ -307,10 +432,39 @@ uint8_t displayFormatCount(FormatGroup group) {
   }
 }
 
+void displayFormatKey(FormatGroup group, uint8_t index, char* out,
+                      size_t outSize) {
+  if ((out == nullptr) || (outSize == 0)) return;
+  strncpy_P(out, keyRow(group, index), outSize);
+  out[outSize - 1] = '\0';
+}
+
+void displayFormatLabel(FormatGroup group, uint8_t index, char* out,
+                        size_t outSize) {
+  if ((out == nullptr) || (outSize == 0)) return;
+  strncpy_P(out, labelRow(group, index), outSize);
+  out[outSize - 1] = '\0';
+}
+
+bool displayFormatIndexForKey(FormatGroup group, const char* key,
+                              uint8_t* index) {
+  if ((key == nullptr) || (key[0] == '\0') || (index == nullptr)) return false;
+  uint8_t count = 0;
+  formatTable(group, count);
+  for (uint8_t i = 0; i < count; ++i) {
+    // Compares the caller's RAM string against the flash row in place, so the
+    // scan needs no scratch buffer.
+    if (strncmp_P(key, keyRow(group, i), kFormatKeyLength) == 0) {
+      *index = i;
+      return true;
+    }
+  }
+  return false;
+}
+
 DisplayFormatInfo displayFormatInfo(FormatGroup group, uint8_t index) {
   const FormatSpec& format = safeFormat(group, index);
-  DisplayFormatInfo info{format.label, RefreshRate::kOneSecond,
-                         ColonAnimation::kNone};
+  DisplayFormatInfo info{RefreshRate::kOneSecond, ColonAnimation::kNone};
   for (const PanelSpec& panel : format.panels) {
     if (panel.shape == Shape::kColonTenths) {
       info.refreshRate = RefreshRate::kOneTenth;

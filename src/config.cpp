@@ -201,7 +201,7 @@ void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
         !parseLocalDateTime(cfg.countup.start, parsed)) {
         strlcpy(cfg.countup.start, defaults.countup.start, sizeof(cfg.countup.start));
     }
-    sanitizeFormatFields(cfg, defaults);
+    sanitizeFormatFields(cfg);
     if (!isValidTradingSchedule(cfg.trading.schedule)) {
       cfg.trading.schedule = defaults.trading.schedule;
     }

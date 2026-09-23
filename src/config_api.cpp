@@ -91,19 +91,33 @@ void ConfigApi::handleBrightness() {
   responder_.sendJson(200, "{\"message\":\"Brightness previewed\"}");
 }
 
+// Each entry is {key, label}: the key is what the page posts back and what
+// config.json stores, the label is only ever shown. Sending the index would
+// make the dropdown's value depend on this firmware's table order, which is
+// exactly what a stored key exists to avoid.
 void ConfigApi::handleFormats() {
   JsonDocument doc;
-  JsonArray countdown = doc["countdown"].to<JsonArray>();
-  for (uint8_t i = 0; i < displayFormatCount(kFmtGroupCountdown); ++i) {
-    countdown.add(displayFormatInfo(kFmtGroupCountdown, i).label);
-  }
-  JsonArray countup = doc["countup"].to<JsonArray>();
-  for (uint8_t i = 0; i < displayFormatCount(kFmtGroupCountUp); ++i) {
-    countup.add(displayFormatInfo(kFmtGroupCountUp, i).label);
-  }
-  JsonArray clock = doc["clock"].to<JsonArray>();
-  for (uint8_t i = 0; i < displayFormatCount(kFmtGroupClock); ++i) {
-    clock.add(displayFormatInfo(kFmtGroupClock, i).label);
+  const struct {
+    const char* jsonKey;
+    FormatGroup group;
+  } kGroups[] = {
+      {"countdown", kFmtGroupCountdown},
+      {"countup", kFmtGroupCountUp},
+      {"clock", kFmtGroupClock},
+  };
+  for (const auto& group : kGroups) {
+    JsonArray formats = doc[group.jsonKey].to<JsonArray>();
+    for (uint8_t i = 0; i < displayFormatCount(group.group); ++i) {
+      // Keys and labels live in flash, so they are copied into these buffers
+      // before ArduinoJson duplicates them into the response document.
+      char key[kFormatKeyLength];
+      char label[kFormatLabelLength];
+      displayFormatKey(group.group, i, key, sizeof(key));
+      displayFormatLabel(group.group, i, label, sizeof(label));
+      JsonObject entry = formats.add<JsonObject>();
+      entry["key"] = key;
+      entry["label"] = label;
+    }
   }
   responder_.sendJsonDocument(200, doc);
 }

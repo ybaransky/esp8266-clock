@@ -1,5 +1,8 @@
 #include "defaults.h"
 
+#include "display_format.h"
+#include "log.h"
+
 namespace {
 
 // Empty is a sentinel, not a missing value: WifiConnectionManager derives
@@ -17,35 +20,47 @@ constexpr const char* kDefaultFridaySunsetMessage = "     SUN SET";
 constexpr const char* kDefaultTradingOpenMessage  = "        OPEN";
 constexpr const char* kDefaultTradingCloseMessage = "        CLSE";
 
-// Sound ships enabled but with every event unassigned, so a device without the
-// buzzer wired (or with a filesystem predating /songs.bin) behaves exactly as
-// it did before: an empty name is silence, and nothing probes the catalog until
-// a name is picked on /format. Keep in sync with data/config.json.
+// Default formats are named by key, not by table position. Naming them by
+// index is what let this file claim index 7 was " YYYY | MM:DD | hh;mm" when
+// the catalog had since grown a row and index 7 had become something else.
+// A key either resolves to the format it names or it does not resolve at all.
+constexpr const char* kDefaultClockFormat    = "yyyy-mmdd-hhmm";
+constexpr const char* kDefaultCountingFormat = "ddl-hhmm-ssu";
+
 constexpr uint8_t kDefaultSoundVolumePercent = 40;
-constexpr uint16_t kDefaultBoundaryDurationSeconds = 40;
-constexpr uint16_t kDefaultBoundary1Hz = 880;
-constexpr uint16_t kDefaultBoundary2Hz = 1320;
-constexpr uint8_t kDefaultBoundaryStartingBeatsHz = 2;
+
+// Resolves a default format key to its index, complaining loudly and falling
+// back to the group's first format if the key names nothing. A miss here means
+// a key was renamed without updating this file; tools/check_formats.py fails
+// the build on exactly that, so this path should be unreachable in a built
+// firmware and exists only so a mistake degrades instead of corrupting.
+uint8_t formatIndexOrFirst(FormatGroup group, const char* key) {
+  uint8_t index = 0;
+  if (!displayFormatIndexForKey(group, key, &index)) {
+    LOG_PRINTF("default format key \"%s\" is not in the catalog; using the first", key);
+    return 0;
+  }
+  return index;
+}
 
 }  // namespace
 
 ClockConfig defaultClockConfig() {
+    // Every field not assigned here already has a default member initializer in
+    // config.h, so a field added later is initialized by construction rather
+    // than by remembering to add a line to this function.
     ClockConfig s;
     s.activeMode    = kModeCountdown;
-    s.countdown.format      = 0; // "dd D | hh:mm |  ss.u"
-    s.countup.format        = 0;
-    s.display.clockFmt      = 7; // " YYYY | MM:DD | hh;mm" (blinking colon)
-    s.friday.clockFmt             = 7;
-    s.friday.toFridaySunsetFmt    = 0;
-    s.friday.toSaturdaySunsetFmt  = 0;
-    s.friday.blinkBeforeMinutes   = 0;  // no pre-sunset blink
-    s.friday.blinkAfterMinutes    = 0;  // no post-sunset blink
-    s.trading.format              = 0;
-    s.trading.formatOver24        = kSameFormat;
+    s.countdown.format = formatIndexOrFirst(kFmtGroupCountdown, kDefaultCountingFormat);
+    s.countup.format   = formatIndexOrFirst(kFmtGroupCountUp, kDefaultCountingFormat);
+    s.display.clockFmt = formatIndexOrFirst(kFmtGroupClock, kDefaultClockFormat);
+    s.friday.clockFmt            = s.display.clockFmt;
+    s.friday.toFridaySunsetFmt   = s.countdown.format;
+    s.friday.toSaturdaySunsetFmt = s.countdown.format;
+    s.trading.format             = s.countdown.format;
     s.trading.schedule.intervalCount = 1;
     s.trading.schedule.intervals[0]  = {9 * 60 + 30, 16 * 60};
     s.trading.schedule.intervals[1]  = {17 * 60, 18 * 60};
-    s.display.brightness = 3;
     snprintf(s.countdown.end, sizeof(s.countdown.end), "%s", kDefaultCountdownDatetime);
     snprintf(s.countup.start, sizeof(s.countup.start), "%s", kDefaultCountupDatetime);
     snprintf(s.messages.splash, sizeof(s.messages.splash), "%s", kDefaultSplashMessage);
@@ -56,22 +71,19 @@ ClockConfig defaultClockConfig() {
              "%s", kDefaultTradingOpenMessage);
     snprintf(s.messages.tradingClose, sizeof(s.messages.tradingClose),
              "%s", kDefaultTradingCloseMessage);
-    s.sound = {};
-    s.sound.enabled = true;
+    // Sound ships enabled but with every event unassigned, so a device without
+    // the buzzer wired (or with a filesystem predating /songs.bin) stays silent:
+    // an empty name is silence, and nothing probes the catalog until a name is
+    // picked on /format. Keep in sync with data/config.json.
     s.sound.volumePercent = kDefaultSoundVolumePercent;
-    s.sound.boundaryAlert.enabled = true;
-    s.sound.boundaryAlert.boundary1 = {
-        kDefaultBoundary1Hz, kDefaultBoundaryDurationSeconds,
-        kDefaultBoundaryStartingBeatsHz};
-    s.sound.boundaryAlert.boundary2 = {
-        kDefaultBoundary2Hz, kDefaultBoundaryDurationSeconds,
-        kDefaultBoundaryStartingBeatsHz};
-    s.locations = {};
-    s.timezone.name[0] = '\0';
-    s.timezone.utcOffsetMinutes = 0;
-    s.display.clockUse12Hour = false;
+    // Boundary 2 is the only pattern that differs from the struct's own
+    // defaults (880 Hz / 40 s / 2 Hz); it sits a fifth above Boundary 1.
+    s.sound.boundaryAlert.boundary2.toneHz = 1320;
     return s;
 }
+
+const char* defaultClockFormatKey() { return kDefaultClockFormat; }
+const char* defaultCountingFormatKey() { return kDefaultCountingFormat; }
 
 WifiConfig defaultWifiConfig() {
     return WifiConfig{"", "", kDefaultApSsid, kDefaultApPassword};

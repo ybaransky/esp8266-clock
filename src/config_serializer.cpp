@@ -5,6 +5,7 @@
 #include "config.h"
 #include "config_validation.h"
 #include "datetime_validation.h"
+#include "defaults.h"
 #include "zipcode.h"
 
 namespace {
@@ -35,29 +36,138 @@ bool parseTimeOfDay(const char* value, uint16_t* minute) {
   return true;
 }
 
+// One row per format-index field: where it lives in the JSON (modes[modeKey]
+// [fieldKey]), which format group governs valid indexes, whether kSameFormat
+// is an accepted value, and how to reach the target ClockConfig member. Using
+// an accessor instead of a member pointer lets one table cover fields nested
+// at different depths (e.g. cfg.countdown.format vs cfg.display.clockFmt).
+struct FormatFieldDescriptor {
+  const char* modeKey;
+  const char* fieldKey;
+  FormatGroup group;
+  bool optional;  // True if kSameFormat/-1 means "no secondary format".
+  uint8_t& (*field)(ClockConfig&);
+  uint8_t (*get)(const ClockConfig&);  // Read-only twin, for serialization.
+};
+
+const FormatFieldDescriptor kFormatFields[] = {
+    {"countdown", "format", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.countdown.format; },
+     [](const ClockConfig& c) { return c.countdown.format; }},
+    {"countup", "format", kFmtGroupCountUp, false,
+     [](ClockConfig& c) -> uint8_t& { return c.countup.format; },
+     [](const ClockConfig& c) { return c.countup.format; }},
+    {"clock", "format", kFmtGroupClock, false,
+     [](ClockConfig& c) -> uint8_t& { return c.display.clockFmt; },
+     [](const ClockConfig& c) { return c.display.clockFmt; }},
+    {"friday", "clockFormat", kFmtGroupClock, false,
+     [](ClockConfig& c) -> uint8_t& { return c.friday.clockFmt; },
+     [](const ClockConfig& c) { return c.friday.clockFmt; }},
+    {"friday", "toFridaySunsetFormat", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.friday.toFridaySunsetFmt; },
+     [](const ClockConfig& c) { return c.friday.toFridaySunsetFmt; }},
+    {"friday", "toSaturdaySunsetFormat", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.friday.toSaturdaySunsetFmt; },
+     [](const ClockConfig& c) { return c.friday.toSaturdaySunsetFmt; }},
+    {"trading", "format", kFmtGroupCountdown, false,
+     [](ClockConfig& c) -> uint8_t& { return c.trading.format; },
+     [](const ClockConfig& c) { return c.trading.format; }},
+    {"trading", "formatOver24", kFmtGroupCountdown, true,
+     [](ClockConfig& c) -> uint8_t& { return c.trading.formatOver24; },
+     [](const ClockConfig& c) { return c.trading.formatOver24; }},
+};
+
+// The value written for an optional format field that is not in use, and the
+// value the web dropdowns post back for "same as normal format".
+constexpr char kSameFormatKey[] = "same";
+
+// One row per free-text display-message field: JSON key under "messages" and
+// how to reach the target fixed-size buffer.
+struct MessageFieldDescriptor {
+  const char* jsonKey;
+  char* (*field)(ClockConfig&);
+  const char* (*get)(const ClockConfig&);  // Read-only twin, for serialization.
+  size_t size;
+};
+
+const MessageFieldDescriptor kMessageFields[] = {
+    {"splash", [](ClockConfig& c) -> char* { return c.messages.splash; },
+     [](const ClockConfig& c) -> const char* { return c.messages.splash; },
+     sizeof(MessageConfig::splash)},
+    {"final", [](ClockConfig& c) -> char* { return c.messages.final; },
+     [](const ClockConfig& c) -> const char* { return c.messages.final; },
+     sizeof(MessageConfig::final)},
+    {"fridaySunset",
+     [](ClockConfig& c) -> char* { return c.messages.fridaySunset; },
+     [](const ClockConfig& c) -> const char* { return c.messages.fridaySunset; },
+     sizeof(MessageConfig::fridaySunset)},
+    {"tradingOpen",
+     [](ClockConfig& c) -> char* { return c.messages.tradingOpen; },
+     [](const ClockConfig& c) -> const char* { return c.messages.tradingOpen; },
+     sizeof(MessageConfig::tradingOpen)},
+    {"tradingClose",
+     [](ClockConfig& c) -> char* { return c.messages.tradingClose; },
+     [](const ClockConfig& c) -> const char* { return c.messages.tradingClose; },
+     sizeof(MessageConfig::tradingClose)},
+};
+
+// One row per per-event sound selection: JSON key under "sound" and how to
+// reach the target fixed-size buffer. Deliberately parallel to kMessageFields -
+// every announced event has both a message and a sound, and the two tables are
+// what keep that pairing from drifting.
+struct SoundFieldDescriptor {
+  const char* jsonKey;
+  char* (*field)(ClockConfig&);
+  const char* (*get)(const ClockConfig&);  // Read-only twin, for serialization.
+};
+
+const SoundFieldDescriptor kSoundFields[] = {
+    {"startup", [](ClockConfig& c) -> char* { return c.sound.startup; },
+     [](const ClockConfig& c) -> const char* { return c.sound.startup; }},
+    {"final", [](ClockConfig& c) -> char* { return c.sound.final; },
+     [](const ClockConfig& c) -> const char* { return c.sound.final; }},
+    {"fridaySunset",
+     [](ClockConfig& c) -> char* { return c.sound.fridaySunset; },
+     [](const ClockConfig& c) -> const char* { return c.sound.fridaySunset; }},
+    {"tradingOpen",
+     [](ClockConfig& c) -> char* { return c.sound.tradingOpen; },
+     [](const ClockConfig& c) -> const char* { return c.sound.tradingOpen; }},
+    {"tradingClose",
+     [](ClockConfig& c) -> char* { return c.sound.tradingClose; },
+     [](const ClockConfig& c) -> const char* { return c.sound.tradingClose; }},
+};
+
 }  // namespace
 
+// Every string written here is a `const char*` pointing into `clock` or into a
+// static table, never a String copy: ArduinoJson stores such a pointer by
+// reference rather than duplicating the text into its pool, which is the
+// difference between a handful of heap allocations per save and none.
+//
+// LIFETIME REQUIREMENT: `clock` must outlive `doc`. Both callers satisfy this
+// (ConfigManager serializes a reference to its own cached config; the HTTP
+// handler reads the manager's cache directly). Do not pass a temporary.
 void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
+  // Schema version, so a future incompatible change has something to branch on
+  // instead of guessing from which keys happen to be present.
+  doc["configVersion"] = kConfigSchemaVersion;
+
   JsonObject display = doc["display"].to<JsonObject>();
   display["activeMode"]  = modeName(clock.activeMode);
   display["brightness"]  = clock.display.brightness;
   display["clock12Hour"] = clock.display.clockUse12Hour;
 
   JsonObject messages = display["messages"].to<JsonObject>();
-  messages["splash"]       = String(clock.messages.splash);
-  messages["final"]        = String(clock.messages.final);
-  messages["fridaySunset"] = String(clock.messages.fridaySunset);
-  messages["tradingOpen"]  = String(clock.messages.tradingOpen);
-  messages["tradingClose"] = String(clock.messages.tradingClose);
+  for (const MessageFieldDescriptor& d : kMessageFields) {
+    messages[d.jsonKey] = d.get(clock);
+  }
 
   JsonObject sound = doc["sound"].to<JsonObject>();
   sound["enabled"] = clock.sound.enabled;
   sound["volume"]  = clock.sound.volumePercent;
-  sound["startup"]      = String(clock.sound.startup);
-  sound["final"]        = String(clock.sound.final);
-  sound["fridaySunset"] = String(clock.sound.fridaySunset);
-  sound["tradingOpen"]  = String(clock.sound.tradingOpen);
-  sound["tradingClose"] = String(clock.sound.tradingClose);
+  for (const SoundFieldDescriptor& d : kSoundFields) {
+    sound[d.jsonKey] = d.get(clock);
+  }
   JsonObject boundaryAlert = sound["boundaryAlert"].to<JsonObject>();
   boundaryAlert["enabled"] = clock.sound.boundaryAlert.enabled;
   JsonObject boundary1 = boundaryAlert["boundary1"].to<JsonObject>();
@@ -75,31 +185,36 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
 
   JsonObject modes = display["modes"].to<JsonObject>();
 
-  JsonObject countdown = modes["countdown"].to<JsonObject>();
-  countdown["format"] = clock.countdown.format;
-  countdown["end"]    = String(clock.countdown.end);
+  // Format selections are written as stable keys, never as table positions, so
+  // adding or reordering a format cannot silently repoint a saved config at a
+  // different one. Read back by applyFormatFields(), which still accepts a
+  // legacy integer index from configs written before this change.
+  // Nested subscript assignment creates the intermediate mode objects on
+  // demand; .to<JsonObject>() would clear a mode that an earlier row already
+  // populated (both "friday" and "trading" appear more than once here).
+  for (const FormatFieldDescriptor& d : kFormatFields) {
+    const uint8_t index = d.get(clock);
+    if (d.optional && (index == kSameFormat)) {
+      modes[d.modeKey][d.fieldKey] = kSameFormatKey;
+      continue;
+    }
+    // The key table is in flash, so it is copied out here. ArduinoJson copies
+    // this local into its own pool, unlike the const char* fields above.
+    char key[kFormatKeyLength];
+    displayFormatKey(d.group, index, key, sizeof(key));
+    modes[d.modeKey][d.fieldKey] = key;
+  }
 
-  JsonObject countup = modes["countup"].to<JsonObject>();
-  countup["format"] = clock.countup.format;
-  countup["start"]  = String(clock.countup.start);
-
-  JsonObject clockMode = modes["clock"].to<JsonObject>();
-  clockMode["format"] = clock.display.clockFmt;
-
-  JsonObject friday = modes["friday"].to<JsonObject>();
-  friday["clockFormat"]            = clock.friday.clockFmt;
-  friday["toFridaySunsetFormat"]   = clock.friday.toFridaySunsetFmt;
-  friday["toSaturdaySunsetFormat"] = clock.friday.toSaturdaySunsetFmt;
-  friday["blinkBeforeMinutes"]     = clock.friday.blinkBeforeMinutes;
-  friday["blinkAfterMinutes"]      = clock.friday.blinkAfterMinutes;
-
-  JsonObject trading = modes["trading"].to<JsonObject>();
-  trading["format"] = clock.trading.format;
-  trading["formatOver24"] = clock.trading.formatOver24;
-  trading["intervalCount"] = clock.trading.schedule.intervalCount;
-  JsonArray intervals = trading["intervals"].to<JsonArray>();
+  modes["countdown"]["end"] = clock.countdown.end;
+  modes["countup"]["start"] = clock.countup.start;
+  modes["friday"]["blinkBeforeMinutes"] = clock.friday.blinkBeforeMinutes;
+  modes["friday"]["blinkAfterMinutes"]  = clock.friday.blinkAfterMinutes;
+  modes["trading"]["intervalCount"] = clock.trading.schedule.intervalCount;
+  JsonArray intervals = modes["trading"]["intervals"].to<JsonArray>();
   for (uint8_t i = 0; i < kMaxTradingIntervals; ++i) {
     JsonObject interval = intervals.add<JsonObject>();
+    // These two are genuine temporaries, so ArduinoJson must copy them - the
+    // only String values written by this function, and deliberately so.
     interval["start"] =
         formatTimeOfDay(clock.trading.schedule.intervals[i].startMinute);
     interval["stop"] =
@@ -107,16 +222,16 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   }
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
-  timezone["name"] = String(clock.timezone.name);
+  timezone["name"] = clock.timezone.name;
   timezone["utcOffsetMinutes"] = clock.timezone.utcOffsetMinutes;
 
   JsonObject location = doc["location"].to<JsonObject>();
-  location["zipcode"]   = String(clock.locations.device.zipcode);
+  location["zipcode"]   = clock.locations.device.zipcode;
   location["latitude"]  = clock.locations.device.latitude;
   location["longitude"] = clock.locations.device.longitude;
 
   JsonObject sunset = doc["sunset"].to<JsonObject>();
-  sunset["zipcode"]   = String(clock.locations.sunsetTest.zipcode);
+  sunset["zipcode"]   = clock.locations.sunsetTest.zipcode;
   sunset["latitude"]  = clock.locations.sunsetTest.latitude;
   sunset["longitude"] = clock.locations.sunsetTest.longitude;
 }
@@ -156,82 +271,6 @@ bool applyZipcode(const char* zipcode, char* destination, size_t destinationSize
   snprintf(destination, destinationSize, "%s", zipcode);
   return true;
 }
-
-// One row per format-index field: where it lives in the JSON (modes[modeKey]
-// [fieldKey]), which format group governs valid indexes, whether kSameFormat
-// is an accepted value, and how to reach the target ClockConfig member. Using
-// an accessor instead of a member pointer lets one table cover fields nested
-// at different depths (e.g. cfg.countdown.format vs cfg.display.clockFmt).
-struct FormatFieldDescriptor {
-  const char* modeKey;
-  const char* fieldKey;
-  FormatGroup group;
-  bool optional;  // True if kSameFormat/-1 means "no secondary format".
-  uint8_t& (*field)(ClockConfig&);
-};
-
-const FormatFieldDescriptor kFormatFields[] = {
-    {"countdown", "format", kFmtGroupCountdown, false,
-     [](ClockConfig& c) -> uint8_t& { return c.countdown.format; }},
-    {"countup", "format", kFmtGroupCountUp, false,
-     [](ClockConfig& c) -> uint8_t& { return c.countup.format; }},
-    {"clock", "format", kFmtGroupClock, false,
-     [](ClockConfig& c) -> uint8_t& { return c.display.clockFmt; }},
-    {"friday", "clockFormat", kFmtGroupClock, false,
-     [](ClockConfig& c) -> uint8_t& { return c.friday.clockFmt; }},
-    {"friday", "toFridaySunsetFormat", kFmtGroupCountdown, false,
-     [](ClockConfig& c) -> uint8_t& { return c.friday.toFridaySunsetFmt; }},
-    {"friday", "toSaturdaySunsetFormat", kFmtGroupCountdown, false,
-     [](ClockConfig& c) -> uint8_t& { return c.friday.toSaturdaySunsetFmt; }},
-    {"trading", "format", kFmtGroupCountdown, false,
-     [](ClockConfig& c) -> uint8_t& { return c.trading.format; }},
-    {"trading", "formatOver24", kFmtGroupCountdown, true,
-     [](ClockConfig& c) -> uint8_t& { return c.trading.formatOver24; }},
-};
-
-// One row per free-text display-message field: JSON key under "messages" and
-// how to reach the target fixed-size buffer.
-struct MessageFieldDescriptor {
-  const char* jsonKey;
-  char* (*field)(ClockConfig&);
-  size_t size;
-};
-
-const MessageFieldDescriptor kMessageFields[] = {
-    {"splash", [](ClockConfig& c) -> char* { return c.messages.splash; },
-     sizeof(MessageConfig::splash)},
-    {"final", [](ClockConfig& c) -> char* { return c.messages.final; },
-     sizeof(MessageConfig::final)},
-    {"fridaySunset",
-     [](ClockConfig& c) -> char* { return c.messages.fridaySunset; },
-     sizeof(MessageConfig::fridaySunset)},
-    {"tradingOpen",
-     [](ClockConfig& c) -> char* { return c.messages.tradingOpen; },
-     sizeof(MessageConfig::tradingOpen)},
-    {"tradingClose",
-     [](ClockConfig& c) -> char* { return c.messages.tradingClose; },
-     sizeof(MessageConfig::tradingClose)},
-};
-
-// One row per per-event sound selection: JSON key under "sound" and how to
-// reach the target fixed-size buffer. Deliberately parallel to kMessageFields -
-// every announced event has both a message and a sound, and the two tables are
-// what keep that pairing from drifting.
-struct SoundFieldDescriptor {
-  const char* jsonKey;
-  char* (*field)(ClockConfig&);
-};
-
-const SoundFieldDescriptor kSoundFields[] = {
-    {"startup", [](ClockConfig& c) -> char* { return c.sound.startup; }},
-    {"final", [](ClockConfig& c) -> char* { return c.sound.final; }},
-    {"fridaySunset",
-     [](ClockConfig& c) -> char* { return c.sound.fridaySunset; }},
-    {"tradingOpen",
-     [](ClockConfig& c) -> char* { return c.sound.tradingOpen; }},
-    {"tradingClose",
-     [](ClockConfig& c) -> char* { return c.sound.tradingClose; }},
-};
 
 // Sound names are stored as given, not checked against the catalog: the
 // catalog lives on the filesystem and can be re-uploaded independently of
@@ -276,14 +315,41 @@ void applySoundFields(JsonVariantConst sound, ClockConfig& cfg) {
 
 }
 
+// Resolves one stored format selection onto its config field.
+//
+// A string is a stable format key, which is what this firmware writes. An
+// integer is a legacy table index from a config written before keys existed;
+// it is still honoured so an existing /config.json loads unchanged, and the
+// next save rewrites it as a key. Anything unrecognized leaves the field at
+// whatever the caller started from (defaults on load, the previous value on
+// patch), which is the same fallback behavior the index sanitizers had.
+void applyFormatField(const FormatFieldDescriptor& d, JsonVariantConst value,
+                      ClockConfig& cfg) {
+  uint8_t& field = d.field(cfg);
+
+  if (value.is<const char*>()) {
+    const char* key = value.as<const char*>();
+    if (d.optional && (key != nullptr) && (strcmp(key, kSameFormatKey) == 0)) {
+      field = kSameFormat;
+      return;
+    }
+    uint8_t resolved = field;
+    if (displayFormatIndexForKey(d.group, key, &resolved)) field = resolved;
+    return;
+  }
+
+  if (value.is<int>()) {
+    field = d.optional
+                ? sanitizeOptionalFormatIndex(d.group, value.as<int>(), field)
+                : sanitizeFormatIndex(d.group, value.as<int>(), field);
+  }
+}
+
 void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& cfg) {
   for (const FormatFieldDescriptor& d : kFormatFields) {
     JsonVariantConst value = modes[d.modeKey][d.fieldKey];
     if (value.isNull()) continue;
-    uint8_t& field = d.field(cfg);
-    field = d.optional
-        ? sanitizeOptionalFormatIndex(d.group, value.as<int>(), field)
-        : sanitizeFormatIndex(d.group, value.as<int>(), field);
+    applyFormatField(d, value, cfg);
   }
   if (!display["brightness"].isNull()) {
     cfg.display.brightness = sanitizeBrightness(display["brightness"].as<int>());
@@ -395,11 +461,23 @@ void applyTimezoneFields(JsonVariantConst time, ClockConfig& cfg) {
 
 }  // namespace
 
-void sanitizeFormatFields(ClockConfig& cfg, const ClockConfig& defaults) {
-  ClockConfig& mutableDefaults = const_cast<ClockConfig&>(defaults);
+void sanitizeFormatFields(ClockConfig& cfg) {
+  // The fallback for a field is its group's default format, resolved from the
+  // default key. That is both cheaper than materializing a whole default
+  // ClockConfig and more honest: the fallback for a countdown format field is
+  // "the default counting format", not "whatever field the defaults happen to
+  // hold in the same slot".
+  uint8_t countingFallback = 0;
+  uint8_t clockFallback = 0;
+  displayFormatIndexForKey(kFmtGroupCountdown, defaultCountingFormatKey(),
+                           &countingFallback);
+  displayFormatIndexForKey(kFmtGroupClock, defaultClockFormatKey(),
+                           &clockFallback);
+
   for (const FormatFieldDescriptor& d : kFormatFields) {
     uint8_t& field = d.field(cfg);
-    const uint8_t fallback = d.field(mutableDefaults);
+    const uint8_t fallback =
+        (d.group == kFmtGroupClock) ? clockFallback : countingFallback;
     field = d.optional
         ? sanitizeOptionalFormatIndex(d.group, field, fallback)
         : sanitizeFormatIndex(d.group, field, fallback);

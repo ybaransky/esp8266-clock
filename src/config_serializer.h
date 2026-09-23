@@ -5,6 +5,13 @@
 struct ClockConfig;
 struct WifiConfig;
 
+// Schema version written into /config.json as "configVersion". Bump this only
+// for a change that older firmware cannot read correctly; adding a field with
+// patch semantics does not need it. Format selections are stored as stable
+// keys rather than table indexes, so reordering the format catalog is not a
+// schema change.
+static constexpr uint8_t kConfigSchemaVersion = 1;
+
 // Writes the clock/display/time/location/sunset sections of the config JSON document.
 void serializeClockConfig(JsonDocument& doc, const ClockConfig& config);
 
@@ -15,10 +22,10 @@ void serializeWifiConfig(JsonDocument& doc, const WifiConfig& wifi);
 void serializeWifiStatus(JsonDocument& doc, const WifiConfig& wifi);
 
 // Clamps every format-index field to a valid value for its format group,
-// falling back to the matching field in defaults. Shares the field list
+// falling back to that group's default format. Shares the field list
 // (mode/JSON key, target member, format group) with applyJsonToClockConfig
 // so the two directions can't drift apart.
-void sanitizeFormatFields(ClockConfig& cfg, const ClockConfig& defaults);
+void sanitizeFormatFields(ClockConfig& cfg);
 
 // Re-sanitizes every display message field in place (trims to printable
 // ASCII, clamps length). Shares the field list with applyJsonToClockConfig.

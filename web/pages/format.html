@@ -170,28 +170,37 @@ function toggleTrade2() {
   $('tradeStop2').disabled = !enabled;
 }
 
-function options(id, labels, selected) {
+// Format dropdowns are key-valued, not index-valued - the same reasoning as
+// the sound dropdowns below. /api/formats returns [{key, label}]: the key is
+// what config.json stores, so adding or reordering a format in the firmware's
+// catalog cannot silently repoint a saved selection at a different format.
+function options(id, formats, selected) {
   var el = $(id);
   el.innerHTML = '';
-  (labels || []).forEach(function (label, i) {
+  (formats || []).forEach(function (format) {
     var o = document.createElement('option');
-    o.value = i;
-    o.textContent = label;
+    o.value = format.key;
+    o.textContent = format.label;
     el.appendChild(o);
   });
-  el.value = selected == null ? 0 : selected;
+  if (selected != null) el.value = selected;
+  // An unknown key (catalog changed under a saved config) leaves the select
+  // with nothing matching; fall back to the first entry so the control is
+  // never blank.
+  if (!el.value && el.options.length > 0) el.value = el.options[0].value;
 }
 
-// Matches kSameFormat in config.h: no secondary format selected.
-var SAME_FORMAT = 255;
-function optionsWithSame(id, labels, selected) {
-  options(id, labels, selected);
+// Matches kSameFormatKey in config_serializer.cpp: no secondary format chosen.
+var SAME_FORMAT = 'same';
+function optionsWithSame(id, formats, selected) {
   var el = $(id);
+  options(id, formats, selected);
   var o = document.createElement('option');
   o.value = SAME_FORMAT;
   o.textContent = 'Same as normal format';
   el.insertBefore(o, el.firstChild);
   el.value = selected == null ? SAME_FORMAT : selected;
+  if (!el.value) el.value = SAME_FORMAT;
 }
 
 // Sound dropdowns are name-valued, not index-valued: a sound's name is its
@@ -332,19 +341,19 @@ function save() {
       brightness: +$('br').value,
       clock12Hour: $('h12').checked,
       modes: {
-        countdown: { format: +$('fcd').value, end: stored($('end').value) },
-        countup: { format: +$('fcu').value, start: stored($('start').value) },
-        clock: { format: +$('fck').value },
+        countdown: { format: $('fcd').value, end: stored($('end').value) },
+        countup: { format: $('fcu').value, start: stored($('start').value) },
+        clock: { format: $('fck').value },
         friday: {
-          clockFormat: +$('ffck').value,
-          toFridaySunsetFormat: +$('ffri').value,
-          toSaturdaySunsetFormat: +$('fsat').value,
+          clockFormat: $('ffck').value,
+          toFridaySunsetFormat: $('ffri').value,
+          toSaturdaySunsetFormat: $('fsat').value,
           blinkBeforeMinutes: +$('fblinkb').value,
           blinkAfterMinutes: +$('fblinka').value
         },
         trading: {
-          format: +$('ftrade').value,
-          formatOver24: +$('ftrade24').value,
+          format: $('ftrade').value,
+          formatOver24: $('ftrade24').value,
           intervalCount: $('tradeEnable2').checked ? 2 : 1,
           intervals: intervals
         }
