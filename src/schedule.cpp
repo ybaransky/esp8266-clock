@@ -8,6 +8,18 @@ bool isTradingWeekday(uint8_t dayOfWeek) {
   return (dayOfWeek >= 1) && (dayOfWeek <= 5);
 }
 
+// Minutes after local midnight, as a second offset.
+//
+// Explicitly uint32_t rather than `minute * 60UL`: `unsigned long` is 32 bits
+// on the ESP8266 but 64 on an x86_64 host, so a UL literal widened the whole
+// surrounding expression only when compiled for the host tests. That both
+// produced a narrowing warning where the result lands in a braced initializer,
+// and - the part that actually matters - stopped those tests from modelling the
+// device's 32-bit wraparound, since the host was computing in 64 bits.
+constexpr uint32_t secondsFromMidnight(uint16_t minute) {
+  return static_cast<uint32_t>(minute) * 60U;
+}
+
 uint8_t daysUntilNextTradingDay(uint8_t dayOfWeek) {
   uint8_t daysAhead = 1;
   uint8_t candidate = (dayOfWeek + daysAhead) % 7;
@@ -70,9 +82,9 @@ ScheduleDecision evaluateTradingSchedule(uint32_t nowLocalSeconds,
   if (isTradingWeekday(dayOfWeek)) {
     for (uint8_t i = 0; i < schedule.intervalCount; ++i) {
       const uint32_t openAt =
-          todayMidnight + schedule.intervals[i].startMinute * 60UL;
+          todayMidnight + secondsFromMidnight(schedule.intervals[i].startMinute);
       const uint32_t closeAt =
-          todayMidnight + schedule.intervals[i].stopMinute * 60UL;
+          todayMidnight + secondsFromMidnight(schedule.intervals[i].stopMinute);
       if (nowLocalSeconds < openAt) {
         return {ScheduleView::kCountdown, {BoundaryKind::kTradingOpen, openAt, i}};
       }
@@ -83,10 +95,10 @@ ScheduleDecision evaluateTradingSchedule(uint32_t nowLocalSeconds,
   }
 
   const uint8_t daysAhead = daysUntilNextTradingDay(dayOfWeek);
-  return {ScheduleView::kCountdown, {BoundaryKind::kTradingOpen,
-          todayMidnight + daysAhead * kSecondsPerDay +
-              schedule.intervals[0].startMinute * 60UL,
-          0}};
+  const uint32_t nextOpen = todayMidnight + daysAhead * kSecondsPerDay +
+                            secondsFromMidnight(schedule.intervals[0].startMinute);
+  return {ScheduleView::kCountdown,
+          {BoundaryKind::kTradingOpen, nextOpen, 0}};
 }
 
 bool sameScheduleDecision(const ScheduleDecision& a, const ScheduleDecision& b) {
