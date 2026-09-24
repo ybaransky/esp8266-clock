@@ -12,6 +12,12 @@ namespace {
 constexpr const char* kDefaultApSsid     = "";
 constexpr const char* kDefaultApPassword = "12345678";
 
+// A placeholder, not a meaningful default: it is already in the past and cannot
+// be otherwise, since any date compiled into firmware is stale by the time a
+// device is powered on. It is reachable only when a user selects Countdown
+// without setting an end time, because the shipped activeMode is Clock. Do not
+// duplicate it in data/config.json - patch semantics make an absent field fall
+// through to here, and the two copies had already drifted twelve weeks apart.
 constexpr const char* kDefaultCountdownDatetime = "2026-07-04 00:00:00";
 constexpr const char* kDefaultCountupDatetime   = kCountupStartNow;
 constexpr const char* kDefaultSplashMessage       = "    YuriCloc";
@@ -48,7 +54,14 @@ void fillDefaults(ClockConfig& s) {
     // config.h, so a field added later is initialized by construction rather
     // than by remembering to add a line to this function.
     s = ClockConfig{};
-    s.activeMode    = kModeCountdown;
+    // Clock, not Countdown: a countdown default has to name an absolute instant,
+    // and any instant that ships in firmware is in the past by the time someone
+    // powers the device on - which rendered messages.final on a brand-new clock
+    // and read as broken hardware. Clock has no such default to go stale, so the
+    // out-of-box state is self-evidently working. kDefaultCountdownDatetime is
+    // now only a placeholder for a user who selects Countdown without setting an
+    // end time, which /format asks for in the same visit.
+    s.activeMode    = kModeClock;
     s.countdown.format = formatIndexOrFirst(kFmtGroupCountdown, kDefaultCountingFormat);
     s.countup.format   = formatIndexOrFirst(kFmtGroupCountUp, kDefaultCountingFormat);
     s.display.clockFmt = formatIndexOrFirst(kFmtGroupClock, kDefaultClockFormat);
@@ -83,7 +96,7 @@ void initDefaultClockConfig(ClockConfig& out) {
     fillDefaults(out);
 }
 
-Mode defaultActiveMode() { return kModeCountdown; }
+Mode defaultActiveMode() { return kModeClock; }
 const char* defaultCountdownEnd() { return kDefaultCountdownDatetime; }
 const char* defaultCountupStart() { return kDefaultCountupDatetime; }
 const char* defaultClockFormatKey() { return kDefaultClockFormat; }

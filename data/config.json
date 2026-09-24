@@ -1,7 +1,7 @@
 {
   "configVersion": 1,
   "display": {
-    "activeMode": "countdown",
+    "activeMode": "clock",
     "brightness": 3,
     "messages": {
       "splash": "    YuriCloc",
@@ -9,8 +9,7 @@
     },
     "modes": {
       "countdown": {
-        "format": "ddl-hhmm-ssu",
-        "end": "2026-09-17 05:00:00"
+        "format": "ddl-hhmm-ssu"
       },
       "countup": {
         "format": "ddl-hhmm-ssu",
