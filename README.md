@@ -69,16 +69,21 @@ active overlay.
 Trading times are local wall-clock times. Holidays and early closes are not
 modeled.
 
-## Design references
+## References
 
-- [CLAUDE.md](CLAUDE.md): detailed authoritative firmware reference.
-- [Display state](docs/display-state-design.md): Mode/View/Overlay ownership.
-- [Friday mode](docs/friday-mode-design.md): sunset phases and live crossing.
-- [Trading mode](docs/trading-mode-design.md): session persistence, validation,
-  boundary selection, and announcements.
-- [Web subsystem](docs/web-subsystem-redesign.md): static asset and API model.
-- [WiFi management](docs/wifi-connection-management-design.md): STA/AP ownership.
-- [clock.md](clock.md): authoritative PCB wiring derived from `hardware.h`.
+Every document here tracks the code. Per-subsystem design records are not kept
+separately: they duplicated CLAUDE.md, drifted out of step with it, and a reader
+had no way to tell which copy was current. Git history holds the superseded ones.
+
+- [CLAUDE.md](CLAUDE.md): the authoritative firmware reference - module APIs,
+  conventions, and the reasoning behind the non-obvious decisions. Covers the
+  display layering, scheduled modes, sound, storage, and web subsystems.
+- [AGENTS.md](AGENTS.md): the critical invariants, in short form. Read this
+  before hardware, timing, radio, or storage changes.
+- [SOUNDS.md](SOUNDS.md): the `songs.bin` layout and the authoring workflow.
+- [WIRING.md](WIRING.md): the buzzer's inverting NPN buffer and why D8 needs it.
+- [clock.md](clock.md): PCB wiring brief, derived from `hardware.h`.
+- [pcb.md](pcb.md): board specification - dimensions, mounting, connectors.
 
 ## Build
 
