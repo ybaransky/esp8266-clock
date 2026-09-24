@@ -1,5 +1,6 @@
 #include "datetime_validation.h"
 
+#include <stdio.h>
 #include <string.h>
 
 namespace {
@@ -61,4 +62,11 @@ bool parseLocalDateTime(const char* text, DateTime& result) {
       !parseClockTime(text + 11, &hour, &minute, &second)) return false;
   result = DateTime(year, month, day, hour, minute, second);
   return true;
+}
+
+void formatLocalDateTime(const DateTime& value, char* out, size_t outSize) {
+  if ((out == nullptr) || (outSize == 0)) return;
+  snprintf(out, outSize, "%04d-%02d-%02d %02d:%02d:%02d", value.year(),
+           value.month(), value.day(), value.hour(), value.minute(),
+           value.second());
 }

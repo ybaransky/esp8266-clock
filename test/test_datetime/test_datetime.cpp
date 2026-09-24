@@ -1,6 +1,8 @@
 // Host tests for datetime_validation.cpp: calendar validation and parsing.
 #include <unity.h>
 
+#include <string.h>
+
 #include <RTClib.h>
 
 #include "datetime_validation.h"
@@ -106,6 +108,68 @@ void test_parse_local_datetime_rejects_malformed_input() {
   TEST_ASSERT_FALSE(parseLocalDateTime("2026-09-18 25:00:00", parsed));
 }
 
+// formatLocalDateTime is the inverse of parseLocalDateTime: resolveCountupStart
+// writes a config field with the first and every reader parses it back with the
+// second, so a disagreement between them would persist an origin that no longer
+// loads and silently fall back to the default.
+void test_format_local_datetime_is_canonical() {
+  char text[kLocalDateTimeLength];
+  formatLocalDateTime(DateTime(2026, 9, 18, 14, 5, 30), text, sizeof(text));
+  TEST_ASSERT_EQUAL_STRING("2026-09-18 14:05:30", text);
+
+  // Every field zero-padded to its full width, including a single-digit year
+  // position that snprintf would otherwise shorten.
+  formatLocalDateTime(DateTime(2000, 1, 2, 3, 4, 5), text, sizeof(text));
+  TEST_ASSERT_EQUAL_STRING("2000-01-02 03:04:05", text);
+
+  formatLocalDateTime(DateTime(2099, 12, 31, 23, 59, 59), text, sizeof(text));
+  TEST_ASSERT_EQUAL_STRING("2099-12-31 23:59:59", text);
+}
+
+void test_format_local_datetime_round_trips() {
+  const uint32_t samples[] = {
+      DateTime(2026, 9, 18, 14, 5, 30).unixtime(),  // ordinary
+      DateTime(2024, 2, 29, 0, 0, 0).unixtime(),    // leap day, midnight
+      DateTime(2000, 1, 1, 0, 0, 0).unixtime(),     // lower bound
+      DateTime(2099, 12, 31, 23, 59, 59).unixtime() // upper bound
+  };
+  for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); ++i) {
+    char text[kLocalDateTimeLength];
+    formatLocalDateTime(DateTime(samples[i]), text, sizeof(text));
+    DateTime parsed;
+    TEST_ASSERT_TRUE_MESSAGE(parseLocalDateTime(text, parsed), text);
+    TEST_ASSERT_EQUAL_UINT32(samples[i], parsed.unixtime());
+  }
+}
+
+// kLocalDateTimeLength is exactly the canonical width plus a terminator, so a
+// CountupConfig::start-sized buffer must not lose the seconds.
+void test_format_local_datetime_needs_no_more_than_its_constant() {
+  TEST_ASSERT_EQUAL_size_t(20, kLocalDateTimeLength);
+  char exact[kLocalDateTimeLength];
+  formatLocalDateTime(DateTime(2026, 9, 18, 14, 5, 30), exact, sizeof(exact));
+  TEST_ASSERT_EQUAL_size_t(19, strlen(exact));
+}
+
+// A short buffer truncates rather than overruns. The truncated text must not
+// parse back, so a caller that ignored the size cannot persist a half-written
+// origin that silently reads as a different instant.
+void test_format_local_datetime_truncates_safely() {
+  char small[12];
+  memset(small, 'x', sizeof(small));
+  formatLocalDateTime(DateTime(2026, 9, 18, 14, 5, 30), small, sizeof(small));
+  TEST_ASSERT_EQUAL_size_t(11, strlen(small));
+  TEST_ASSERT_EQUAL_STRING("2026-09-18 ", small);
+  DateTime parsed;
+  TEST_ASSERT_FALSE(parseLocalDateTime(small, parsed));
+
+  // A zero size and a null destination are both no-ops, not writes.
+  char untouched[4] = "abc";
+  formatLocalDateTime(DateTime(2026, 9, 18, 14, 5, 30), untouched, 0);
+  TEST_ASSERT_EQUAL_STRING("abc", untouched);
+  formatLocalDateTime(DateTime(2026, 9, 18, 14, 5, 30), nullptr, 8);
+}
+
 }  // namespace
 
 void setUp() {}
@@ -123,5 +187,9 @@ int main() {
   RUN_TEST(test_parse_local_datetime_accepts_space_and_t);
   RUN_TEST(test_parse_local_datetime_without_seconds);
   RUN_TEST(test_parse_local_datetime_rejects_malformed_input);
+  RUN_TEST(test_format_local_datetime_is_canonical);
+  RUN_TEST(test_format_local_datetime_round_trips);
+  RUN_TEST(test_format_local_datetime_needs_no_more_than_its_constant);
+  RUN_TEST(test_format_local_datetime_truncates_safely);
   return UNITY_END();
 }
