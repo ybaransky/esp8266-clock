@@ -97,7 +97,18 @@ removed). Always give the WSL side its own build directory via
 Putting it on the Linux filesystem rather than under `/mnt/c` is also about 35%
 faster.
 
-The firmware build is warning-clean with `-Wall -Wextra`. `-Wno-deprecated-copy` is applied to C++ only (via `tools/cxx_flags.py`) because RTClib declares `DateTime`'s copy constructor without its assignment operator, and eleven instances of that third-party defect would drown our own warnings.
+**The host test build is `-Werror`.** A warning there fails the run outright,
+deliberately only on `[env:native]`: its compile output scrolls past above the
+test results and an incremental run recompiles nothing, so a warning is easy to
+miss entirely - and it is the build most likely to catch a real portability
+defect, since `long` is 64 bits on the host and 32 on the ESP8266 (that is how
+the trading-boundary arithmetic bug surfaced). If a toolchain upgrade one day
+fails the tests on a new warning, read it and fix it or drop the flag; do not
+reach for `-Wno-<whatever>` without understanding what it hides.
+
+The firmware build is warning-clean with `-Wall -Wextra` but **not** `-Werror`,
+because its `build_flags` also reach the Arduino core and five third-party
+libraries. Gating only our own sources there would need `build_src_flags`. `-Wno-deprecated-copy` is applied to C++ only (via `tools/cxx_flags.py`) because RTClib declares `DateTime`'s copy constructor without its assignment operator, and eleven instances of that third-party defect would drown our own warnings.
 
 ## ESP8266 CLOCK PROJECT CONVENTIONS
 
