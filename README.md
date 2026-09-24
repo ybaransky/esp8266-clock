@@ -83,11 +83,21 @@ modeled.
 ## Build
 
 ```bash
-pio run
+pio run                          # compile firmware
+pio run --target upload          # compile + flash
+pio run --target uploadfs        # upload the LittleFS image (data/)
+
+# Host tests for the pure modules: schedule, display formats, datetime.
+# Needs a host C++ compiler; PLATFORMIO_BUILD_DIR is required when a second
+# PlatformIO install shares this project - see AGENTS.md.
+PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native
 ```
 
 Validate RTC, display, WiFi, schedule transitions, and timing behavior on the
-device after relevant changes.
+device after relevant changes. The automated layers are narrower on purpose:
+`tools/check_formats.py` guards the format catalog on every build, and `test/`
+covers only the modules that are pure by design. Neither substitutes for
+operating the clock.
 
 Read `AGENTS.md` before hardware or timing changes; it contains the critical
 electrical, RTC, display, storage, and network invariants. `CLAUDE.md` is the

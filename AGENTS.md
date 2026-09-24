@@ -4,7 +4,7 @@ This file provides guidance to AI coding agents working in this repository. See 
 
 ## Project overview
 
-Embedded C++ firmware for a Wemos D1 Mini (ESP8266) clock with three TM1637 7-segment displays, a DS3231 RTC, WiFi, and a captive-portal web UI. Built with PlatformIO + Arduino framework; no host-side tests exist.
+Embedded C++ firmware for a Wemos D1 Mini (ESP8266) clock with three TM1637 7-segment displays, a DS3231 RTC, WiFi, and a captive-portal web UI. Built with PlatformIO + Arduino framework. Validation is primarily on-device, backed by Unity host tests for the modules that are pure by design and a Python guard that runs on every build.
 
 ## Key build commands
 
@@ -14,7 +14,23 @@ pio run --target upload          # compile + flash firmware
 pio run --target uploadfs        # upload LittleFS (data/ directory)
 pio device monitor               # serial monitor at 74880 baud
 python tools/dev_server.py --device <clock-ip>   # edit web/ pages live, no reflash
+python tools/check_formats.py    # format-catalog guard (also a pre-script on every build)
+
+# Host tests for the pure modules. Needs a host C++ compiler, which on the
+# author's Windows box means WSL: Smart App Control is enforced and blocks
+# unsigned executables, so MinGW's cc1plus.exe cannot launch.
+PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native
+# Or in VS Code: Ctrl+Shift+P -> Tasks: Run Test Task
 ```
+
+**`PLATFORMIO_BUILD_DIR` is not optional.** Firmware builds run under Windows and
+host tests under WSL, so two PlatformIO cores share one project. PlatformIO keeps
+a single `project.checksum` per build directory and **wipes the directory when it
+does not match** - and the two installs compute different checksums, so each run
+deletes the other's output. Symptoms: a full firmware rebuild on every `pio run`,
+plus a C/C++ extension warning that `.pio/build/d1_mini` cannot be found. Never
+run `pio run` from WSL either, or PlatformIO will fetch a second xtensa toolchain
+into Linux to build an image it cannot flash.
 
 ## Architecture at a glance
 
@@ -24,11 +40,16 @@ main.cpp
   │                         application-owned RtcService, zero-I2C-cost cached time, and
   │                         an ISR-timestamped phase reference for tenths
   ├── display (layered)
-  │     display_format    – declarative format catalog: FormatSpec = UI label + three
-  │                         PanelSpec {Shape, Field, Field} triples → DisplayFrame;
-  │                         RefreshRate/ColonAnimation are derived from the shapes
+  │     display_frame     – DisplayFrame and the panel constants, and nothing else:
+  │                         no driver, no Arduino dependency, so the pure renderers
+  │                         and their host tests need no TM1637 library
+  │     display_format    – declarative format catalog: FormatSpec is three PanelSpec
+  │                         {Shape, Field, Field} triples → DisplayFrame. Stable keys
+  │                         and human labels live in parallel PROGMEM tables, not in
+  │                         the spec; RefreshRate/ColonAnimation derive from the shapes
   │     display_renderer  – pure demo/message/page frame renderers (no I/O)
-  │     display           – ClockApplication-owned SegmentDisplay (TM1637 hardware)
+  │     display           – ClockApplication-owned SegmentDisplay; owns its 3 TM1637
+  │                         drivers as members, ASCII_SEGMENTS in PROGMEM
   │     display_manager   – owned state, transitions, blink/colon cadence, and render policy
   ├── schedule            – pure Friday/Trading boundary math; no Arduino I/O
   ├── scheduled_mode      - one ScheduledModeController for Friday/Trading;
@@ -39,9 +60,17 @@ main.cpp
   │     time_api          – RTC read and browser-time synchronization endpoints
   │     location_api      – ZIP lookup and sunset-calculator endpoints
   │     config_serializer – shared JSON schema (single source of field names)
-  │     config_validation – sanitization; owns modeName/modeFromName helpers
+  │     config_validation – sanitization; owns modeName/modeFromName helpers and
+  │                         resolveCountupStart (the "now" sentinel → an absolute time)
+  │     file_api          – LittleFS listing/read/delete/upload; refuses /config.json
+  │     storage_manager   – ensureMounted(context); mount LittleFS through this, not
+  │                         LittleFS.begin() directly
+  ├── sound_player        – application-owned SoundPlayer: non-blocking deadline state
+  │                         machine over /songs.bin; never add a blocking delay
   ├── wifi_connection_manager – ClockApplication-owned STA → AP fallback service
   ├── web_server          – application-owned WebPortal; static gzipped pages + REST API
+  │     reboot_scheduler  – one-method interface breaking the WebPortal ↔ API cycle;
+  │                         the only abstraction in the codebase that earns a vtable
   │     ClockController   – application actions shared by the loop and web APIs
   │     web/              – page sources (pages/*.html, common.css, common.js);
   │                         tools/build_web.py packages them into flash, and
@@ -87,12 +116,16 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 
 - **Duration-dependent presentation is resolved at render time, not by a phase** — `ViewState::longFormatIndex` and `ViewState::blink` are re-evaluated on every render, so they end on their own and survive time syncs/reboots with no crossing state. Do not add schedule phases for presentation-only changes.
 - **`ViewState`/`OverlayState` are plain structs, not unions** — fields unused by the active view/overlay (e.g. `anchor` for clock, `message` for a paged overlay) are simply ignored. Do not reintroduce the old union-payload design.
-- **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` is a UI label plus three declarative `PanelSpec` shapes; the shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are derived from the shapes (they cannot drift), and the `hhh:mm` overflow fallback is resolved semantically by `resolveCountingOverflow()` — no hardcoded indices. Countdown and countup intentionally share `kCountingFormats`.
+- **Format declarations are the single source of truth** — each `FormatSpec` in `display_format.cpp` is three declarative `PanelSpec` shapes, and the shapes are the only source of truth for rendering. `RefreshRate` and `ColonAnimation` are derived from them (they cannot drift), and the `hhh:mm` overflow fallback is resolved semantically by `resolveCountingOverflow()` — no hardcoded indices. Countdown and countup intentionally share `kCountingFormats`.
+- **A format's identity is its stable key, never its table position** — each row has a key (e.g. `"yyyy-mmdd-hhmm"`) that is what `/config.json` stores and what the web dropdowns post; rows may be added, removed, or reordered freely, and an index is an in-memory detail converted only at the serialization boundary. This is the same rule sound names follow, and it exists because the index-valued scheme had already produced three disagreeing claims about the default clock format. Keys and labels live in **parallel PROGMEM tables** indexed identically to the spec table, held in lockstep by `static_assert`s; they are read by copying into a caller buffer because a `const char*` member would put only the pointer in flash, at a cost of 1.2 KB of DRAM. `tools/check_formats.py` fails the build on a duplicate key or an unresolvable default. Do not reintroduce index-valued config or API fields, and do not bump `configVersion` for a catalog reorder — it is not a schema change.
+- **`countup.start` holds an absolute datetime** — `kCountupStartNow` ("now") means "never been set", not "start from the present". `resolveCountupStart()` stamps it with the RTC's time on the paths that persist a `ClockConfig`, after validation, so the origin survives later saves and reboots. The sentinel exists only because no absolute datetime is a correct factory default. Do not resolve it on a path that does not then write the config, and do not reintroduce resolving it in `ClockController::initialView()` — that is what made saving an unrelated field silently restart the count-up.
 - **Schedule math stays pure** — `schedule.h/cpp` contains Arduino-independent Friday/Trading boundary calculations. Controllers own cache/transition state and perform display actions; keep RTC, display, logging, and sunset I/O out of the pure schedule module.
 - **Trading schedule shape** — `TradingSchedule` is a fixed-capacity array of two `TradingInterval` values plus `intervalCount`. Session 1 is always enabled. Both slots persist even when session 2 is disabled; enabled sessions must be ordered, non-overlapping, and separated by a gap. `isValidTradingSchedule()` owns these pure invariants.
 - **Intentional token/render differences are required** — UI format tokens are intentionally different from rendered 7-segment labels, and the custom day abbreviations in `dayOfWeekAbbreviation()` are intentional. Do not normalize these unless explicitly requested.
 - **The TM1637 panels have a center colon but no decimals** — `:`/`;` in a panel string are non-consuming colon markup handled by `renderPanelSegments()`. Do not add decimal-point parsing or use `.` as a separator.
 - **`config_serializer` is the single source of JSON field names** — do not duplicate field name strings elsewhere.
+- **`ConfigManager` hands out its cache by reference** — `clockConfig()` and `wifiConfig()` return `const&`. `ClockConfig` is ~700 bytes against a 4 KB cont stack, and a save path was holding three copies at once; a `static_assert` caps its size so the budget cannot rot. Copy explicitly only when you intend to mutate, and prefer `defaults.h`'s `initDefaultClockConfig(out)` plus its individual accessors over materializing a whole defaults instance — a return-by-value cost ~700 bytes of stack per call and a cached static cost the same permanently in DRAM.
+- **`GET /api/file` refuses `/config.json` with 403, and no endpoint is authenticated** — that file holds the WiFi station password in plain text, which `serializeWifiStatus()` deliberately withholds from `/api/config`; streaming the raw bytes handed it straight back. `FileApi::isCredentialBearingPath()` names the rule, and it is a refusal rather than a sanitized body under the same URL on purpose. The threat model is a trusted LAN and **that decision is still open** — do not assume any endpoint is protected.
 - **Device location vs `sunsetTest`** — `ClockConfig.locations.device` is the physical device location used by scheduled_mode; `ClockConfig.locations.sunsetTest` is the Sunset Calculator page's test input. Do not substitute one for the other.
 - **`WebPortal::handleClients()` must be called every `loop()` iteration** — skipping it stalls the web server and DNS.
 - **Never build HTML on the server** — every page is a static gzipped PROGMEM asset generated from `web/` by `tools/build_web.py`; dynamic data flows through the JSON APIs (the home page uses `GET /api/status` for configured mode and live demo state). Add or rename routes only in `tools/web_manifest.py`. Shared page helpers belong in `web/common.js`, styles in `web/common.css` (both served hash-versioned and immutable).
@@ -109,4 +142,5 @@ Rendering rule, always: show the overlay if one is active, otherwise show the ba
 - **Schedule decisions name boundaries** - pure Friday/Trading functions return current view kind plus next boundary kind/time/session. The shared controller announces only one live boundary, at most five seconds late. Boot/config/time sync/recovery and multi-boundary gaps are silent. Presentation windows are not schedule phases.
 - **Countdown completion belongs to ClockController** - rendering never detects completion. Ordinary countdowns finish on accepted RTC samples even under overlays; faults retain display priority. Scheduled countdowns cannot install a permanent completion message.
 - **Configuration recovery precedes defaults** - load the primary JSON object, then its backup. Keep unreadable files if neither loads; retain a surviving backup until a verified replacement is installed. Validate dates through `datetime_validation` and keep JSON names in `config_serializer`.
-- **Validation uses the actual application** - do not add host-side test code or a test target. Compile with `pio run`; runtime verification is by uploading and operating the clock.
+- **Validation is on-device first, with two automated layers behind it** - compile with `pio run` and verify behavior by operating the clock; that remains the primary check, and anything touching hardware, timing, radio, or rendering has to be seen on the device. Backing it up: `tools/check_formats.py` runs as a pre-script on every build and parses the C++ (no compiler needed), and `test/` holds Unity suites for `schedule.cpp`, `display_format.cpp`, and `datetime_validation.cpp` - the modules that are pure by design - run with `pio test -e native`. Extend those suites when you change a pure module; do not try to test the hardware-facing classes on the host, which is what keeps `test/stubs/` small enough to stay honest.
+- **The host test build is `-Werror`; the firmware build is not** - a warning on `[env:native]` fails the run outright. That asymmetry is deliberate: host compile output scrolls past above the test results and an incremental run recompiles nothing, so a warning there is easy to miss, and it is the build most likely to catch a real portability defect - `long` is 64 bits on the host and 32 on the ESP8266, which is how the trading-boundary arithmetic bug surfaced. The firmware build cannot take `-Werror` because its `build_flags` also reach the Arduino core and five third-party libraries; gating only our sources would need `build_src_flags`. Check **both** builds' warning counts on a **clean** build, not an incremental one. Never reach for `-Wno-<whatever>` without understanding what it hides.
