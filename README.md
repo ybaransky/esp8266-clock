@@ -82,8 +82,9 @@ had no way to tell which copy was current. Git history holds the superseded ones
   before hardware, timing, radio, or storage changes.
 - [SOUNDS.md](SOUNDS.md): the `songs.bin` layout and the authoring workflow.
 - [WIRING.md](WIRING.md): the buzzer's inverting NPN buffer and why D8 needs it.
-- [clock.md](clock.md): PCB wiring brief, derived from `hardware.h`.
-- [pcb.md](pcb.md): board specification - dimensions, mounting, connectors.
+- [HARDWARE.md](HARDWARE.md): the board specification - bill of materials, pin
+  assignments, net list, power tree, boot-strap constraints, and the fabrication
+  parameters still to be decided.
 
 ## Build
 
