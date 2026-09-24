@@ -225,7 +225,7 @@ void ConfigManager::sanitizeClockConfig(ClockConfig& cfg) const {
     if (!parseLocalDateTime(cfg.countdown.end, parsed)) {
         strlcpy(cfg.countdown.end, defaultCountdownEnd(), sizeof(cfg.countdown.end));
     }
-    if ((strcmp(cfg.countup.start, "now") != 0) &&
+    if ((strcmp(cfg.countup.start, kCountupStartNow) != 0) &&
         !parseLocalDateTime(cfg.countup.start, parsed)) {
         strlcpy(cfg.countup.start, defaultCountupStart(), sizeof(cfg.countup.start));
     }

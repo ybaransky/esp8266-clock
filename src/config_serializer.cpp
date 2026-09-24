@@ -372,8 +372,8 @@ bool applyDateTimeField(JsonVariantConst value, char* destination,
   if (value.isNull()) return true;
   const char* text = value.as<const char*>();
   if (text == nullptr) return false;
-  if (allowNow && (strcmp(text, "now") == 0)) {
-    strlcpy(destination, "now", size);
+  if (allowNow && (strcmp(text, kCountupStartNow) == 0)) {
+    strlcpy(destination, kCountupStartNow, size);
     return true;
   }
   DateTime parsed;

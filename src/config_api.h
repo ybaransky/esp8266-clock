@@ -11,6 +11,7 @@ struct ClockConfig;
 struct WifiConfig;
 class ClockController;
 class ConfigManager;
+class RtcService;
 class SoundPlayer;
 
 // Handles clock-configuration HTTP endpoints by validating input and invoking application actions.
@@ -20,12 +21,14 @@ class ConfigApi {
             ClockController& clockController,
             ConfigManager& configManager,
             SoundPlayer& soundPlayer,
+            RtcService& rtc,
             RebootScheduler& rebootScheduler)
       : server_(server),
         responder_(responder),
         clockController_(clockController),
         configManager_(configManager),
         sound_(soundPlayer),
+        rtc_(rtc),
         rebootScheduler_(rebootScheduler) {}
 
   void handleDemoTest();
@@ -51,5 +54,6 @@ class ConfigApi {
   ClockController& clockController_;  // Executes application-level clock actions.
   ConfigManager& configManager_;      // Loads, validates, and saves configuration.
   SoundPlayer& sound_;  // Catalog queries and preview playback for /sound and /format.
+  RtcService& rtc_;  // Stamps the count-up origin when a save resolves "now".
   RebootScheduler& rebootScheduler_;  // Schedules a reboot after WiFi changes.
 };

@@ -63,9 +63,17 @@ struct CountdownConfig {
   uint8_t format = 0;  // Selected counting-format index.
 };
 
+// Sentinel stored in CountupConfig::start meaning "never been set": resolve it
+// against the RTC. It exists because no absolute datetime is a correct factory
+// default - a shipped date would make a fresh device show an ever-growing
+// elapsed time, the way the shipped CountdownConfig::end goes stale. It is
+// substituted for a concrete datetime by resolveCountupStart() on the first
+// save, so it reaches the display path only on a device that has never saved.
+static constexpr char kCountupStartNow[] = "now";
+
 // Stores the origin and renderer selection for count-up mode.
 struct CountupConfig {
-  char start[20] = {};  // "YYYY-MM-DD HH:MM:SS" or "now"
+  char start[20] = {};  // "YYYY-MM-DD HH:MM:SS", or kCountupStartNow when unset.
   uint8_t format = 0;   // Selected counting-format index.
 };
 

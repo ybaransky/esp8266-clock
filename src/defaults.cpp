@@ -13,7 +13,7 @@ constexpr const char* kDefaultApSsid     = "";
 constexpr const char* kDefaultApPassword = "12345678";
 
 constexpr const char* kDefaultCountdownDatetime = "2026-07-04 00:00:00";
-constexpr const char* kDefaultCountupDatetime   = "now";
+constexpr const char* kDefaultCountupDatetime   = kCountupStartNow;
 constexpr const char* kDefaultSplashMessage       = "    YuriCloc";
 constexpr const char* kDefaultFinalMessage        = "    Good Luc";
 constexpr const char* kDefaultFridaySunsetMessage = "     SUN SET";

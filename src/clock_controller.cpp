@@ -24,8 +24,11 @@ ViewState ClockController::initialView(const ClockConfig& config, const DateTime
       break;
     case kModeCountup:
       view.view = View::kCountup;
+      // The sentinel only survives to here on a device that has never saved
+      // its config: resolveCountupStart() replaces it on the first save, which
+      // is what keeps the origin stable across later saves and reboots.
       view.anchor = now;
-      if (strcmp(config.countup.start, "now") != 0) {
+      if (strcmp(config.countup.start, kCountupStartNow) != 0) {
         parseLocalDateTime(config.countup.start, view.anchor);
       }
       view.formatIndex = config.countup.format;

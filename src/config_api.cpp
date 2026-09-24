@@ -8,6 +8,7 @@
 #include "config_serializer.h"
 #include "config_validation.h"
 #include "log.h"
+#include "rtc_ds3231.h"
 #include "sound_player.h"
 
 
@@ -69,6 +70,7 @@ void ConfigApi::handleSetMode() {
 
   ClockConfig cfg = configManager_.clockConfig();
   cfg.activeMode = nextMode;
+  resolveCountupStart(cfg, rtc_.getNowCached());
   if (!configManager_.saveClockConfig(cfg)) {
     LOG_PRINTLN("/api/mode failed: complete config write failed");
     responder_.sendJsonError(500, "Configuration write failed");
@@ -218,6 +220,7 @@ void ConfigApi::handleSaveConfig() {
     responder_.sendJson(400, error);
     return;
   }
+  resolveCountupStart(clockConfig, rtc_.getNowCached());
   WifiConfig wifiConfig = configManager_.wifiConfig();
   const bool wifiChanged = applyJsonToWifiConfig(payload, wifiConfig);
   if (!configManager_.saveConfig(clockConfig, wifiConfig)) {

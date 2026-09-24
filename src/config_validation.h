@@ -5,6 +5,10 @@
 #include "config.h"
 #include "display_format.h"
 
+// Only ever taken by reference here, so RTClib stays out of every translation
+// unit that needs a sanitizer.
+class DateTime;
+
 const char* modeName(Mode mode);
 Mode sanitizeMode(int rawMode, Mode fallback);
 bool modeFromName(const String& name, Mode* mode);
@@ -26,6 +30,12 @@ uint8_t sanitizeBoundaryStartingBeatsHz(int rawBeatsHz);
 // switch reads as "no sound" for every event, so no scheduling or rendering
 // code has to test the flag - an empty name already means silence everywhere.
 const char* activeSoundName(const SoundConfig& sound, const char* name);
+// Substitutes a concrete datetime for the kCountupStartNow sentinel, so what is
+// persisted is always an absolute instant and the count-up origin survives both
+// later saves and reboots. Returns true if a substitution was made. Call this
+// only on a path that then writes the config: resolving without persisting
+// would discard the answer and re-resolve on the next save.
+bool resolveCountupStart(ClockConfig& cfg, const DateTime& now);
 // Clamps latitude/longitude to valid ranges in place. Zipcode is untouched -
 // callers that accept a new zipcode validate it with isValidZipcode instead.
 void sanitizeLocationInfo(LocationInfo& info);
