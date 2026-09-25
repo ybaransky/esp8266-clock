@@ -73,9 +73,6 @@
   <hr>
   <label>Format<select id="fcd"></select></label>
   <label>End time<input type="datetime-local" step="1" id="end"></label>
-  <label for="sfinal">Song at zero</label>
-  <div class="soundRow"><select id="sfinal"></select>
-  <button class="secondary" type="button" onclick="toggleSound(this,'sfinal')">&#9654;</button></div>
 </div>
 
 <div id="cu">
@@ -100,9 +97,6 @@
   <label>Blink minutes after sunset &nbsp;(0 = off)<input type="number" min="0" max="240" step="1" id="fblinka"></label>
   <h3>Countdown Phase II<br><span class="muted">(Friday sunset &rarr; Saturday sunset)</span></h3>
   <label>Format<select id="fsat"></select></label>
-  <label for="ssunset">Song at Friday sunset</label>
-  <div class="soundRow"><select id="ssunset"></select>
-  <button class="secondary" type="button" onclick="toggleSound(this,'ssunset')">&#9654;</button></div>
 </div>
 
 <div id="trade">
@@ -126,12 +120,6 @@
   </div>
   <label>Format<select id="ftrade"></select></label>
   <label>Format over 24h (e.g. weekends)<select id="ftrade24"></select></label>
-  <label for="sopen">Song at open</label>
-  <div class="soundRow"><select id="sopen"></select>
-  <button class="secondary" type="button" onclick="toggleSound(this,'sopen')">&#9654;</button></div>
-  <label for="sclose">Song at close</label>
-  <div class="soundRow"><select id="sclose"></select>
-  <button class="secondary" type="button" onclick="toggleSound(this,'sclose')">&#9654;</button></div>
 </div>
 
 <div id="hours" class="choices">
@@ -139,9 +127,6 @@
   <label><input type="radio" name="hour" id="h24"> 24h</label>
   <label><input type="radio" name="hour" id="h12"> 12h</label>
 </div>
-
-<p id="snone" class="muted" hidden>No sounds are installed, so every song list is
-empty. Upload the filesystem image (<code>pio run -t uploadfs</code>) to add them.</p>
 
 <hr>
 <label>Brightness: <span id="bv">4</span>
@@ -170,8 +155,8 @@ function toggleTrade2() {
   $('tradeStop2').disabled = !enabled;
 }
 
-// Format dropdowns are key-valued, not index-valued - the same reasoning as
-// the sound dropdowns below. /api/formats returns [{key, label}]: the key is
+// Format dropdowns are key-valued, not index-valued.
+// /api/formats returns [{key, label}]: the key is
 // what config.json stores, so adding or reordering a format in the firmware's
 // catalog cannot silently repoint a saved selection at a different format.
 function options(id, formats, selected) {
@@ -203,39 +188,6 @@ function optionsWithSame(id, formats, selected) {
   if (!el.value) el.value = SAME_FORMAT;
 }
 
-// Sound dropdowns are name-valued, not index-valued: a sound's name is its
-// identity in the catalog and in config.json, so re-uploading the filesystem
-// cannot silently repoint a selection at a different sound. An empty value is
-// the "stay silent" choice.
-//
-// Only songs are offered here. Alerts are the other half of the catalog and
-// get their own cue fields later; see /sound to audition either kind.
-var songNames = [];
-function soundOptions(id, selected) {
-  var el = $(id);
-  el.innerHTML = '';
-  var none = document.createElement('option');
-  none.value = '';
-  none.textContent = '(silent)';
-  el.appendChild(none);
-  songNames.forEach(function (name) {
-    var o = document.createElement('option');
-    o.value = name;
-    o.textContent = name;
-    el.appendChild(o);
-  });
-  var wanted = selected || '';
-  // A configured name the catalog no longer has would otherwise fall back to
-  // "(silent)" without saying so. Keep it selectable and flag it instead.
-  if (wanted && songNames.indexOf(wanted) < 0) {
-    var missing = document.createElement('option');
-    missing.value = wanted;
-    missing.textContent = wanted + ' (not installed)';
-    el.appendChild(missing);
-  }
-  el.value = wanted;
-}
-
 // Config stores "YYYY-MM-DD hh:mm:ss" (or "now"); datetime-local wants a "T".
 function local(s) { return s && s != 'now' ? s.replace(' ', 'T') : ''; }
 function stored(s) { return s ? s.replace('T', ' ') : 'now'; }
@@ -255,20 +207,12 @@ function previewBrightness(value) {
   }, 120);
 }
 
-// Requested one at a time, not in parallel: the device serves a single
-// connection at a time, so three concurrent fetches only queue up behind each
-// other and make a slow AP link look broken.
+// Load formats before applying the configured selections.
 var formats;
 api('/api/formats').catch(function (e) {
   throw new Error('/api/formats: ' + e.message);
 }).then(function (f) {
   formats = f || {};
-  return api('/api/sounds').catch(function (e) {
-    throw new Error('/api/sounds: ' + e.message);
-  });
-}).then(function (s) {
-  songNames = (s && s.songs) || [];
-  $('snone').hidden = !!(s && s.available);
   return api('/api/config').catch(function (e) {
     throw new Error('/api/config: ' + e.message);
   });
@@ -305,11 +249,6 @@ api('/api/formats').catch(function (e) {
   $('bv').textContent = $('br').value;
   $('h12').checked = !!display.clock12Hour;
   $('h24').checked = !display.clock12Hour;
-  var sound = d.sound || {};
-  soundOptions('sfinal', sound.final);
-  soundOptions('ssunset', sound.fridaySunset);
-  soundOptions('sopen', sound.tradingOpen);
-  soundOptions('sclose', sound.tradingClose);
   sections();
 }).catch(function (e) { setStatus('API failed: ' + e.message); });
 
@@ -360,14 +299,6 @@ function save() {
           intervals: intervals
         }
       }
-    },
-    // Patch semantics: enabled, volume and startup are owned by /sound and
-    // stay untouched by leaving them out.
-    sound: {
-      final: $('sfinal').value,
-      fridaySunset: $('ssunset').value,
-      tradingOpen: $('sopen').value,
-      tradingClose: $('sclose').value
     }
   };
   if (!$('end').value) delete body.display.modes.countdown.end;

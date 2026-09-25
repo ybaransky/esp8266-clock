@@ -21,11 +21,11 @@ WebPortal::WebPortal(ClockController& clockController,
                      ConfigManager& configManager,
                      WifiConnectionManager& wifiConnectionManager,
                      RtcService& rtc,
-                     SoundPlayer& soundPlayer)
+                     BeepPlayer& beepPlayer)
     : server_(80),
       responder_(server_),
       configApi_(server_, responder_, clockController, configManager,
-                 soundPlayer, rtc, *this),
+                 beepPlayer, rtc, *this),
       timeApi_(server_, responder_, clockController, rtc),
       fileApi_(server_, responder_),
       locationApi_(server_, responder_),
@@ -84,7 +84,6 @@ void WebPortal::begin() {
     server_.on("/api/time", HTTP_GET, [this]() { timeApi_.handleGetTime(); });
     server_.on("/api/time", HTTP_POST, [this]() { timeApi_.handleTimeSync(); });
     server_.on("/api/formats", HTTP_GET, [this]() { configApi_.handleFormats(); });
-    server_.on("/api/sounds", HTTP_GET, [this]() { configApi_.handleSounds(); });
     server_.on("/api/sound/test", HTTP_POST,
                [this]() { configApi_.handleSoundTest(); });
     server_.on("/api/config", HTTP_GET, [this]() { configApi_.handleGetConfig(); });

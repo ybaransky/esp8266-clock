@@ -22,10 +22,6 @@ uint8_t sanitizeVolumePercent(int rawPercent);
 uint16_t sanitizeBoundaryDurationSeconds(int rawSeconds);
 uint16_t sanitizeBoundaryFrequencyHz(int rawFrequencyHz);
 uint8_t sanitizeBoundaryStartingBeatsHz(int rawBeatsHz);
-// Resolves a configured cue name against the master sound switch: a disabled
-// switch reads as "no sound" for every event, so no scheduling or rendering
-// code has to test the flag - an empty name already means silence everywhere.
-const char* activeSoundName(const SoundConfig& sound, const char* name);
 // Clamps latitude/longitude to valid ranges in place. Zipcode is untouched -
 // callers that accept a new zipcode validate it with isValidZipcode instead.
 void sanitizeLocationInfo(LocationInfo& info);

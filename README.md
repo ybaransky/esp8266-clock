@@ -80,7 +80,7 @@ had no way to tell which copy was current. Git history holds the superseded ones
   display layering, scheduled modes, sound, storage, and web subsystems.
 - [AGENTS.md](AGENTS.md): the critical invariants, in short form. Read this
   before hardware, timing, radio, or storage changes.
-- [SOUNDS.md](SOUNDS.md): the `songs.bin` layout and the authoring workflow.
+- [SOUNDS.md](SOUNDS.md): generated beeps, boundary patterns, and preview behavior.
 - [WIRING.md](WIRING.md): the buzzer's inverting NPN buffer and why D8 needs it.
 - [HARDWARE.md](HARDWARE.md): the board specification - bill of materials, pin
   assignments, net list, power tree, boot-strap constraints, and the fabrication
@@ -93,7 +93,7 @@ pio run                          # compile firmware
 pio run --target upload          # compile + flash
 pio run --target uploadfs        # upload the LittleFS image (data/)
 
-# Host tests for the pure modules: schedule, display formats, datetime.
+# Host tests for the pure modules: schedule, display formats, datetime, beep envelopes.
 # Needs a host C++ compiler; PLATFORMIO_BUILD_DIR is required when a second
 # PlatformIO install shares this project - see AGENTS.md.
 PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native

@@ -5,7 +5,7 @@
 #include "datetime_validation.h"
 #include "display_manager.h"
 #include "rtc_ds3231.h"
-#include "sound_player.h"
+#include "beep_player.h"
 
 // -----------------------------------------------------------------------------
 // ClockController
@@ -43,7 +43,7 @@ ViewState ClockController::initialView(const ClockConfig& config, const DateTime
 void ClockController::applyConfig(const ClockConfig& config) {
   mode_ = config.activeMode;
   sound_.setVolume(config.sound.volumePercent);
-  strlcpy(finalSound_, activeSoundName(config.sound, config.sound.final), sizeof(finalSound_));
+  finalBeep_ = config.sound.enabled && config.sound.finalBeep;
   sound_.cancelBoundaryAlert();
   scheduledMode_.applySettings(config);
   const DateTime now = rtc_.getNowCached();
@@ -62,7 +62,7 @@ void ClockController::updateCountdown(const DateTime& now, bool announce) {
   if (complete == countdownComplete_) return;
   countdownComplete_ = complete;
   displayManager_.setCountdownComplete(complete);
-  if (complete && announce) sound_.play(finalSound_, millis());
+  if (complete && announce && finalBeep_) sound_.beep(880, millis());
 }
 
 void ClockController::refreshSchedule(const DateTime& now, uint32_t secondStartedAtMs) {

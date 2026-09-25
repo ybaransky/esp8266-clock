@@ -111,30 +111,18 @@ const MessageFieldDescriptor kMessageFields[] = {
      sizeof(MessageConfig::tradingClose)},
 };
 
-// One row per per-event sound selection: JSON key under "sound" and how to
-// reach the target fixed-size buffer. Deliberately parallel to kMessageFields -
-// every announced event has both a message and a sound, and the two tables are
-// what keep that pairing from drifting.
-struct SoundFieldDescriptor {
-  const char* jsonKey;
-  char* (*field)(ClockConfig&);
-  const char* (*get)(const ClockConfig&);  // Read-only twin, for serialization.
+// New boolean fields avoid interpreting legacy song-name strings as enabled beeps.
+struct BeepFieldDescriptor {
+  const char* jsonKey;  // Persisted field under sound.
+  bool SoundConfig::*field;  // Optional short beep for this event.
 };
 
-const SoundFieldDescriptor kSoundFields[] = {
-    {"startup", [](ClockConfig& c) -> char* { return c.sound.startup; },
-     [](const ClockConfig& c) -> const char* { return c.sound.startup; }},
-    {"final", [](ClockConfig& c) -> char* { return c.sound.final; },
-     [](const ClockConfig& c) -> const char* { return c.sound.final; }},
-    {"fridaySunset",
-     [](ClockConfig& c) -> char* { return c.sound.fridaySunset; },
-     [](const ClockConfig& c) -> const char* { return c.sound.fridaySunset; }},
-    {"tradingOpen",
-     [](ClockConfig& c) -> char* { return c.sound.tradingOpen; },
-     [](const ClockConfig& c) -> const char* { return c.sound.tradingOpen; }},
-    {"tradingClose",
-     [](ClockConfig& c) -> char* { return c.sound.tradingClose; },
-     [](const ClockConfig& c) -> const char* { return c.sound.tradingClose; }},
+const BeepFieldDescriptor kBeepFields[] = {
+    {"startupBeep", &SoundConfig::startupBeep},
+    {"finalBeep", &SoundConfig::finalBeep},
+    {"fridaySunsetBeep", &SoundConfig::fridaySunsetBeep},
+    {"tradingOpenBeep", &SoundConfig::tradingOpenBeep},
+    {"tradingCloseBeep", &SoundConfig::tradingCloseBeep},
 };
 
 }  // namespace
@@ -165,8 +153,8 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   JsonObject sound = doc["sound"].to<JsonObject>();
   sound["enabled"] = clock.sound.enabled;
   sound["volume"]  = clock.sound.volumePercent;
-  for (const SoundFieldDescriptor& d : kSoundFields) {
-    sound[d.jsonKey] = d.get(clock);
+  for (const BeepFieldDescriptor& d : kBeepFields) {
+    sound[d.jsonKey] = clock.sound.*(d.field);
   }
   JsonObject boundaryAlert = sound["boundaryAlert"].to<JsonObject>();
   boundaryAlert["enabled"] = clock.sound.boundaryAlert.enabled;
@@ -272,10 +260,6 @@ bool applyZipcode(const char* zipcode, char* destination, size_t destinationSize
   return true;
 }
 
-// Sound names are stored as given, not checked against the catalog: the
-// catalog lives on the filesystem and can be re-uploaded independently of
-// config.json, so a name that matches nothing today may match tomorrow.
-// SoundPlayer treats a miss as silence and logs it once.
 void applySoundFields(JsonVariantConst sound, ClockConfig& cfg) {
   if (!sound["enabled"].isNull()) {
     cfg.sound.enabled = sound["enabled"].as<bool>();
@@ -283,17 +267,15 @@ void applySoundFields(JsonVariantConst sound, ClockConfig& cfg) {
   if (!sound["volume"].isNull()) {
     cfg.sound.volumePercent = sanitizeVolumePercent(sound["volume"].as<int>());
   }
-  for (const SoundFieldDescriptor& d : kSoundFields) {
+  for (const BeepFieldDescriptor& d : kBeepFields) {
     JsonVariantConst value = sound[d.jsonKey];
-    if (value.isNull()) continue;
-    sanitizePrintableText(value.as<const char*>(), d.field(cfg),
-                          kSoundNameLength);
+    if (value.is<bool>()) cfg.sound.*(d.field) = value.as<bool>();
   }
   JsonVariantConst boundaryAlert = sound["boundaryAlert"];
   if (!boundaryAlert["enabled"].isNull()) {
     cfg.sound.boundaryAlert.enabled = boundaryAlert["enabled"].as<bool>();
   }
-  SoundConfig::BoundaryPatternConfig* patterns[] = {
+  BeepPattern* patterns[] = {
       &cfg.sound.boundaryAlert.boundary1,
       &cfg.sound.boundaryAlert.boundary2};
   const char* keys[] = {"boundary1", "boundary2"};
@@ -493,19 +475,15 @@ void sanitizeMessageFields(ClockConfig& cfg) {
 
 void sanitizeSoundFields(ClockConfig& cfg) {
   cfg.sound.volumePercent = sanitizeVolumePercent(cfg.sound.volumePercent);
-  SoundConfig::BoundaryPatternConfig* patterns[] = {
+  BeepPattern* patterns[] = {
       &cfg.sound.boundaryAlert.boundary1,
       &cfg.sound.boundaryAlert.boundary2};
-  for (SoundConfig::BoundaryPatternConfig* pattern : patterns) {
+  for (BeepPattern* pattern : patterns) {
     pattern->toneHz = sanitizeBoundaryFrequencyHz(pattern->toneHz);
     pattern->totalDurationSeconds = sanitizeBoundaryDurationSeconds(
         pattern->totalDurationSeconds);
     pattern->startingBeatsHz =
         sanitizeBoundaryStartingBeatsHz(pattern->startingBeatsHz);
-  }
-  for (const SoundFieldDescriptor& d : kSoundFields) {
-    char* field = d.field(cfg);
-    sanitizePrintableText(field, field, kSoundNameLength);
   }
 }
 

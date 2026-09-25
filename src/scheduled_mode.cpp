@@ -2,16 +2,16 @@
 
 #include "config_validation.h"
 #include "log.h"
-#include "sound_player.h"
+#include "beep_player.h"
 
 namespace {
 
 constexpr uint32_t kMaxAnnouncementDelaySeconds = 5;
 constexpr int32_t kBoundaryMessageMs = 5000;
 
-void copyCue(BoundaryCue& cue, const char* message, const char* sound) {
+void copyCue(BoundaryCue& cue, const char* message, bool beep) {
   strlcpy(cue.message, message, sizeof(cue.message));
-  strlcpy(cue.sound, sound, sizeof(cue.sound));
+  cue.beep = beep;
 }
 
 const char* boundaryName(BoundaryKind kind) {
@@ -34,11 +34,11 @@ void ScheduledModeController::applySettings(const ClockConfig& config) {
   location_ = {config.locations.device.latitude, config.locations.device.longitude,
                config.timezone.utcOffsetMinutes};
   copyCue(fridayCue_, config.messages.fridaySunset,
-          activeSoundName(config.sound, config.sound.fridaySunset));
+          config.sound.enabled && config.sound.fridaySunsetBeep);
   copyCue(openCue_, config.messages.tradingOpen,
-          activeSoundName(config.sound, config.sound.tradingOpen));
+          config.sound.enabled && config.sound.tradingOpenBeep);
   copyCue(closeCue_, config.messages.tradingClose,
-          activeSoundName(config.sound, config.sound.tradingClose));
+          config.sound.enabled && config.sound.tradingCloseBeep);
   alerts_ = config.sound.boundaryAlert;
   alerts_.enabled = alerts_.enabled && config.sound.enabled;
   reset();
@@ -148,7 +148,7 @@ const BoundaryCue* ScheduledModeController::cueFor(BoundaryKind kind) const {
   }
 }
 
-const SoundConfig::BoundaryPatternConfig* ScheduledModeController::patternFor(
+const BeepPattern* ScheduledModeController::patternFor(
     const ScheduleBoundary& boundary) const {
   if (!alerts_.enabled) return nullptr;
   if ((boundary.kind == BoundaryKind::kFridaySunset) ||
@@ -164,7 +164,7 @@ const SoundConfig::BoundaryPatternConfig* ScheduledModeController::patternFor(
 }
 
 void ScheduledModeController::tick(const DateTime& now, uint32_t secondStartedAtMs,
-                                    DisplayManager& display, SoundPlayer& sound) {
+                                    DisplayManager& display, BeepPlayer& sound) {
   if ((mode_ != kModeFriday) && (mode_ != kModeTrading)) return;
   // One cache refresh for the whole tick. Both evaluations below then read a
   // cache that describes this instant, in either order.
@@ -183,16 +183,18 @@ void ScheduledModeController::tick(const DateTime& now, uint32_t secondStartedAt
     const BoundaryCue* cue = cueFor(previous_.next.kind);
     if (cue != nullptr) {
       display.showInfo(cue->message, kBoundaryMessageMs);
-      sound.play(cue->sound, millis());
+      if (cue->beep) {
+        sound.beep(previous_.next.kind == BoundaryKind::kTradingClose ? 1320 : 880,
+                   millis());
+      }
     }
   }
-  const SoundConfig::BoundaryPatternConfig* pattern = patternFor(decision.next);
+  const BeepPattern* pattern = patternFor(decision.next);
   if (pattern == nullptr) {
     sound.cancelBoundaryAlert();
   } else {
     sound.updateBoundaryAlert(decision.next.atLocalSeconds, now.unixtime(),
-        secondStartedAtMs, pattern->toneHz, pattern->totalDurationSeconds,
-        pattern->startingBeatsHz);
+        secondStartedAtMs, *pattern);
   }
   previous_ = decision;
   previousTime_ = now.unixtime();

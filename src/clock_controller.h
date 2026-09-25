@@ -11,14 +11,14 @@ enum Mode : uint8_t;
 enum class View : uint8_t;
 class DisplayManager;
 class RtcService;
-class SoundPlayer;
+class BeepPlayer;
 
 // Coordinates application actions shared by the main loop and web APIs.
 class ClockController {
  public:
   ClockController(DisplayManager& displayManager, RtcService& rtc,
-                  SoundPlayer& soundPlayer)
-      : displayManager_(displayManager), rtc_(rtc), sound_(soundPlayer) {}
+                  BeepPlayer& beepPlayer)
+      : displayManager_(displayManager), rtc_(rtc), sound_(beepPlayer) {}
 
   void applyConfig(const ClockConfig& config);
 
@@ -29,9 +29,9 @@ class ClockController {
   void showInfo(const char* message, int32_t durationMs);
   void showSplash(const char* message);
 
-  // Sound previews and catalog queries are NOT routed through here. They have
+  // Beep previews are NOT routed through here. They have
   // no application logic to add, and tunnelling them turned this class into a
-  // service locator for the web handlers. ConfigApi holds SoundPlayer directly.
+  // service locator for the web handlers. ConfigApi holds BeepPlayer directly.
   Mode activeMode() const { return mode_; }
   View activeView() const;
   bool demoActive() const;
@@ -43,10 +43,10 @@ class ClockController {
 
   DisplayManager& displayManager_;  // Applies view, overlay, and brightness actions.
   RtcService& rtc_;  // Reads and updates the hardware clock.
-  SoundPlayer& sound_;  // Plays catalog sounds for previews and cues.
+  BeepPlayer& sound_;  // Generates approach alerts and event beeps.
   ScheduledModeController scheduledMode_;  // Shared Friday/Trading boundary tracking.
   Mode mode_ = kModeClock;  // Persisted selection applied to the application.
   DateTime countdownEnd_;  // Application deadline for ordinary Countdown mode.
   bool countdownComplete_ = false;  // One-shot completion state, independent of rendering.
-  char finalSound_[kSoundNameLength] = "";  // Master-resolved completion cue.
+  bool finalBeep_ = false;  // Master-resolved countdown-completion beep.
 };

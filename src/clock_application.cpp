@@ -11,7 +11,7 @@
 #include "log.h"
 #include "page_manager.h"
 #include "rtc_ds3231.h"
-#include "sound_player.h"
+#include "beep_player.h"
 #include "web_server.h"
 #include "wifi_connection_manager.h"
 
@@ -87,10 +87,10 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
 
 ClockApplication::ClockApplication()
     : displayManager_(segmentDisplay_, rtc_),
-      clockController_(displayManager_, rtc_, soundPlayer_),
+      clockController_(displayManager_, rtc_, beepPlayer_),
       pageManager_(displayManager_),
       webPortal_(clockController_, configManager_, wifiConnectionManager_, rtc_,
-                 soundPlayer_) {}
+                 beepPlayer_) {}
 
 void ClockApplication::begin() {
   Serial.begin(74880);
@@ -108,6 +108,9 @@ void ClockApplication::begin() {
   webPortal_.begin();
 
   buttonBegin();
+  // Start after blocking WiFi setup, so the loop can service the beep deadline.
+  const SoundConfig& sound = configManager_.clockConfig().sound;
+  if (sound.enabled && sound.startupBeep) beepPlayer_.beep(880, millis());
 }
 
 void ClockApplication::initializeRtc() {
@@ -130,7 +133,7 @@ void ClockApplication::initializeRtc() {
 void ClockApplication::initializeDisplayAndConfig() {
   const ClockConfig& cs = configManager_.clockConfig();
   segmentDisplay_.begin(cs.display.brightness);
-  soundPlayer_.begin();
+  beepPlayer_.begin();
   LOG_PRINTF("Mode %u, brightness %u",
              (unsigned)cs.activeMode, cs.display.brightness);
 
@@ -140,9 +143,6 @@ void ClockApplication::initializeDisplayAndConfig() {
   if (cs.messages.splash[0] != '\0') {
     displayManager_.showSplash(cs.messages.splash);
   }
-  // Plays under the splash rather than after it: the sound is non-blocking, so
-  // the two overlap the way a startup chime is expected to.
-  soundPlayer_.play(activeSoundName(cs.sound, cs.sound.startup), millis());
 }
 
 void ClockApplication::reportInitialRtcStatus(const RtcStatus& status) {
@@ -172,7 +172,7 @@ void ClockApplication::tick(uint32_t nowMs) {
   checkRtcHealth(nowMs);
   nowMs = millis();
   displayManager_.tick(nowMs);
-  soundPlayer_.tick(nowMs);
+  beepPlayer_.tick(nowMs);
   wifiConnectionManager_.tick();
   webPortal_.handleClients();
 }

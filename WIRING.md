@@ -87,7 +87,7 @@ D8 HIGH turns the NPN on, pulls S low, and sounds the buzzer. The firmware
 drives a square wave, and inverting a 50% duty square wave gives the same
 waveform at the same frequency. It sounds identical.
 
-Below 50% duty - which is how [src/sound_player.cpp](src/sound_player.cpp)
+Below 50% duty - which is how [src/beep_player.cpp](src/beep_player.cpp)
 implements volume - inversion swaps the mark and space ratio. A 20% duty wave
 reaches the buzzer as 80%. Loudness is symmetric about 50%, so the effect on
 volume is the same in either direction; only the timbre differs slightly.
@@ -125,10 +125,8 @@ replaces the `Module VCC -> 3.3V` connection above.
 - Keep the top of the pot on **3.3V, not 5V** - do not overdrive the module.
 - The D8 NPN buffer is unchanged. The pot only touches the module's VCC rail.
 
-If you use this, set `USE_SOFTWARE_VOLUME` to `0` in
-[src/sound_player.cpp](src/sound_player.cpp) so the firmware plays at full duty.
-Otherwise the software attenuation and the pot stack on top of each other, and
-the volume slider on `/format` stops meaning anything.
+If you use this, set the volume on `/sound` to 100% so the firmware produces
+a 50% duty waveform. Otherwise software attenuation and the pot stack.
 
 ## Verifying before you trust it
 

@@ -11,7 +11,7 @@
 #include "config_validation.h"
 #include "log.h"
 #include "rtc_ds3231.h"
-#include "sound_player.h"
+#include "beep_player.h"
 
 
 namespace {
@@ -158,24 +158,6 @@ void ConfigApi::handleFormats() {
   responder_.sendJsonDocument(200, doc);
 }
 
-// Songs and alerts are returned as separate arrays rather than one list with a
-// kind on each entry: every consumer wants exactly one of the two to fill a
-// dropdown, so splitting here keeps that filter out of each page's script.
-void ConfigApi::handleSounds() {
-  JsonDocument doc;
-  JsonArray songs = doc["songs"].to<JsonArray>();
-  JsonArray alerts = doc["alerts"].to<JsonArray>();
-  const bool songsRead =
-      sound_.namesAsJson(songs, SoundKind::kSong);
-  const bool alertsRead =
-      sound_.namesAsJson(alerts, SoundKind::kAlert);
-  // Reported separately from an empty array: a device with no /songs.bin is
-  // missing its filesystem image, which is worth saying out loud on the page
-  // rather than showing as a dropdown that happens to have no entries.
-  doc["available"] = (songsRead && alertsRead);
-  responder_.sendJsonDocument(200, doc);
-}
-
 void ConfigApi::handleSoundTest() {
   JsonDocument doc;
   if (!responder_.parseJsonBody(doc, "/api/sound/test")) return;
@@ -187,51 +169,21 @@ void ConfigApi::handleSoundTest() {
   }
 
   JsonVariantConst boundaryAlert = doc["boundaryAlert"];
-  if (!boundaryAlert.isNull()) {
-    if (boundaryAlert["frequencyHz"].isNull() ||
-        boundaryAlert["totalDurationSeconds"].isNull() ||
-        boundaryAlert["startingBeatsHz"].isNull()) {
-      responder_.sendJsonError(
-          400, "Tone, total duration, and starting beats required");
-      return;
-    }
-    const uint16_t frequencyHz = sanitizeBoundaryFrequencyHz(
-        boundaryAlert["frequencyHz"].as<int>());
-    const uint16_t totalDurationSeconds = sanitizeBoundaryDurationSeconds(
-        boundaryAlert["totalDurationSeconds"].as<int>());
-    const uint8_t startingBeatsHz = sanitizeBoundaryStartingBeatsHz(
-        boundaryAlert["startingBeatsHz"].as<int>());
-    sound_.previewBoundaryAlert(frequencyHz, totalDurationSeconds,
-                                startingBeatsHz, millis());
-    JsonDocument response;
-    response["message"] = "Playing boundary alert";
-    response["durationMs"] =
-        static_cast<uint32_t>(totalDurationSeconds) * 1000UL;
-    responder_.sendJsonDocument(200, response);
+  if (boundaryAlert["frequencyHz"].isNull() ||
+      boundaryAlert["totalDurationSeconds"].isNull() ||
+      boundaryAlert["startingBeatsHz"].isNull()) {
+    responder_.sendJsonError(400, "Tone, total duration, and starting beats required");
     return;
   }
-
-  char name[kSoundNameLength];
-  sanitizePrintableText(doc["sound"] | "", name, sizeof(name));
-  if (name[0] == '\0') {
-    responder_.sendJsonError(400, "Sound name required");
-    return;
-  }
-  // Deliberately bypasses the master sound switch: pressing preview is an
-  // explicit request to hear something, and staying silent would read as a
-  // broken button rather than as a setting.
-  if (!sound_.play(name, millis())) {
-    LOG_PRINTF("/api/sound/test failed: no sound named \"%s\"", name);
-    responder_.sendJsonError(404, "No such sound");
-    return;
-  }
-  // The play/stop button reverts itself when this elapses. Sent with the start
-  // so the page never has to poll a device that serves one connection at a
-  // time; it is measured after playback begins, off the browser's critical
-  // path for hearing the sound.
+  const BeepPattern pattern{
+      sanitizeBoundaryFrequencyHz(boundaryAlert["frequencyHz"].as<int>()),
+      sanitizeBoundaryDurationSeconds(boundaryAlert["totalDurationSeconds"].as<int>()),
+      sanitizeBoundaryStartingBeatsHz(boundaryAlert["startingBeatsHz"].as<int>())};
+  // An explicit preview bypasses the automatic-sound master switch.
+  sound_.previewBoundaryAlert(pattern, millis());
   JsonDocument response;
-  response["message"] = "Playing";
-  response["durationMs"] = sound_.durationMs(name);
+  response["message"] = "Playing boundary alert";
+  response["durationMs"] = static_cast<uint32_t>(pattern.totalDurationSeconds) * 1000U;
   responder_.sendJsonDocument(200, response);
 }
 

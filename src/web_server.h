@@ -15,7 +15,7 @@
 class ClockController;
 class ConfigManager;
 class RtcService;
-class SoundPlayer;
+class BeepPlayer;
 class WifiConnectionManager;
 
 // Owns the HTTP/DNS servers, registers routes, and dispatches requests.
@@ -28,7 +28,7 @@ class WebPortal : public RebootScheduler {
             ConfigManager& configManager,
             WifiConnectionManager& wifiConnectionManager,
             RtcService& rtc,
-            SoundPlayer& soundPlayer);
+            BeepPlayer& beepPlayer);
 
   void begin();
   void handleClients();

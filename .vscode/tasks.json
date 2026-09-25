@@ -28,7 +28,7 @@
   "tasks": [
     {
       "label": "Host tests (WSL)",
-      "detail": "pio test -e native — schedule, display formats, datetime",
+      "detail": "pio test -e native — schedule, display formats, datetime, beep envelopes",
       "type": "shell",
       "command": "wsl bash -lc 'PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native'",
       "options": { "cwd": "${workspaceFolder}" },

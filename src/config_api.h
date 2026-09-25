@@ -12,7 +12,7 @@ struct WifiConfig;
 class ClockController;
 class ConfigManager;
 class RtcService;
-class SoundPlayer;
+class BeepPlayer;
 
 // Handles clock-configuration HTTP endpoints by validating input and invoking application actions.
 class ConfigApi {
@@ -20,14 +20,14 @@ class ConfigApi {
   ConfigApi(ESP8266WebServer& server, HttpResponder& responder,
             ClockController& clockController,
             ConfigManager& configManager,
-            SoundPlayer& soundPlayer,
+            BeepPlayer& beepPlayer,
             RtcService& rtc,
             RebootScheduler& rebootScheduler)
       : server_(server),
         responder_(responder),
         clockController_(clockController),
         configManager_(configManager),
-        sound_(soundPlayer),
+        sound_(beepPlayer),
         rtc_(rtc),
         rebootScheduler_(rebootScheduler) {}
 
@@ -36,7 +36,6 @@ class ConfigApi {
   void handleSetMode();
   void handleBrightness();
   void handleFormats();
-  void handleSounds();
   void handleSoundTest();
   void handleGetConfig();
   void handleSaveConfig();
@@ -66,7 +65,7 @@ class ConfigApi {
   HttpResponder& responder_;       // Sends JSON/HTML API responses.
   ClockController& clockController_;  // Executes application-level clock actions.
   ConfigManager& configManager_;      // Loads, validates, and saves configuration.
-  SoundPlayer& sound_;  // Catalog queries and preview playback for /sound and /format.
+  BeepPlayer& sound_;  // Generated-beep previews for /sound.
   RtcService& rtc_;  // Stamps the count-up origin when a save resolves "now".
   RebootScheduler& rebootScheduler_;  // Schedules a reboot after WiFi changes.
 };

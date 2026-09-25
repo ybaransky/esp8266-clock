@@ -80,10 +80,7 @@ void fillDefaults(ClockConfig& s) {
              "%s", kDefaultTradingOpenMessage);
     snprintf(s.messages.tradingClose, sizeof(s.messages.tradingClose),
              "%s", kDefaultTradingCloseMessage);
-    // Sound ships enabled but with every event unassigned, so a device without
-    // the buzzer wired (or with a filesystem predating /songs.bin) stays silent:
-    // an empty name is silence, and nothing probes the catalog until a name is
-    // picked on /format. Keep in sync with data/config.json.
+    // Short event beeps default off; accelerating approach alerts stay enabled.
     s.sound.volumePercent = kDefaultSoundVolumePercent;
     // Boundary 2 is the only pattern that differs from the struct's own
     // defaults (880 Hz / 40 s / 2 Hz); it sits a fifth above Boundary 1.

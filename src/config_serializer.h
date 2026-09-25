@@ -31,10 +31,7 @@ void sanitizeFormatFields(ClockConfig& cfg);
 // ASCII, clamps length). Shares the field list with applyJsonToClockConfig.
 void sanitizeMessageFields(ClockConfig& cfg);
 
-// Re-sanitizes the sound section in place (clamps volume, trims every event's
-// sound name to printable ASCII). Shares the field list with
-// applyJsonToClockConfig. Names are not checked against the catalog - see the
-// note on applySoundFields for why.
+// Clamps volume and generated boundary-pattern settings to supported ranges.
 void sanitizeSoundFields(ClockConfig& cfg);
 
 // Applies every clock-config field present in root onto cfg (patch semantics:

@@ -47,7 +47,7 @@ A 2N7000 MOSFET substitutes for Q1: gate to D8, drain to BZ1 S, source to GND,
 R4 from gate to GND, and R3 omitted.
 
 > **RV1 and firmware volume must not stack.** Fitting the potentiometer means
-> setting `USE_SOFTWARE_VOLUME` to 0 in `sound_player.cpp`.
+> setting volume to 100% on `/sound` (50% PWM duty).
 
 ## Pin assignments
 

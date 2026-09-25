@@ -4,12 +4,12 @@
 #include "display_manager.h"
 #include "sunset_calculator.h"
 
-class SoundPlayer;
+class BeepPlayer;
 
-// Couples an event's display message with its master-resolved sound name.
+// Couples an event's display message with its optional short beep.
 struct BoundaryCue {
   char message[kDisplayMessageLength] = "";  // Message shown for five seconds.
-  char sound[kSoundNameLength] = "";  // Empty means silent.
+  bool beep = false;  // Master-resolved event-beep enable.
 };
 
 // Applies Friday/Trading decisions, caches sunsets, and tracks one live boundary.
@@ -20,7 +20,7 @@ class ScheduledModeController {
   // Seeds the boundary tracker and returns the complete initial view silently.
   ViewState start(const DateTime& now);
   void tick(const DateTime& now, uint32_t secondStartedAtMs,
-            DisplayManager& display, SoundPlayer& sound);
+            DisplayManager& display, BeepPlayer& sound);
 
  private:
   // Pure with respect to the sunset cache. Callers refresh the cache first.
@@ -32,7 +32,7 @@ class ScheduledModeController {
   ViewState tradingViewFor(const ScheduleDecision& decision) const;
   bool crossedBoundary(uint32_t nowLocalSeconds) const;
   const BoundaryCue* cueFor(BoundaryKind kind) const;
-  const SoundConfig::BoundaryPatternConfig* patternFor(
+  const BeepPattern* patternFor(
       const ScheduleBoundary& boundary) const;
 
   Mode mode_ = kModeClock;  // Selects the active schedule, or disables ticking.

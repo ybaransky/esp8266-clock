@@ -2,27 +2,14 @@
 #include <Arduino.h>
 
 #include "schedule.h"
+#include "beep_pattern.h"
 
 static constexpr int32_t kForever = INT32_MAX;
 
 // Sentinel for optional secondary format indexes: use the primary format.
 static constexpr uint8_t kSameFormat = 0xFF;
 
-// Size of every stored sound name, including the terminator. A sound's name is
-// its identity - in the catalog, in /config.json, and in the API - so this one
-// value bounds all three. Must match MAX_NAME_BYTES (this value minus one) in
-// tools/pack_songs.py, which fails the build rather than let a name be silently
-// truncated into one that matches nothing.
-static constexpr size_t kSoundNameLength = 48;
-
-// Size of every stored display message, including the terminator. Like
-// kSoundNameLength this is one value for one concept: the same bound applies to
-// the persisted MessageConfig fields, the overlay buffer DisplayManager copies
-// them into, and the BoundaryCue a scheduled mode announces. The buffer is far
-// larger than sanitizeDisplayMessage's 12-character content cap on purpose -
-// the shipped messages are written with leading spaces to position text across
-// the three panels ("    Good Luc"), and the slack leaves room to widen that
-// convention without touching every buffer in the chain.
+// Shared bound for persisted and rendered display messages, including NUL.
 static constexpr size_t kDisplayMessageLength = 64;
 
 // Persistent setting selected by the user. This is distinct from the
@@ -109,29 +96,21 @@ struct MessageConfig {
   char tradingClose[kDisplayMessageLength] = {};  // Blinked when a Trading session stops live.
 };
 
-// Stores the buzzer settings and the sound played at each announced boundary.
-// The name fields mirror MessageConfig one-for-one: every event that blinks a
-// message can also play a sound, and an empty name means that event is silent.
+// Stores generated-beep settings; legacy song names are ignored on load.
 struct SoundConfig {
-  bool enabled = true;          // Master switch; false silences every event cue.
-  uint8_t volumePercent = 40;   // Loudness from 0 through 100.
-  char startup[kSoundNameLength] = {};       // Played once at boot, under the splash.
-  char final[kSoundNameLength] = {};         // Played when a countdown reaches zero.
-  char fridaySunset[kSoundNameLength] = {};  // Played when Friday sunset is crossed live.
-  char tradingOpen[kSoundNameLength] = {};   // Played when a Trading session starts live.
-  char tradingClose[kSoundNameLength] = {};  // Played when a Trading session stops live.
-  // One generated accelerating pattern selected by a scheduled boundary.
-  struct BoundaryPatternConfig {
-    uint16_t toneHz = 880;                // Pitch used throughout all four phases.
-    uint16_t totalDurationSeconds = 40;   // Total length, divided into four phases.
-    uint8_t startingBeatsHz = 2;          // Beeps/sec in phase 1; doubles each phase.
-  };
+  bool enabled = true;  // Master switch for automatic beeps and approach alerts.
+  uint8_t volumePercent = 40;  // PWM loudness from 0 through 100.
+  bool startupBeep = false;  // Short beep once startup has finished.
+  bool finalBeep = false;  // Short beep at ordinary countdown completion.
+  bool fridaySunsetBeep = false;  // Short beep on a live Friday-sunset crossing.
+  bool tradingOpenBeep = false;  // Short beep on a live session open.
+  bool tradingCloseBeep = false;  // Short beep on a live session close.
 
   // Generated alerts that finish at scheduled mode boundaries.
   struct BoundaryAlertConfig {
     bool enabled = true;  // Enables both generated pre-boundary patterns.
-    BoundaryPatternConfig boundary1;  // Trading open and Friday sunset.
-    BoundaryPatternConfig boundary2;  // Trading close and Saturday sunset.
+    BeepPattern boundary1;  // Trading open and Friday sunset.
+    BeepPattern boundary2;  // Trading close and Saturday sunset.
   } boundaryAlert;
 };
 
@@ -147,7 +126,7 @@ struct ClockConfig {
   FridayConfig friday;  // Friday-mode phase formats.
   TradingConfig trading;  // Trading-mode countdown format.
   MessageConfig messages;  // User-configurable display messages.
-  SoundConfig sound;  // Buzzer settings and per-event sound selections.
+  SoundConfig sound;  // Generated approach alerts and optional event beeps.
   LocationConfig locations;  // Device and sunset-test coordinates.
   TimezoneConfig timezone;  // Local timezone and UTC offset.
   DisplayConfig display;  // Clock rendering and hardware brightness settings.
