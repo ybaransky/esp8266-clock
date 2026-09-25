@@ -14,6 +14,7 @@ struct RtcStatus {
   bool powerLost = false;      // True when RTC reports oscillator stop/power loss.
   bool lowBattery = false;     // True when battery/oscillator status is suspect.
   bool sqwConfigured = false;  // True when SQW has been configured for 1 Hz.
+  bool timeTrusted = false;    // True when the time came from a running clock or an explicit sync.
   char error[48] = "";         // Last RTC setup/probe error text; empty if none.
 };
 
@@ -44,6 +45,14 @@ class RtcService {
   // after a backlog, and returns the latest sample once. Never replays a backlog.
   bool consumeSqwPulse(RtcTick& tick);
   bool isHealthy() const;
+
+  // True only when the chip's time is worth persisting. Distinct from
+  // isHealthy(), which asks whether pulses are arriving: after lost-power
+  // recovery the SQW train is perfectly healthy while the time itself is the
+  // firmware build date, which passes every range check and is still wrong by
+  // however long ago the image was built. Anything that writes a timestamp to
+  // disk must consult this, not present or isHealthy().
+  bool timeIsTrustworthy() const { return status_.present && status_.timeTrusted; }
 
   // Phase-locked elapsed milliseconds, clamped to 999. Falls back to millis()
   // phase only when no recent SQW edge can be trusted.

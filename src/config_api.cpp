@@ -1,7 +1,9 @@
 #include "config_api.h"
 
 #include <ArduinoJson.h>
+#include <string.h>
 
+#include "datetime_validation.h"
 #include "display_format.h"
 #include "clock_controller.h"
 #include "config.h"
@@ -21,6 +23,39 @@ constexpr uint32_t kRebootDelayMs = 1500;
 // -----------------------------------------------------------------------------
 // ConfigApi
 // -----------------------------------------------------------------------------
+
+// The field this writes must hold the canonical form in full: a buffer one byte
+// short would truncate the seconds, and truncated text no longer parses, so the
+// origin would silently revert to the default on the next load.
+static_assert(sizeof(CountupConfig::start) >= kLocalDateTimeLength,
+              "CountupConfig::start cannot hold a canonical datetime");
+
+bool ConfigApi::resolveCountupStart(ClockConfig& cfg) {
+  if (strcmp(cfg.countup.start, kCountupStartNow) != 0) return false;
+  // Leave an unset origin unset rather than persist a time the clock does not
+  // vouch for. getNowCached()'s fallback exists for fault presentation, and
+  // lost-power recovery leaves the chip holding the firmware build date - both
+  // are wrong things to write into /config.json, where they would outlive the
+  // fault and never self-correct.
+  if (!rtc_.timeIsTrustworthy()) {
+    LOG_PRINTLN("countup start left unset: no trustworthy RTC time to stamp");
+    return false;
+  }
+  formatLocalDateTime(rtc_.getNowCached(), cfg.countup.start,
+                      sizeof(cfg.countup.start));
+  LOG_PRINTF("countup start resolved from \"now\" to %s", cfg.countup.start);
+  return true;
+}
+
+bool ConfigApi::persistClockConfig(ClockConfig& cfg) {
+  resolveCountupStart(cfg);
+  return configManager_.saveClockConfig(cfg);
+}
+
+bool ConfigApi::persistClockConfig(ClockConfig& cfg, const WifiConfig& wifi) {
+  resolveCountupStart(cfg);
+  return configManager_.saveConfig(cfg, wifi);
+}
 
 void ConfigApi::handleDemoTest() {
   if (server_.hasArg("plain") && (server_.arg("plain").length() > 0)) {
@@ -70,8 +105,7 @@ void ConfigApi::handleSetMode() {
 
   ClockConfig cfg = configManager_.clockConfig();
   cfg.activeMode = nextMode;
-  resolveCountupStart(cfg, rtc_.getNowCached());
-  if (!configManager_.saveClockConfig(cfg)) {
+  if (!persistClockConfig(cfg)) {
     LOG_PRINTLN("/api/mode failed: complete config write failed");
     responder_.sendJsonError(500, "Configuration write failed");
     return;
@@ -220,10 +254,9 @@ void ConfigApi::handleSaveConfig() {
     responder_.sendJson(400, error);
     return;
   }
-  resolveCountupStart(clockConfig, rtc_.getNowCached());
   WifiConfig wifiConfig = configManager_.wifiConfig();
   const bool wifiChanged = applyJsonToWifiConfig(payload, wifiConfig);
-  if (!configManager_.saveConfig(clockConfig, wifiConfig)) {
+  if (!persistClockConfig(clockConfig, wifiConfig)) {
     LOG_PRINTLN("/api/config failed: complete config write failed");
     responder_.sendJsonError(500, "Configuration write failed");
     return;
@@ -234,7 +267,12 @@ void ConfigApi::handleSaveConfig() {
     responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
     rebootScheduler_.scheduleReboot(kRebootDelayMs);
   } else {
-    responder_.sendJson(200, "{\"message\":\"Saved\"}");
+    // Return canonical values so forms can retain server-resolved datetimes.
+    // Reuse the request document after all payload readers have finished.
+    doc.clear();
+    serializeClockConfig(doc, clockConfig);
+    doc["message"] = "Saved";
+    responder_.sendJsonDocument(200, doc);
   }
 }
 

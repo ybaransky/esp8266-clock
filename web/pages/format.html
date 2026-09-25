@@ -313,7 +313,9 @@ api('/api/formats').catch(function (e) {
   sections();
 }).catch(function (e) { setStatus('API failed: ' + e.message); });
 
+var savePending = false;
 function save() {
+  if (savePending) return;
   var intervals = [
     { start: $('tradeStart1').value, stop: $('tradeStop1').value },
     { start: $('tradeStart2').value, stop: $('tradeStop2').value }
@@ -369,13 +371,22 @@ function save() {
     }
   };
   if (!$('end').value) delete body.display.modes.countdown.end;
+  var submittedStart = $('start').value;
+  savePending = true;
   jsonFetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   }).then(function (d) {
+    // Preserve edits made while saving, but replace a submitted blank with
+    // the absolute origin chosen by the device before another save can run.
+    if (!d.error && d.display && $('start').value === submittedStart) {
+      $('start').value = local(d.display.modes.countup.start);
+    }
+    savePending = false;
     setStatus(d.error || d.message || 'Saved');
   }).catch(function (e) {
+    savePending = false;
     setStatus('Save failed: ' + e.message);
   });
 }

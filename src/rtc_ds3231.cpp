@@ -105,6 +105,9 @@ bool RtcService::begin() {
   const DateTime now = rtc_.now();
   cachedNow_ = now;
   cachedNowSynced_ = true;
+  // Provisionally trusted: a chip answered and we have its time. The two checks
+  // below are the ones that can withdraw that, so this must be set before them.
+  status_.timeTrusted = true;
   logSetTimeProvider(&RtcService::logTimeProvider);
   logRtcTime("Current RTC time:", now);
 
@@ -142,6 +145,10 @@ void RtcService::recoverIfPowerWasLost() {
   adjustWithLog(DateTime(F(__DATE__), F(__TIME__)), "lost power recovery");
   status_.powerLost = false;
   status_.lowBattery = false;
+  // The chip now holds the firmware build date, which is in range and therefore
+  // passes flagInvalidTimeIfNeeded(), but it is a placeholder rather than a
+  // reading. Nothing may persist it as a timestamp until a real sync arrives.
+  status_.timeTrusted = false;
   LOG_PRINTLN("INFO: RTC reset to build time to clear lost-power flag");
 }
 
@@ -150,6 +157,7 @@ void RtcService::flagInvalidTimeIfNeeded() {
   if (!isLikelyInvalidTime(now)) return;
 
   status_.lowBattery = true;
+  status_.timeTrusted = false;
   LOG_PRINTF("WARNING: RTC time looks invalid: %04d-%02d-%02d %02d:%02d:%02d",
              now.year(), now.month(), now.day(),
              now.hour(), now.minute(), now.second());
@@ -174,6 +182,9 @@ void RtcService::setNow(const DateTime& timeValue) {
   adjustWithLog(timeValue, "browser time sync");
   status_.powerLost = false;
   status_.lowBattery = false;
+  // An explicit sync is the authoritative source; it is what clears a build-date
+  // placeholder installed by lost-power recovery.
+  status_.timeTrusted = true;
 
   noInterrupts();
   isrCounters.pendingPulseCount = 0;
@@ -325,7 +336,8 @@ bool RtcService::isHealthy() const {
 // the cache can't be trusted: before beginSqwProcessing() has run, or if the
 // SQW pulse has gone stale.
 DateTime RtcService::getNowCached() {
-  if (!cachedNowSynced_ || !sqwPulseIsFresh()) return rtc_.now();
+  // getNow() also handles failed initialization, when RTClib has no I2C device.
+  if (!status_.present || !cachedNowSynced_ || !sqwPulseIsFresh()) return getNow();
   return cachedNow_;
 }
 

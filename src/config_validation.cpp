@@ -1,8 +1,5 @@
 #include "config_validation.h"
 
-#include <string.h>
-
-#include "datetime_validation.h"
 #include "defaults.h"
 #include "log.h"
 
@@ -111,19 +108,6 @@ uint8_t sanitizeBoundaryStartingBeatsHz(int rawBeatsHz) {
 const char* activeSoundName(const SoundConfig& sound, const char* name) {
   if (!sound.enabled || (name == nullptr)) return "";
   return name;
-}
-
-// The field this writes must hold the canonical form in full: a buffer one byte
-// short would truncate the seconds, and the truncated text no longer parses, so
-// the origin would silently revert to the default on the next load.
-static_assert(sizeof(CountupConfig::start) >= kLocalDateTimeLength,
-              "CountupConfig::start cannot hold a canonical datetime");
-
-bool resolveCountupStart(ClockConfig& cfg, const DateTime& now) {
-  if (strcmp(cfg.countup.start, kCountupStartNow) != 0) return false;
-  formatLocalDateTime(now, cfg.countup.start, sizeof(cfg.countup.start));
-  LOG_PRINTF("countup start resolved from \"now\" to %s", cfg.countup.start);
-  return true;
 }
 
 void sanitizeLocationInfo(LocationInfo& info) {
