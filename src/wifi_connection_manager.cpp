@@ -51,19 +51,19 @@ void formatMac(const uint8_t mac[6], char out[18]) {
 
 void WifiConnectionManager::begin(const WifiConfig& config) {
   activeManager = this;
-  config_ = config;
+  m_config = config;
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
   // Resolve before the station attempt, not inside startAccessPoint(): status()
   // reports the AP name in station mode too, and every consumer must see the
   // same value this manager would actually advertise.
-  apSsid_ = resolveApSsid();
+  m_apSsid = resolveApSsid();
 
-  if (!config_.staSsid.isEmpty() &&
-      tryStationConnect(config_.staSsid, config_.staPassword)) {
-    mode_ = WifiMode::kStation;
+  if (!m_config.staSsid.isEmpty() &&
+      tryStationConnect(m_config.staSsid, m_config.staPassword)) {
+    m_mode = WifiMode::kStation;
     LOG_PRINTF("STA \"%s\" connected  IP: %s",
-               config_.staSsid.c_str(),
+               m_config.staSsid.c_str(),
                WiFi.localIP().toString().c_str());
     return;
   }
@@ -72,70 +72,70 @@ void WifiConnectionManager::begin(const WifiConfig& config) {
 }
 
 void WifiConnectionManager::onApClientConnected(const uint8_t* mac) {
-  memcpy(apClientMac_, mac, 6);
-  apClientLookupStartedMs_ = millis();
-  apClientConnectedPending_ = true;
+  memcpy(m_apClientMac, mac, 6);
+  m_apClientLookupStartedMs = millis();
+  m_apClientConnectedPending = true;
 }
 
 void WifiConnectionManager::onApClientDisconnected(const uint8_t* mac) {
-  memcpy(apDisconnectedMac_, mac, 6);
-  apClientDisconnectedPending_ = true;
+  memcpy(m_apDisconnectedMac, mac, 6);
+  m_apClientDisconnectedPending = true;
 }
 
 void WifiConnectionManager::tick() {
-  if (apClientDisconnectedPending_) {
-    apClientDisconnectedPending_ = false;
+  if (m_apClientDisconnectedPending) {
+    m_apClientDisconnectedPending = false;
     char mac[18];
-    formatMac(apDisconnectedMac_, mac);
+    formatMac(m_apDisconnectedMac, mac);
     // The station is already gone from the SDK's list, so its IP can only
     // come from the mapping remembered at connect time.
-    if ((memcmp(apDisconnectedMac_, lastClientMac_, sizeof(lastClientMac_)) == 0) &&
-        lastClientIp_.isSet()) {
+    if ((memcmp(m_apDisconnectedMac, m_lastClientMac, sizeof(m_lastClientMac)) == 0) &&
+        m_lastClientIp.isSet()) {
       LOG_PRINTF("AP client disconnected  IP: %s  MAC: %s",
-                 lastClientIp_.toString().c_str(), mac);
+                 m_lastClientIp.toString().c_str(), mac);
     } else {
       LOG_PRINTF("AP client disconnected  MAC: %s", mac);
     }
   }
 
-  if (!apClientConnectedPending_) return;
+  if (!m_apClientConnectedPending) return;
 
   station_info* station = wifi_softap_get_station_info();
   for (station_info* current = station; current != nullptr;
        current = STAILQ_NEXT(current, next)) {
-    if (memcmp(current->bssid, apClientMac_, sizeof(apClientMac_)) != 0) continue;
+    if (memcmp(current->bssid, m_apClientMac, sizeof(m_apClientMac)) != 0) continue;
     const IPAddress ip(current->ip);
     if (ip != IPAddress(0, 0, 0, 0)) {
       LOG_PRINTF("AP client connected  IP: %s", ip.toString().c_str());
-      memcpy(lastClientMac_, apClientMac_, sizeof(lastClientMac_));
-      lastClientIp_ = ip;
-      apClientConnectedPending_ = false;
+      memcpy(m_lastClientMac, m_apClientMac, sizeof(m_lastClientMac));
+      m_lastClientIp = ip;
+      m_apClientConnectedPending = false;
     }
     break;
   }
   wifi_softap_free_station_info();
 
-  if (apClientConnectedPending_ &&
-      (static_cast<uint32_t>(millis() - apClientLookupStartedMs_) >=
+  if (m_apClientConnectedPending &&
+      (static_cast<uint32_t>(millis() - m_apClientLookupStartedMs) >=
        kApClientIpTimeoutMs)) {
     LOG_PRINTLN("AP client connected but no IP address was assigned");
-    apClientConnectedPending_ = false;
+    m_apClientConnectedPending = false;
   }
 }
 
 WifiRuntimeStatus WifiConnectionManager::status() const {
   WifiRuntimeStatus runtime;
-  runtime.mode = mode_;
+  runtime.mode = m_mode;
   runtime.connected = WiFi.status() == WL_CONNECTED;
   runtime.ssid = runtime.connected ? WiFi.SSID() : String();
   runtime.ip = runtime.connected ? WiFi.localIP().toString() : String();
-  runtime.apSsid = apSsid_;
+  runtime.apSsid = m_apSsid;
   runtime.apIp = WiFi.softAPIP().toString();
   return runtime;
 }
 
 void WifiConnectionManager::scanNetworks(JsonDocument& doc) {
-  const bool restoreApOnly = mode_ == WifiMode::kAccessPoint;
+  const bool restoreApOnly = m_mode == WifiMode::kAccessPoint;
   if (restoreApOnly) {
     WiFi.mode(WIFI_AP_STA);
   }
@@ -172,7 +172,7 @@ bool WifiConnectionManager::connectAndSave(ConfigManager& configManager,
     LOG_PRINTLN("WiFi connect save failed: complete config write failed");
     return false;
   }
-  config_ = next;
+  m_config = next;
   return true;
 }
 
@@ -181,8 +181,8 @@ bool WifiConnectionManager::connectAndSave(ConfigManager& configManager,
 // rather than the resolved name is what lets the user clear the field on
 // /wifi to return to it.
 String WifiConnectionManager::resolveApSsid() const {
-  if (!config_.apSsid.isEmpty()) {
-    return config_.apSsid;
+  if (!m_config.apSsid.isEmpty()) {
+    return m_config.apSsid;
   }
   uint8_t mac[6] = {};
   WiFi.softAPmacAddress(mac);
@@ -250,7 +250,7 @@ uint8_t WifiConnectionManager::pickLeastCongestedChannel() {
 }
 
 void WifiConnectionManager::startAccessPoint() {
-  mode_ = WifiMode::kAccessPoint;
+  m_mode = WifiMode::kAccessPoint;
   const uint8_t channel = pickLeastCongestedChannel();
   WiFi.mode(WIFI_AP);
   // Confirmed on stock settings (2026-07-13): transfers to a power-save
@@ -262,17 +262,17 @@ void WifiConnectionManager::startAccessPoint() {
   // Keep the default 100 TU beacon interval: 50 TU was tried against the
   // power-save Android client (2026-07-13) and produced frequent TRUNCATED
   // transfers instead of helping.
-  if (!WiFi.softAP(apSsid_.c_str(), config_.apPassword.c_str(), channel)) {
+  if (!WiFi.softAP(m_apSsid.c_str(), m_config.apPassword.c_str(), channel)) {
     // With no station credentials the AP is the only way back into the device,
     // so a rejected credential pair must not leave it dark. sanitizeWifiConfig
     // should have prevented this; retry on the compiled defaults regardless.
     LOG_PRINTF("softAP rejected \"%s\" - retrying with default credentials",
-               apSsid_.c_str());
+               m_apSsid.c_str());
     const WifiConfig defaults = defaultWifiConfig();
-    config_.apSsid = defaults.apSsid;
-    config_.apPassword = defaults.apPassword;
-    apSsid_ = resolveApSsid();
-    if (!WiFi.softAP(apSsid_.c_str(), config_.apPassword.c_str(), channel)) {
+    m_config.apSsid = defaults.apSsid;
+    m_config.apPassword = defaults.apPassword;
+    m_apSsid = resolveApSsid();
+    if (!WiFi.softAP(m_apSsid.c_str(), m_config.apPassword.c_str(), channel)) {
       LOG_PRINTLN("softAP failed on default credentials - no access point is running");
       return;
     }
@@ -292,10 +292,10 @@ void WifiConnectionManager::startAccessPoint() {
     yield();
   }
   if (WiFi.softAPIP() == IPAddress(0, 0, 0, 0)) {
-    LOG_PRINTF("AP \"%s\" started but never received an IP address", apSsid_.c_str());
+    LOG_PRINTF("AP \"%s\" started but never received an IP address", m_apSsid.c_str());
   } else {
     LOG_PRINTF("AP \"%s\" started  IP: %s",
-               apSsid_.c_str(),
+               m_apSsid.c_str(),
                WiFi.softAPIP().toString().c_str());
   }
 

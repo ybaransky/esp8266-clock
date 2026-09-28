@@ -10,7 +10,7 @@
 class FileApi {
  public:
   FileApi(ESP8266WebServer& server, HttpResponder& responder)
-      : server_(server), responder_(responder) {}
+      : m_server(server), m_responder(responder) {}
 
   void handleListFiles();
   void handleReadFile();
@@ -36,8 +36,8 @@ class FileApi {
   static void logFileContent(File& file, const String& path, size_t offset,
                              size_t length);
 
-  ESP8266WebServer& server_;  // Source of file-management requests.
-  HttpResponder& responder_;  // Sends file-management responses.
-  File uploadFile_;           // Active upload destination file.
-  bool uploadError_ = false;  // True after an upload write/open failure.
+  ESP8266WebServer& m_server;  // Source of file-management requests.
+  HttpResponder& m_responder;  // Sends file-management responses.
+  File m_uploadFile;           // Active upload destination file.
+  bool m_uploadError = false;  // True after an upload write/open failure.
 };

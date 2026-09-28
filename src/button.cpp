@@ -18,33 +18,33 @@ public:
     if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
       LOG_PRINTLN("WARNING: D3/GPIO0 is LOW at startup (button may be pressed). Avoid holding this button during boot.");
     }
-    startupRecheckAtMs_ = millis() + kStartupRecheckDelayMs;
-    startupRecheckDone_ = false;
+    m_startupRecheckAtMs = millis() + kStartupRecheckDelayMs;
+    m_startupRecheckDone = false;
 
     // D3/GPIO0 uses pull-up logic; pressed state is LOW.
-    driver_.attachClick(onBtnClick);
-    driver_.attachDoubleClick(onBtnDoubleClick);
-    driver_.attachLongPressStart(onBtnLongPressStart);
+    m_driver.attachClick(onBtnClick);
+    m_driver.attachDoubleClick(onBtnDoubleClick);
+    m_driver.attachLongPressStart(onBtnLongPressStart);
   }
 
   void tick() {
-    if (!startupRecheckDone_ && (static_cast<long>(millis() - startupRecheckAtMs_) >= 0)) {
+    if (!m_startupRecheckDone && (static_cast<long>(millis() - m_startupRecheckAtMs) >= 0)) {
       if (digitalRead(Hardware::Pins::BUTTON) == LOW) {
         LOG_PRINTLN("WARNING: D3/GPIO0 still LOW 500ms after startup. Check wiring or release button during boot.");
       }
-      startupRecheckDone_ = true;
+      m_startupRecheckDone = true;
     }
-    driver_.tick();
+    m_driver.tick();
   }
 
   bool hasEvent() const {
-    return eventHead_ != eventTail_;
+    return m_eventHead != m_eventTail;
   }
 
   ButtonEvent nextEvent() {
-    if (eventHead_ == eventTail_) return ButtonEvent::kNone;
-    const ButtonEvent event = eventQueue_[eventHead_];
-    eventHead_ = (eventHead_ + 1) % kEventQueueCapacity;
+    if (m_eventHead == m_eventTail) return ButtonEvent::kNone;
+    const ButtonEvent event = m_eventQueue[m_eventHead];
+    m_eventHead = (m_eventHead + 1) % kEventQueueCapacity;
     return event;
   }
 
@@ -60,18 +60,18 @@ private:
   static constexpr unsigned long kStartupRecheckDelayMs = 500;  // Boot-pin recheck delay.
 
   void enqueueEvent(ButtonEvent event) {
-    const int nextTail = (eventTail_ + 1) % kEventQueueCapacity;
-    if (nextTail == eventHead_) return;
-    eventQueue_[eventTail_] = event;
-    eventTail_ = nextTail;
+    const int nextTail = (m_eventTail + 1) % kEventQueueCapacity;
+    if (nextTail == m_eventHead) return;
+    m_eventQueue[m_eventTail] = event;
+    m_eventTail = nextTail;
   }
 
-  OneButton driver_ = OneButton(Hardware::Pins::BUTTON, true, true);  // Debounced button driver.
-  volatile ButtonEvent eventQueue_[kEventQueueCapacity] = {};     // Pending button events.
-  volatile int eventHead_ = 0;                                     // Queue read index.
-  volatile int eventTail_ = 0;                                     // Queue write index.
-  bool startupRecheckDone_ = false;                                // True after boot-pin recheck.
-  unsigned long startupRecheckAtMs_ = 0;                           // millis() deadline for recheck.
+  OneButton m_driver = OneButton(Hardware::Pins::BUTTON, true, true);  // Debounced button driver.
+  volatile ButtonEvent m_eventQueue[kEventQueueCapacity] = {};     // Pending button events.
+  volatile int m_eventHead = 0;                                     // Queue read index.
+  volatile int m_eventTail = 0;                                     // Queue write index.
+  bool m_startupRecheckDone = false;                                // True after boot-pin recheck.
+  unsigned long m_startupRecheckAtMs = 0;                           // millis() deadline for recheck.
 };
 
 static ButtonController controller;  // The one physical button behind the free functions below.

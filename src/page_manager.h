@@ -8,11 +8,11 @@ class DisplayManager;
 class PageManager {
  public:
   explicit PageManager(DisplayManager& displayManager)
-      : displayManager_(displayManager) {}
+      : m_displayManager(displayManager) {}
 
   void showSsid(const String& ssid);
   void showIpAddress(const String& ip);
 
  private:
-  DisplayManager& displayManager_;  // Installs the generated page overlays.
+  DisplayManager& m_displayManager;  // Installs the generated page overlays.
 };

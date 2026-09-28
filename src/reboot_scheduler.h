@@ -6,10 +6,9 @@
 // "restart shortly, after this response has gone out."
 //
 // Exists to break an ownership cycle. WebPortal constructs ConfigApi and
-// WifiApi and previously passed them `*this`, so the objects it owned depended
-// on the class that owned them - and config_api.cpp had to include
-// web_server.h to say so. A one-method interface costs one vtable and lets the
-// dependency point the right way.
+// WifiApi; handing them the WebPortal itself would make the objects it owns
+// depend on their owner, and config_api.cpp include web_server.h. A one-method
+// interface costs one vtable and lets the dependency point the right way.
 class RebootScheduler {
  public:
   virtual ~RebootScheduler() = default;

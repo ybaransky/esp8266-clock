@@ -113,9 +113,8 @@ void test_unknown_key_does_not_resolve() {
   TEST_ASSERT_FALSE(displayFormatIndexForKey(kFmtGroupClock, nullptr, &resolved));
 }
 
-// The values defaults.cpp and data/config.json ship must name real formats.
-// This is the test that would have caught clockFormat = 7 claiming to be
-// " YYYY | MM:DD | hh;mm" when index 7 was " DOW  | hh  H |  mm N".
+// The values defaults.cpp and data/config.json ship must name real formats,
+// so a default can never point at a different format than its author meant.
 void test_shipped_default_keys_resolve() {
   const struct {
     FormatGroup group;  // Catalog the default key must resolve in.

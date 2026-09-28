@@ -6,11 +6,11 @@
 class CommaNumber {
  public:
   explicit CommaNumber(uint32_t value) {
-    formatUnsignedWithCommas(value, text_, sizeof(text_));
+    formatUnsignedWithCommas(value, m_text, sizeof(m_text));
   }
 
   const char* c_str() const {
-    return text_;
+    return m_text;
   }
 
  private:
@@ -45,5 +45,5 @@ class CommaNumber {
     }
   }
 
-  char text_[15] = {};  // Comma-formatted decimal text.
+  char m_text[15] = {};  // Comma-formatted decimal text.
 };

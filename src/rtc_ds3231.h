@@ -7,8 +7,8 @@
 //
 // Deliberately a plain trivially-copyable struct with a fixed error buffer, not
 // a String: getStatus() is called as a cheap predicate (isHealthy(), the 2s
-// health poll), and a String member made every one of those calls allocate and
-// free on the heap.
+// health poll), and a String member would allocate and free on the heap on
+// every call.
 struct RtcStatus {
   bool present = false;        // True when the DS3231 responds on I2C.
   bool powerLost = false;      // True when RTC reports oscillator stop/power loss.
@@ -36,7 +36,7 @@ struct RtcTick {
 class RtcService {
  public:
   bool begin();
-  RtcStatus getStatus() const { return status_; }
+  RtcStatus getStatus() const { return m_status; }
   DateTime getNow();
   void setNow(const DateTime& timeValue);
   void beginSqwProcessing();
@@ -52,7 +52,7 @@ class RtcService {
   // firmware build date, which passes every range check and is still wrong by
   // however long ago the image was built. Anything that writes a timestamp to
   // disk must consult this, not present or isHealthy().
-  bool timeIsTrustworthy() const { return status_.present && status_.timeTrusted; }
+  bool timeIsTrustworthy() const { return m_status.present && m_status.timeTrusted; }
 
   // Phase-locked elapsed milliseconds, clamped to 999. Falls back to millis()
   // phase only when no recent SQW edge can be trusted.
@@ -69,25 +69,25 @@ class RtcService {
   void adjustWithLog(const DateTime& newTime, const char* reason);
   void setError(const char* text);
 
-  // True when a SQW pulse arrived recently enough to trust cachedNow_.
+  // True when a SQW pulse arrived recently enough to trust m_cachedNow.
   bool sqwPulseIsFresh() const;
   void logSqwHealthIfNeeded(uint32_t nowMs);
 
   // Installed as the log timestamp source. Reads the cache only - never I2C -
   // so a log line can never cost a bus transaction or reorder around one.
   // Static because logSetTimeProvider() takes a plain function pointer; it
-  // reaches the single application-owned instance through loggingInstance_.
+  // reaches the single application-owned instance through m_loggingInstance.
   static bool logTimeProvider(char* buffer, size_t bufferSize);
 
-  RTC_DS3231 rtc_;  // RTClib DS3231 driver instance.
-  RtcStatus status_;  // Cached RTC health and last error text.
-  DateTime cachedNow_;  // Second-resolution time, advanced by SQW pulses.
-  uint32_t processingStartedAtMs_ = 0;  // millis() reference for startup health.
-  uint32_t lastPulseAtMs_ = 0;  // ISR timestamp of the last accepted pulse.
-  uint32_t lastAcceptedPulseAtMs_ = 0;  // Phase reference used for tenths.
-  uint32_t lastHealthLogMs_ = 0;  // Last missing-pulse warning time.
-  bool processingStarted_ = false;  // True after SQW interrupt setup begins.
-  bool sawPulse_ = false;  // True after accepting at least one real SQW edge.
-  bool cachedNowSynced_ = false;  // False until a live read seeds the cache.
-  bool resyncOnNextPulse_ = true;  // Realign after boot, time sync, or a race.
+  RTC_DS3231 m_rtc;  // RTClib DS3231 driver instance.
+  RtcStatus m_status;  // Cached RTC health and last error text.
+  DateTime m_cachedNow;  // Second-resolution time, advanced by SQW pulses.
+  uint32_t m_processingStartedAtMs = 0;  // millis() reference for startup health.
+  uint32_t m_lastPulseAtMs = 0;  // ISR timestamp of the last accepted pulse.
+  uint32_t m_lastAcceptedPulseAtMs = 0;  // Phase reference used for tenths.
+  uint32_t m_lastHealthLogMs = 0;  // Last missing-pulse warning time.
+  bool m_processingStarted = false;  // True after SQW interrupt setup begins.
+  bool m_sawPulse = false;  // True after accepting at least one real SQW edge.
+  bool m_cachedNowSynced = false;  // False until a live read seeds the cache.
+  bool m_resyncOnNextPulse = true;  // Realign after boot, time sync, or a race.
 };

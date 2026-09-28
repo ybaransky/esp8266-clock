@@ -17,7 +17,7 @@ constexpr const char* kDefaultApPassword = "12345678";  // Fallback AP password;
 // device is powered on. It is reachable only when a user selects Countdown
 // without setting an end time, because the shipped activeMode is Clock. Do not
 // duplicate it in data/config.json - patch semantics make an absent field fall
-// through to here, and the two copies had already drifted twelve weeks apart.
+// through to here, and a second copy would drift out of step with this one.
 constexpr const char* kDefaultCountdownEnd = "2026-07-04 00:00:00";  // Placeholder countdown target.
 
 // "Never set": resolved to the RTC's time on the first save.
@@ -30,10 +30,9 @@ constexpr const char* kDefaultFridaySunsetMessage = "     SUN SET";  // Blinked 
 constexpr const char* kDefaultTradingOpenMessage  = "        OPEN";  // Blinked at a session open.
 constexpr const char* kDefaultTradingCloseMessage = "        CLSE";  // Blinked at a session close.
 
-// Default formats are named by key, not by table position. Naming them by
-// index is what let this file claim index 7 was " YYYY | MM:DD | hh;mm" when
-// the catalog had since grown a row and index 7 had become something else.
-// A key either resolves to the format it names or it does not resolve at all.
+// Default formats are named by key, not by table position, so adding or
+// reordering catalog rows cannot change which format a default names. A key
+// either resolves to the format it names or it does not resolve at all.
 constexpr const char* kDefaultClockFormat    = "yyyy-mmdd-hhmm";  // Clock mode and Friday's clock phase.
 constexpr const char* kDefaultCountingFormat = "ddl-hhmm-ssu";    // Every countdown/count-up view.
 
@@ -61,11 +60,11 @@ void fillDefaults(ClockConfig& config) {
     config = ClockConfig{};
     // Clock, not Countdown: a countdown default has to name an absolute instant,
     // and any instant that ships in firmware is in the past by the time someone
-    // powers the device on - which rendered messages.final on a brand-new clock
-    // and read as broken hardware. Clock has no such default to go stale, so the
-    // out-of-box state is self-evidently working. kDefaultCountdownEnd is
-    // now only a placeholder for a user who selects Countdown without setting an
-    // end time, which /format asks for in the same visit.
+    // powers the device on, so a new clock would open on its final message and
+    // look broken. Clock has no such default to go stale, so the out-of-box
+    // state is self-evidently working. kDefaultCountdownEnd is only a
+    // placeholder for a user who selects Countdown without setting an end time,
+    // which /format asks for in the same visit.
     config.activeMode = kModeClock;
     config.countdown.format    = formatIndexOrFirst(kFmtGroupCountdown, kDefaultCountingFormat);
     config.countup.format      = formatIndexOrFirst(kFmtGroupCountUp, kDefaultCountingFormat);

@@ -202,7 +202,7 @@ def check_config_formats(node, path, counting_keys, clock_keys):
             cursor = cursor[part]
         if cursor is None:
             continue
-        # An integer is a legacy index, still accepted by the firmware.
+        # The firmware also accepts an integer table index.
         if isinstance(cursor, int):
             continue
         if not isinstance(cursor, str):

@@ -13,12 +13,12 @@
 // -----------------------------------------------------------------------------
 
 void LocationApi::handleZipcodeLookup() {
-  const String zipcode = server_.arg("zip");
+  const String zipcode = m_server.arg("zip");
   LOG_PRINTF("/api/zipcode/lookup requested: zip=\"%s\"", zipcode.c_str());
   if (!isValidZipcode(zipcode.c_str())) {
     LOG_PRINTF("/api/zipcode/lookup failed: invalid zipcode=\"%s\"",
                zipcode.c_str());
-    responder_.sendJsonError(400, "ZIP code must be 5 digits");
+    m_responder.sendJsonError(400, "ZIP code must be 5 digits");
     return;
   }
 
@@ -26,7 +26,7 @@ void LocationApi::handleZipcodeLookup() {
   if (!zipcodeLookupLocation(zipcode.c_str(), &location)) {
     LOG_PRINTF("/api/zipcode/lookup failed: zip not found or unreadable: \"%s\"",
                zipcode.c_str());
-    responder_.sendJsonError(404, "ZIP code not found");
+    m_responder.sendJsonError(404, "ZIP code not found");
     return;
   }
 
@@ -38,12 +38,12 @@ void LocationApi::handleZipcodeLookup() {
   response["zipcode"] = zipcode;
   response["latitude"] = location.latitude;
   response["longitude"] = location.longitude;
-  responder_.sendJsonDocument(200, response);
+  m_responder.sendJsonDocument(200, response);
 }
 
 void LocationApi::handleSunset() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/sunset")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/sunset")) return;
 
   const float latitude = doc["location"]["latitude"] | NAN;
   const float longitude = doc["location"]["longitude"] | NAN;
@@ -57,28 +57,28 @@ void LocationApi::handleSunset() {
       !isfinite(longitude) || (longitude < -180.0f) || (longitude > 180.0f)) {
     LOG_PRINTF("/api/sunset failed: invalid coordinates lat=%.6f lon=%.6f",
                latitude, longitude);
-    responder_.sendJsonError(400, "Latitude or longitude is invalid");
+    m_responder.sendJsonError(400, "Latitude or longitude is invalid");
     return;
   }
 
   int year = 0, month = 0, day = 0;
   if ((!parseIsoDate(dateTextArg, &year, &month, &day) || (year < 2020))) {
     LOG_PRINTF("/api/sunset failed: invalid date=\"%s\"", dateTextArg);
-    responder_.sendJsonError(400, "Date is invalid");
+    m_responder.sendJsonError(400, "Date is invalid");
     return;
   }
 
   int hour = 0, minute = 0, second = 0;
   if (!parseClockTime(timeTextArg, &hour, &minute, &second)) {
     LOG_PRINTF("/api/sunset failed: invalid time=\"%s\"", timeTextArg);
-    responder_.sendJsonError(400, "Time is invalid");
+    m_responder.sendJsonError(400, "Time is invalid");
     return;
   }
 
   const int utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | 0;
   if ((utcOffsetMinutes < -840) || (utcOffsetMinutes > 840)) {
     LOG_PRINTF("/api/sunset failed: invalid UTC offset=%d", utcOffsetMinutes);
-    responder_.sendJsonError(400, "UTC offset is invalid");
+    m_responder.sendJsonError(400, "UTC offset is invalid");
     return;
   }
 
@@ -112,5 +112,5 @@ void LocationApi::handleSunset() {
   response["dateTime"] = dateTimeText;
   response["timezone"] = timezone;
   response["utcOffsetMinutes"] = utcOffsetMinutes;
-  responder_.sendJsonDocument(200, response);
+  m_responder.sendJsonDocument(200, response);
 }

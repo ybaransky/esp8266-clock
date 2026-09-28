@@ -26,25 +26,25 @@ class JsonIndenter {
  private:
   void newline();
 
-  uint8_t depth_ = 0;    // Container nesting level; sets the indent width.
-  bool inString_ = false;  // True between the quotes of a string literal.
-  bool escaped_ = false;   // True when the previous byte was a backslash.
-  bool pendingBreak_ = false;  // A container just opened; break before its first item.
+  uint8_t m_depth = 0;    // Container nesting level; sets the indent width.
+  bool m_inString = false;  // True between the quotes of a string literal.
+  bool m_escaped = false;   // True when the previous byte was a backslash.
+  bool m_pendingBreak = false;  // A container just opened; break before its first item.
 };
 
 void JsonIndenter::newline() {
   Serial.println();
-  for (uint8_t level = 0; level < depth_; ++level) Serial.print(F("  "));
+  for (uint8_t level = 0; level < m_depth; ++level) Serial.print(F("  "));
 }
 
 void JsonIndenter::write(uint8_t byte) {
   // Inside a string every byte is content, including the structural characters
   // and whitespace this otherwise rewrites.
-  if (inString_) {
+  if (m_inString) {
     Serial.write(byte);
-    if (escaped_) escaped_ = false;
-    else if (byte == '\\') escaped_ = true;
-    else if (byte == '"') inString_ = false;
+    if (m_escaped) m_escaped = false;
+    else if (byte == '\\') m_escaped = true;
+    else if (byte == '"') m_inString = false;
     return;
   }
 
@@ -53,9 +53,9 @@ void JsonIndenter::write(uint8_t byte) {
   if ((byte == ' ') || (byte == '\t') || (byte == '\n') || (byte == '\r')) return;
 
   const bool closer = ((byte == '}') || (byte == ']'));
-  if (closer && (depth_ > 0)) --depth_;
-  if (pendingBreak_) {
-    pendingBreak_ = false;
+  if (closer && (m_depth > 0)) --m_depth;
+  if (m_pendingBreak) {
+    m_pendingBreak = false;
     if (!closer) newline();  // "{}" and "[]" stay on one line.
   } else if (closer) {
     newline();
@@ -63,10 +63,10 @@ void JsonIndenter::write(uint8_t byte) {
 
   Serial.write(byte);
   if (byte == '"') {
-    inString_ = true;
+    m_inString = true;
   } else if ((byte == '{') || (byte == '[')) {
-    ++depth_;
-    pendingBreak_ = true;
+    ++m_depth;
+    m_pendingBreak = true;
   } else if (byte == ',') {
     newline();
   } else if (byte == ':') {
@@ -175,31 +175,31 @@ void FileApi::sendJsonEscapedString(ESP8266WebServer& server, const String& valu
 
 void FileApi::handleListFiles() {
   if (!storageManager.ensureMounted("list files")) {
-    responder_.sendJsonError(500, "Storage mount failed");
+    m_responder.sendJsonError(500, "Storage mount failed");
     return;
   }
 
   size_t txBytes = strlen("{\"files\":[");
-  server_.setContentLength(CONTENT_LENGTH_UNKNOWN);
-  server_.send(200, "application/json", "");
-  server_.sendContent("{\"files\":[");
+  m_server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  m_server.send(200, "application/json", "");
+  m_server.sendContent("{\"files\":[");
 
   bool first = true;
   Dir dir = STORAGE.openDir("/");
   while (dir.next()) {
     if (!first) {
-      server_.sendContent(",");
+      m_server.sendContent(",");
       ++txBytes;
     }
     first = false;
 
     const String name = dir.fileName();
-    server_.sendContent("{\"name\":");
-    sendJsonEscapedString(server_, name);
+    m_server.sendContent("{\"name\":");
+    sendJsonEscapedString(m_server, name);
 
     char item[24];
     snprintf(item, sizeof(item), ",\"size\":%u}", static_cast<unsigned>(dir.fileSize()));
-    server_.sendContent(item);
+    m_server.sendContent(item);
     txBytes += strlen("{\"name\":") + name.length() + strlen(item);
     yield();
   }
@@ -214,14 +214,14 @@ void FileApi::handleListFiles() {
     snprintf(footer, sizeof(footer), "]}");
   }
   txBytes += strlen(footer);
-  responder_.logRequest(200, txBytes);
-  server_.sendContent(footer);
+  m_responder.logRequest(200, txBytes);
+  m_server.sendContent(footer);
 }
 
 void FileApi::handleReadFile() {
-  const String path = normalizedFilePath(server_.arg("name"));
+  const String path = normalizedFilePath(m_server.arg("name"));
   if (path.isEmpty()) {
-    responder_.sendText(400, "Invalid file name");
+    m_responder.sendText(400, "Invalid file name");
     return;
   }
   // /config.json holds the WiFi station password in plain text. serializeWifi-
@@ -236,44 +236,44 @@ void FileApi::handleReadFile() {
   if (isCredentialBearingPath(path)) {
     LOG_PRINTF("/api/file refused %s: contains credentials; use /api/config",
                path.c_str());
-    responder_.sendText(403, "Not served: contains credentials. Use /api/config");
+    m_responder.sendText(403, "Not served: contains credentials. Use /api/config");
     return;
   }
   if (!storageManager.ensureMounted("read file")) {
-    responder_.sendText(500, "Storage mount failed");
+    m_responder.sendText(500, "Storage mount failed");
     return;
   }
 
   File file = STORAGE.open(path, "r");
   if (!file) {
-    responder_.sendText(404, "Not found");
+    m_responder.sendText(404, "Not found");
     return;
   }
 
-  if (server_.hasArg("offset") && server_.hasArg("limit")) {
+  if (m_server.hasArg("offset") && m_server.hasArg("limit")) {
     constexpr size_t kMaxViewerChunk = 512U * 1024U;
     const size_t fileSize = file.size();
-    const size_t offset = static_cast<size_t>(server_.arg("offset").toInt());
-    size_t length = static_cast<size_t>(server_.arg("limit").toInt());
+    const size_t offset = static_cast<size_t>(m_server.arg("offset").toInt());
+    size_t length = static_cast<size_t>(m_server.arg("limit").toInt());
     if ((length == 0) || (length > kMaxViewerChunk)) length = kMaxViewerChunk;
     if (offset >= fileSize) length = 0;
     else length = min(length, fileSize - offset);
 
     file.seek(offset, SeekSet);
-    responder_.logRequest(200, length);
+    m_responder.logRequest(200, length);
     // Lets the /view chunk loader show total progress ("x of y bytes").
     char totalSize[16];
     snprintf(totalSize, sizeof(totalSize), "%u", static_cast<unsigned>(fileSize));
-    server_.sendHeader("X-File-Size", totalSize);
-    server_.send(200, mimeTypeForPath(path), &file, length);
+    m_server.sendHeader("X-File-Size", totalSize);
+    m_server.send(200, mimeTypeForPath(path), &file, length);
     logFileContent(file, path, offset, length);
     file.close();
     return;
   }
 
   const size_t fileSize = file.size();
-  responder_.logRequest(200, fileSize);
-  server_.streamFile(file, mimeTypeForPath(path));
+  m_responder.logRequest(200, fileSize);
+  m_server.streamFile(file, mimeTypeForPath(path));
   logFileContent(file, path, 0, fileSize);
   file.close();
 }
@@ -319,55 +319,55 @@ void FileApi::logFileContent(File& file, const String& path, size_t offset,
 }
 
 void FileApi::handleDeleteFile() {
-  const String path = normalizedFilePath(server_.arg("name"));
+  const String path = normalizedFilePath(m_server.arg("name"));
   if (path.isEmpty()) {
-    responder_.sendJsonError(400, "Invalid file name");
+    m_responder.sendJsonError(400, "Invalid file name");
     return;
   }
   if (!storageManager.ensureMounted("delete file")) {
-    responder_.sendJsonError(500, "Storage mount failed");
+    m_responder.sendJsonError(500, "Storage mount failed");
     return;
   }
   if (!STORAGE.exists(path)) {
-    responder_.sendJsonError(404, "Not found");
+    m_responder.sendJsonError(404, "Not found");
     return;
   }
   if (!STORAGE.remove(path)) {
-    responder_.sendJsonError(500, "Delete failed");
+    m_responder.sendJsonError(500, "Delete failed");
     return;
   }
-  responder_.sendJson(200, "{\"message\":\"Deleted\"}");
+  m_responder.sendJson(200, "{\"message\":\"Deleted\"}");
 }
 
 void FileApi::handleUploadData() {
-  HTTPUpload& upload = server_.upload();
+  HTTPUpload& upload = m_server.upload();
   if (upload.status == UPLOAD_FILE_START) {
-    uploadError_ = false;
+    m_uploadError = false;
     const String path = uploadFilePath(upload.filename);
     if (path.isEmpty()) {
       LOG_PRINTF("File upload failed: invalid name=\"%s\"", upload.filename.c_str());
-      uploadError_ = true;
+      m_uploadError = true;
       return;
     }
     if (!storageManager.ensureMounted("upload file")) {
       LOG_PRINTLN("File upload failed: storage mount failed");
-      uploadError_ = true;
+      m_uploadError = true;
       return;
     }
-    uploadFile_ = STORAGE.open(path, "w");
-    if (!uploadFile_) {
+    m_uploadFile = STORAGE.open(path, "w");
+    if (!m_uploadFile) {
       LOG_PRINTF("File upload failed: could not open %s for writing", path.c_str());
-      uploadError_ = true;
+      m_uploadError = true;
       return;
     }
     return;
   }
 
   if (upload.status == UPLOAD_FILE_WRITE) {
-    if (!uploadFile_ ||
-        (uploadFile_.write(upload.buf, upload.currentSize) != upload.currentSize)) {
-      if (!uploadError_) LOG_PRINTLN("File upload failed while writing data");
-      uploadError_ = true;
+    if (!m_uploadFile ||
+        (m_uploadFile.write(upload.buf, upload.currentSize) != upload.currentSize)) {
+      if (!m_uploadError) LOG_PRINTLN("File upload failed while writing data");
+      m_uploadError = true;
     }
     return;
   }
@@ -380,21 +380,21 @@ void FileApi::handleUploadData() {
   if (upload.status == UPLOAD_FILE_ABORTED) {
     closeUploadFile();
     LOG_PRINTLN("File upload aborted by client");
-    uploadError_ = true;
+    m_uploadError = true;
   }
 }
 
 void FileApi::handleUpload() {
-  if (uploadError_) {
-    responder_.sendJsonError(500, "Upload failed");
+  if (m_uploadError) {
+    m_responder.sendJsonError(500, "Upload failed");
   } else {
-    responder_.sendJson(200, "{\"message\":\"Uploaded\"}");
+    m_responder.sendJson(200, "{\"message\":\"Uploaded\"}");
   }
-  uploadError_ = false;
+  m_uploadError = false;
 }
 
 void FileApi::closeUploadFile() {
-  if (uploadFile_) {
-    uploadFile_.close();
+  if (m_uploadFile) {
+    m_uploadFile.close();
   }
 }

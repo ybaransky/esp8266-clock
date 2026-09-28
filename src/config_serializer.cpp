@@ -111,7 +111,7 @@ const MessageFieldDescriptor kMessageFields[] = {
      sizeof(MessageConfig::tradingClose)},
 };
 
-// New boolean fields avoid interpreting legacy song-name strings as enabled beeps.
+// One row per optional event beep: its JSON key under sound and the flag it sets.
 struct BeepFieldDescriptor {
   const char* jsonKey;  // Persisted field under sound.
   bool SoundConfig::*field;  // Optional short beep for this event.
@@ -175,8 +175,8 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
 
   // Format selections are written as stable keys, never as table positions, so
   // adding or reordering a format cannot silently repoint a saved config at a
-  // different one. Read back by applyFormatFields(), which still accepts a
-  // legacy integer index from configs written before this change.
+  // different one. Read back by applyFormatFields(), which also accepts an
+  // integer table index.
   // Nested subscript assignment creates the intermediate mode objects on
   // demand; .to<JsonObject>() would clear a mode that an earlier row already
   // populated (both "friday" and "trading" appear more than once here).
@@ -300,11 +300,9 @@ void applySoundFields(JsonVariantConst sound, ClockConfig& config) {
 // Resolves one stored format selection onto its config field.
 //
 // A string is a stable format key, which is what this firmware writes. An
-// integer is a legacy table index from a config written before keys existed;
-// it is still honoured so an existing /config.json loads unchanged, and the
-// next save rewrites it as a key. Anything unrecognized leaves the field at
-// whatever the caller started from (defaults on load, the previous value on
-// patch), which is the same fallback behavior the index sanitizers had.
+// integer is accepted as a table index, and the next save rewrites it as a
+// key. Anything unrecognized leaves the field at whatever the caller started
+// from (defaults on load, the previous value on patch).
 void applyFormatField(const FormatFieldDescriptor& descriptor, JsonVariantConst value,
                       ClockConfig& config) {
   uint8_t& field = descriptor.field(config);
@@ -379,7 +377,7 @@ bool applyTradingSchedule(JsonVariantConst trading, ClockConfig& config) {
     if ((intervals.size() < 1) || (intervals.size() > kMaxTradingIntervals)) {
       return false;
     }
-    if (!hasCount) candidate.intervalCount = intervals.size();  // Legacy JSON.
+    if (!hasCount) candidate.intervalCount = intervals.size();  // Array alone: all entries enabled.
     for (uint8_t i = 0; i < intervals.size(); ++i) {
       JsonObjectConst interval = intervals[i].as<JsonObjectConst>();
       const char* start = interval["start"].as<const char*>();

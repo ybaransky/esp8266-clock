@@ -159,7 +159,7 @@ void copySegments(uint8_t destination[kPanelWidth], const uint8_t source[kPanelW
 // -----------------------------------------------------------------------------
 
 SegmentDisplay::SegmentDisplay()
-    : panels_{{Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[0]},
+    : m_panels{{Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[0]},
               {Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[1]},
               {Hardware::Pins::SEGMENT_CLK, Hardware::Pins::SEGMENT_DIO[2]}} {}
 
@@ -171,9 +171,9 @@ void SegmentDisplay::begin(uint8_t brightness) {
 void SegmentDisplay::setBrightness(uint8_t level) {
   const uint8_t clamped = min<uint8_t>(level, 7);
   for (size_t panel = 0; panel < kPanelCount; ++panel) {
-    panels_[panel].setBrightness(clamped);
-    if (cacheValid_[panel]) {
-      panels_[panel].setSegments(lastSegments_[panel]);
+    m_panels[panel].setBrightness(clamped);
+    if (m_cacheValid[panel]) {
+      m_panels[panel].setSegments(m_lastSegments[panel]);
     }
   }
 }
@@ -183,31 +183,31 @@ void SegmentDisplay::showFrame(const DisplayFrame& frame) {
     uint8_t segments[kPanelWidth];
     renderPanelSegments(frame.panels[panel], segments);
 
-    if (!cacheValid_[panel]) {
-      panels_[panel].setSegments(segments);
-      copySegments(lastSegments_[panel], segments);
-      cacheValid_[panel] = true;
+    if (!m_cacheValid[panel]) {
+      m_panels[panel].setSegments(segments);
+      copySegments(m_lastSegments[panel], segments);
+      m_cacheValid[panel] = true;
       continue;
     }
 
     size_t slot = 0;
     while (slot < kPanelWidth) {
-      if (segments[slot] == lastSegments_[panel][slot]) {
+      if (segments[slot] == m_lastSegments[panel][slot]) {
         ++slot;
         continue;
       }
 
       const size_t runStart = slot;
-      while ((slot < kPanelWidth) && (segments[slot] != lastSegments_[panel][slot])) {
+      while ((slot < kPanelWidth) && (segments[slot] != m_lastSegments[panel][slot])) {
         ++slot;
       }
 
       const uint8_t runLength = static_cast<uint8_t>(slot - runStart);
-      panels_[panel].setSegments(&segments[runStart], runLength,
+      m_panels[panel].setSegments(&segments[runStart], runLength,
                                   static_cast<uint8_t>(runStart));
     }
 
-    copySegments(lastSegments_[panel], segments);
+    copySegments(m_lastSegments[panel], segments);
   }
 }
 
@@ -215,14 +215,14 @@ void SegmentDisplay::blank() {
   const uint8_t blankSegments[kPanelWidth] = {};
 
   for (size_t panel = 0; panel < kPanelCount; ++panel) {
-    panels_[panel].setSegments(blankSegments);
-    copySegments(lastSegments_[panel], blankSegments);
-    cacheValid_[panel] = true;
+    m_panels[panel].setSegments(blankSegments);
+    copySegments(m_lastSegments[panel], blankSegments);
+    m_cacheValid[panel] = true;
   }
 }
 
 void SegmentDisplay::invalidateCache() {
   for (size_t panel = 0; panel < kPanelCount; ++panel) {
-    cacheValid_[panel] = false;
+    m_cacheValid[panel] = false;
   }
 }

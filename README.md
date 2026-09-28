@@ -71,9 +71,7 @@ modeled.
 
 ## References
 
-Every document here tracks the code. Per-subsystem design records are not kept
-separately: they duplicated CLAUDE.md, drifted out of step with it, and a reader
-had no way to tell which copy was current. Git history holds the superseded ones.
+Every document here tracks the code; CLAUDE.md is the single detailed reference.
 
 - [CLAUDE.md](CLAUDE.md): the authoritative firmware reference - module APIs,
   conventions, and the reasoning behind the non-obvious decisions. Covers the

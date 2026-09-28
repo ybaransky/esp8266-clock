@@ -64,7 +64,7 @@ uint16_t readDigits(const char* digits, size_t count) {
 class ZipcodeTable {
  public:
   ~ZipcodeTable() {
-    if (file_) file_.close();
+    if (m_file) m_file.close();
   }
 
   bool open(const char* path);
@@ -75,15 +75,15 @@ class ZipcodeTable {
   bool readHeader(const char* path);
   bool readPrefixRange(uint16_t prefix, uint16_t* start, uint16_t* end);
 
-  File file_;                 // Open table file; closed with this object.
-  uint16_t recordCount_ = 0;  // Records the header declares; bounds every seek.
+  File m_file;                 // Open table file; closed with this object.
+  uint16_t m_recordCount = 0;  // Records the header declares; bounds every seek.
 };
 
 bool ZipcodeTable::readAt(uint32_t offset, uint8_t* buffer, size_t length) {
   // File::read reports a short or failed read as a smaller (or negative) count,
   // so compare as signed rather than widening it into the requested length.
-  return file_.seek(offset, SeekSet) &&
-         (file_.read(buffer, length) == static_cast<int>(length));
+  return m_file.seek(offset, SeekSet) &&
+         (m_file.read(buffer, length) == static_cast<int>(length));
 }
 
 bool ZipcodeTable::readHeader(const char* path) {
@@ -104,11 +104,11 @@ bool ZipcodeTable::readHeader(const char* path) {
     return false;
   }
 
-  recordCount_ = readUint16(header + 6);
-  const uint32_t expectedSize = kRecordsOffset + (recordCount_ * kRecordSize);
-  if (file_.size() != expectedSize) {
+  m_recordCount = readUint16(header + 6);
+  const uint32_t expectedSize = kRecordsOffset + (m_recordCount * kRecordSize);
+  if (m_file.size() != expectedSize) {
     LOG_PRINTF("Zipcode table truncated: %s is %u bytes, expected %u",
-               path, static_cast<unsigned>(file_.size()),
+               path, static_cast<unsigned>(m_file.size()),
                static_cast<unsigned>(expectedSize));
     return false;
   }
@@ -116,8 +116,8 @@ bool ZipcodeTable::readHeader(const char* path) {
 }
 
 bool ZipcodeTable::open(const char* path) {
-  file_ = STORAGE.open(path, "r");
-  if (!file_) {
+  m_file = STORAGE.open(path, "r");
+  if (!m_file) {
     LOG_PRINTF("Zipcode table not found: %s", path);
     return false;
   }
@@ -133,9 +133,9 @@ bool ZipcodeTable::readPrefixRange(uint16_t prefix, uint16_t* start, uint16_t* e
 
   *start = readUint16(entries);
   *end = readUint16(entries + sizeof(uint16_t));
-  if ((*start > *end) || (*end > recordCount_)) {
+  if ((*start > *end) || (*end > m_recordCount)) {
     LOG_PRINTF("Zipcode directory corrupt at prefix %u: [%u,%u) of %u",
-               prefix, *start, *end, recordCount_);
+               prefix, *start, *end, m_recordCount);
     return false;
   }
   return true;
@@ -152,14 +152,14 @@ bool ZipcodeTable::findLocation(const char* zipcode, ZipcodeLocation* location) 
 
   // Seek once, then read forward: the bucket holds at most 100 records and its
   // bytes are contiguous, so the whole scan stays inside one filesystem block.
-  if ((start != end) && !file_.seek(kRecordsOffset + (start * kRecordSize), SeekSet)) {
+  if ((start != end) && !m_file.seek(kRecordsOffset + (start * kRecordSize), SeekSet)) {
     LOG_PRINTF("Zipcode records unreadable at index %u", start);
     return false;
   }
 
   uint8_t record[kRecordSize];
   for (uint16_t index = start; index < end; ++index) {
-    if (file_.read(record, sizeof(record)) != static_cast<int>(sizeof(record))) {
+    if (m_file.read(record, sizeof(record)) != static_cast<int>(sizeof(record))) {
       LOG_PRINTF("Zipcode record %u unreadable", index);
       return false;
     }

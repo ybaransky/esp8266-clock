@@ -13,10 +13,10 @@
 
 ViewState ClockController::initialView(const ClockConfig& config, const DateTime& now) {
   ViewState view;
-  switch (mode_) {
+  switch (m_mode) {
     case kModeFriday:
     case kModeTrading:
-      return scheduledMode_.start(now);
+      return m_scheduledMode.start(now);
     case kModeCountdown:
       view.view = View::kCountdown;
       parseLocalDateTime(config.countdown.end, view.anchor);
@@ -41,76 +41,76 @@ ViewState ClockController::initialView(const ClockConfig& config, const DateTime
 }
 
 void ClockController::applyConfig(const ClockConfig& config) {
-  mode_ = config.activeMode;
-  sound_.setVolume(config.sound.volumePercent);
-  finalBeep_ = config.sound.enabled && config.sound.finalBeep;
-  sound_.cancelBoundaryAlert();
-  scheduledMode_.applySettings(config);
-  const DateTime now = rtc_.getNowCached();
+  m_mode = config.activeMode;
+  m_sound.setVolume(config.sound.volumePercent);
+  m_finalBeep = config.sound.enabled && config.sound.finalBeep;
+  m_sound.cancelBoundaryAlert();
+  m_scheduledMode.applySettings(config);
+  const DateTime now = m_rtc.getNowCached();
   const ViewState view = initialView(config, now);
-  countdownEnd_ = view.anchor;
-  countdownComplete_ = false;
-  displayManager_.applySettings(config, view);
+  m_countdownEnd = view.anchor;
+  m_countdownComplete = false;
+  m_displayManager.applySettings(config, view);
   updateCountdown(now, false);
   const uint32_t nowMs = millis();
-  refreshSchedule(now, nowMs - rtc_.msIntoSecond(nowMs));
+  refreshSchedule(now, nowMs - m_rtc.msIntoSecond(nowMs));
 }
 
 void ClockController::updateCountdown(const DateTime& now, bool announce) {
-  if (mode_ != kModeCountdown) return;
-  const bool complete = now.unixtime() >= countdownEnd_.unixtime();
-  if (complete == countdownComplete_) return;
-  countdownComplete_ = complete;
-  displayManager_.setCountdownComplete(complete);
-  if (complete && announce && finalBeep_) sound_.beep(880, millis());
+  if (m_mode != kModeCountdown) return;
+  const bool complete = now.unixtime() >= m_countdownEnd.unixtime();
+  if (complete == m_countdownComplete) return;
+  m_countdownComplete = complete;
+  m_displayManager.setCountdownComplete(complete);
+  if (complete && announce && m_finalBeep) m_sound.beep(880, millis());
 }
 
 void ClockController::refreshSchedule(const DateTime& now, uint32_t secondStartedAtMs) {
-  scheduledMode_.tick(now, secondStartedAtMs, displayManager_, sound_);
+  m_scheduledMode.tick(now, secondStartedAtMs, m_displayManager, m_sound);
 }
 
 void ClockController::onSecondBoundary(const RtcTick& tick) {
   const bool topOfHour = (tick.now.minute() == 0) && (tick.now.second() == 0);
-  displayManager_.notifySecondBoundary(topOfHour);
+  m_displayManager.notifySecondBoundary(topOfHour);
   if (tick.discontinuity) {
-    scheduledMode_.reset();
-    sound_.cancelBoundaryAlert();
+    m_scheduledMode.reset();
+    m_sound.cancelBoundaryAlert();
   }
   refreshSchedule(tick.now, tick.secondStartedAtMs);
   updateCountdown(tick.now, !tick.discontinuity);
 }
 
 void ClockController::setTime(const DateTime& now) {
-  rtc_.setNow(now);
-  sound_.cancelBoundaryAlert();
-  scheduledMode_.reset();
-  const DateTime actualNow = rtc_.getNowCached();
+  m_rtc.setNow(now);
+  m_sound.cancelBoundaryAlert();
+  m_scheduledMode.reset();
+  const DateTime actualNow = m_rtc.getNowCached();
   const uint32_t nowMs = millis();
-  refreshSchedule(actualNow, nowMs - rtc_.msIntoSecond(nowMs));
+  refreshSchedule(actualNow, nowMs - m_rtc.msIntoSecond(nowMs));
   updateCountdown(actualNow, false);
-  displayManager_.notifySecondBoundary();
+  m_displayManager.notifySecondBoundary();
 }
 
 void ClockController::setBrightness(uint8_t brightness) {
-  displayManager_.setBrightness(brightness);
+  m_displayManager.setBrightness(brightness);
 }
 
 void ClockController::showDemo() {
-  displayManager_.showDemo();
+  m_displayManager.showDemo();
 }
 
 void ClockController::showInfo(const char* message, int32_t durationMs) {
-  displayManager_.showInfo(message, durationMs);
+  m_displayManager.showInfo(message, durationMs);
 }
 
 void ClockController::showSplash(const char* message) {
-  displayManager_.showSplash(message);
+  m_displayManager.showSplash(message);
 }
 
 View ClockController::activeView() const {
-  return displayManager_.activeView();
+  return m_displayManager.activeView();
 }
 
 bool ClockController::demoActive() const {
-  return displayManager_.demoActive();
+  return m_displayManager.demoActive();
 }

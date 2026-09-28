@@ -22,21 +22,21 @@ WebPortal::WebPortal(ClockController& clockController,
                      WifiConnectionManager& wifiConnectionManager,
                      RtcService& rtc,
                      BeepPlayer& beepPlayer)
-    : server_(80),
-      responder_(server_),
-      configApi_(server_, responder_, clockController, configManager,
+    : m_server(80),
+      m_responder(m_server),
+      m_configApi(m_server, m_responder, clockController, configManager,
                  beepPlayer, rtc, *this),
-      timeApi_(server_, responder_, clockController, rtc),
-      fileApi_(server_, responder_),
-      locationApi_(server_, responder_),
-      wifiApi_(server_, responder_, configManager, wifiConnectionManager, *this),
-      clockController_(clockController),
-      wifiConnectionManager_(wifiConnectionManager) {}
+      m_timeApi(m_server, m_responder, clockController, rtc),
+      m_fileApi(m_server, m_responder),
+      m_locationApi(m_server, m_responder),
+      m_wifiApi(m_server, m_responder, configManager, wifiConnectionManager, *this),
+      m_clockController(clockController),
+      m_wifiConnectionManager(wifiConnectionManager) {}
 
 void WebPortal::begin() {
-    if (wifiConnectionManager_.status().mode == WifiMode::kAccessPoint) {
-      dnsRunning_ = dnsServer_.start(53, "*", WiFi.softAPIP());
-      if (!dnsRunning_) {
+    if (m_wifiConnectionManager.status().mode == WifiMode::kAccessPoint) {
+      m_dnsRunning = m_dnsServer.start(53, "*", WiFi.softAPIP());
+      if (!m_dnsRunning) {
         LOG_PRINTLN("Failed to start captive DNS server (no socket available)");
       }
     }
@@ -44,73 +44,73 @@ void WebPortal::begin() {
     // All pages and shared assets, gzipped into flash by tools/build_web.py
     // from the sources in web/. Dynamic data flows through the JSON APIs.
     for (size_t i = 0; i < kWebAssetCount; ++i) {
-      server_.on(kWebAssets[i].path, HTTP_GET, [this, i]() {
+      m_server.on(kWebAssets[i].path, HTTP_GET, [this, i]() {
         const WebAsset& asset = kWebAssets[i];
-        responder_.sendGzipProgmem(200, asset.contentType, asset.data,
+        m_responder.sendGzipProgmem(200, asset.contentType, asset.data,
                                    asset.size, asset.immutable);
       });
     }
-    server_.on("/favicon.ico", HTTP_GET,
+    m_server.on("/favicon.ico", HTTP_GET,
                [this]() { sendProbe204("image/x-icon"); });
 
     // OS connectivity probes must receive their expected response. Redirecting
     // these to Home makes Android, Apple, and Windows repeatedly show a
     // "Sign in to network" prompt for the clock's local-only AP.
-    server_.on("/generate_204", HTTP_GET,
+    m_server.on("/generate_204", HTTP_GET,
                [this]() { sendProbe204("text/plain"); });
-    server_.on("/gen_204", HTTP_GET,
+    m_server.on("/gen_204", HTTP_GET,
                [this]() { sendProbe204("text/plain"); });
-    server_.on("/hotspot-detect.html", HTTP_GET, [this]() {
+    m_server.on("/hotspot-detect.html", HTTP_GET, [this]() {
       sendProbeText(
           "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
     });
-    server_.on("/library/test/success.html", HTTP_GET, [this]() {
+    m_server.on("/library/test/success.html", HTTP_GET, [this]() {
       sendProbeText("Success");
     });
-    server_.on("/ncsi.txt", HTTP_GET,
+    m_server.on("/ncsi.txt", HTTP_GET,
                [this]() { sendProbeText("Microsoft NCSI"); });
-    server_.on("/connecttest.txt", HTTP_GET, [this]() {
+    m_server.on("/connecttest.txt", HTTP_GET, [this]() {
       sendProbeText("Microsoft Connect Test");
     });
 
-    server_.on("/api/client-log", HTTP_POST,
+    m_server.on("/api/client-log", HTTP_POST,
                [this]() { handleClientLog(); });
-    server_.on("/api/status", HTTP_GET, [this]() { handleApiStatus(); });
+    m_server.on("/api/status", HTTP_GET, [this]() { handleApiStatus(); });
 
-    server_.on("/api/demo/test", HTTP_POST, [this]() { configApi_.handleDemoTest(); });
-    server_.on("/api/message/test", HTTP_POST, [this]() { configApi_.handleMessageTest(); });
-    server_.on("/api/mode", HTTP_POST, [this]() { configApi_.handleSetMode(); });
-    server_.on("/api/brightness", HTTP_POST, [this]() { configApi_.handleBrightness(); });
-    server_.on("/api/time", HTTP_GET, [this]() { timeApi_.handleGetTime(); });
-    server_.on("/api/time", HTTP_POST, [this]() { timeApi_.handleTimeSync(); });
-    server_.on("/api/formats", HTTP_GET, [this]() { configApi_.handleFormats(); });
-    server_.on("/api/sound/test", HTTP_POST,
-               [this]() { configApi_.handleSoundTest(); });
-    server_.on("/api/config", HTTP_GET, [this]() { configApi_.handleGetConfig(); });
-    server_.on("/api/config", HTTP_POST, [this]() { configApi_.handleSaveConfig(); });
-    server_.on("/api/sunset", HTTP_POST,
-               [this]() { locationApi_.handleSunset(); });
-    server_.on("/api/zipcode/lookup", HTTP_GET,
-               [this]() { locationApi_.handleZipcodeLookup(); });
-    server_.on("/api/field-mismatch", HTTP_POST,
-               [this]() { configApi_.handleFieldMismatch(); });
+    m_server.on("/api/demo/test", HTTP_POST, [this]() { m_configApi.handleDemoTest(); });
+    m_server.on("/api/message/test", HTTP_POST, [this]() { m_configApi.handleMessageTest(); });
+    m_server.on("/api/mode", HTTP_POST, [this]() { m_configApi.handleSetMode(); });
+    m_server.on("/api/brightness", HTTP_POST, [this]() { m_configApi.handleBrightness(); });
+    m_server.on("/api/time", HTTP_GET, [this]() { m_timeApi.handleGetTime(); });
+    m_server.on("/api/time", HTTP_POST, [this]() { m_timeApi.handleTimeSync(); });
+    m_server.on("/api/formats", HTTP_GET, [this]() { m_configApi.handleFormats(); });
+    m_server.on("/api/sound/test", HTTP_POST,
+               [this]() { m_configApi.handleSoundTest(); });
+    m_server.on("/api/config", HTTP_GET, [this]() { m_configApi.handleGetConfig(); });
+    m_server.on("/api/config", HTTP_POST, [this]() { m_configApi.handleSaveConfig(); });
+    m_server.on("/api/sunset", HTTP_POST,
+               [this]() { m_locationApi.handleSunset(); });
+    m_server.on("/api/zipcode/lookup", HTTP_GET,
+               [this]() { m_locationApi.handleZipcodeLookup(); });
+    m_server.on("/api/field-mismatch", HTTP_POST,
+               [this]() { m_configApi.handleFieldMismatch(); });
 
-    server_.on("/api/files", HTTP_GET, [this]() { fileApi_.handleListFiles(); });
-    server_.on("/api/file", HTTP_GET, [this]() { fileApi_.handleReadFile(); });
-    server_.on("/api/file", HTTP_DELETE, [this]() { fileApi_.handleDeleteFile(); });
-    server_.on("/api/file/upload", HTTP_POST,
-               [this]() { fileApi_.handleUpload(); },
-               [this]() { fileApi_.handleUploadData(); });
+    m_server.on("/api/files", HTTP_GET, [this]() { m_fileApi.handleListFiles(); });
+    m_server.on("/api/file", HTTP_GET, [this]() { m_fileApi.handleReadFile(); });
+    m_server.on("/api/file", HTTP_DELETE, [this]() { m_fileApi.handleDeleteFile(); });
+    m_server.on("/api/file/upload", HTTP_POST,
+               [this]() { m_fileApi.handleUpload(); },
+               [this]() { m_fileApi.handleUploadData(); });
 
-    server_.on("/api/wifi/status", HTTP_GET, [this]() { wifiApi_.handleStatus(); });
-    server_.on("/api/wifi/scan", HTTP_GET, [this]() { wifiApi_.handleScan(); });
-    server_.on("/api/wifi/connect", HTTP_POST, [this]() { wifiApi_.handleConnect(); });
+    m_server.on("/api/wifi/status", HTTP_GET, [this]() { m_wifiApi.handleStatus(); });
+    m_server.on("/api/wifi/scan", HTTP_GET, [this]() { m_wifiApi.handleScan(); });
+    m_server.on("/api/wifi/connect", HTTP_POST, [this]() { m_wifiApi.handleConnect(); });
 
-    server_.onNotFound([this]() { handleCaptiveRedirect(); });
+    m_server.onNotFound([this]() { handleCaptiveRedirect(); });
     // Leave Nagle enabled: setDefaultNoDelay(true) was tried against the
     // power-save Android client (2026-07-13) and made transfers worse --
     // more small segments means more chances to hit the phone's doze window.
-    server_.begin();
+    m_server.begin();
     LOG_PRINTLN("HTTP server started");
 }
 
@@ -118,24 +118,24 @@ void WebPortal::handleClients() {
     // A large gap between calls means the main loop stalled (e.g. display
     // writes); queued requests experience it as time-to-first-byte.
     const uint32_t entryMs = millis();
-    if (lastHandleClientsMs_ != 0) {
-      const uint32_t gap = entryMs - lastHandleClientsMs_;
-      if (gap > maxLoopGapMs_) {
-        maxLoopGapMs_ = gap;
+    if (m_lastHandleClientsMs != 0) {
+      const uint32_t gap = entryMs - m_lastHandleClientsMs;
+      if (gap > m_maxLoopGapMs) {
+        m_maxLoopGapMs = gap;
       }
     }
-    lastHandleClientsMs_ = entryMs;
+    m_lastHandleClientsMs = entryMs;
 
-    if (dnsRunning_) {
-      dnsServer_.processNextRequest();
+    if (m_dnsRunning) {
+      m_dnsServer.processNextRequest();
     }
-    const uint32_t responseBefore = responder_.responseSequence();
+    const uint32_t responseBefore = m_responder.responseSequence();
     const uint32_t startedUs = micros();
-    server_.handleClient();
-    if (responder_.responseSequence() != responseBefore) {
-      responder_.logCompletion(micros() - startedUs);
+    m_server.handleClient();
+    if (m_responder.responseSequence() != responseBefore) {
+      m_responder.logCompletion(micros() - startedUs);
     }
-    if ((pendingRebootMs_ != 0) && (static_cast<long>(millis() - pendingRebootMs_) >= 0)) {
+    if ((m_pendingRebootMs != 0) && (static_cast<long>(millis() - m_pendingRebootMs) >= 0)) {
       LOG_PRINTLN("Rebooting...");
       ESP.restart();
     }
@@ -147,40 +147,40 @@ void WebPortal::handleClients() {
   // are a prime suspect for stalled or truncated transfers in AP mode.
 void WebPortal::logTrafficSummary() {
     const uint32_t nowMs = millis();
-    if (nowMs - lastTrafficLogMs_ < 10000) {
+    if (nowMs - m_lastTrafficLogMs < 10000) {
       return;
     }
-    const uint32_t total = responder_.responseSequence();
-    if ((total != lastTrafficTotal_) || (maxLoopGapMs_ > 50)) {
+    const uint32_t total = m_responder.responseSequence();
+    if ((total != m_lastTrafficTotal) || (m_maxLoopGapMs > 50)) {
       LOG_PRINTF("web traffic: %lu responses (%lu probes, %lu redirects), "
                  "max loop gap %lu ms in last 10s",
-                 static_cast<unsigned long>(total - lastTrafficTotal_),
-                 static_cast<unsigned long>(probeCount_ - lastProbeCount_),
-                 static_cast<unsigned long>(redirectCount_ - lastRedirectCount_),
-                 static_cast<unsigned long>(maxLoopGapMs_));
+                 static_cast<unsigned long>(total - m_lastTrafficTotal),
+                 static_cast<unsigned long>(m_probeCount - m_lastProbeCount),
+                 static_cast<unsigned long>(m_redirectCount - m_lastRedirectCount),
+                 static_cast<unsigned long>(m_maxLoopGapMs));
     }
-    lastTrafficLogMs_ = nowMs;
-    lastTrafficTotal_ = total;
-    lastProbeCount_ = probeCount_;
-    lastRedirectCount_ = redirectCount_;
-    maxLoopGapMs_ = 0;
+    m_lastTrafficLogMs = nowMs;
+    m_lastTrafficTotal = total;
+    m_lastProbeCount = m_probeCount;
+    m_lastRedirectCount = m_redirectCount;
+    m_maxLoopGapMs = 0;
 }
 
 void WebPortal::sendProbe204(const char* contentType) {
-    ++probeCount_;
-    responder_.send(204, contentType, "");
+    ++m_probeCount;
+    m_responder.send(204, contentType, "");
 }
 
 void WebPortal::sendProbeText(const char* body) {
-    ++probeCount_;
-    responder_.sendText(200, body);
+    ++m_probeCount;
+    m_responder.sendText(200, body);
 }
 
   // Receives error beacons from page JavaScript (window.onerror and failed
   // /api/ fetches) so browser-side failures land in the serial timeline next
   // to the server-side request logs.
 void WebPortal::handleClientLog() {
-    String body = server_.arg("plain");
+    String body = m_server.arg("plain");
     if (body.length() > 160) {
       body.remove(160);
     }
@@ -191,12 +191,12 @@ void WebPortal::handleClientLog() {
       }
     }
     LOG_PRINTF("CLIENT %s: %s",
-               server_.client().remoteIP().toString().c_str(), body.c_str());
-    responder_.send(204, "text/plain", "");
+               m_server.client().remoteIP().toString().c_str(), body.c_str());
+    m_responder.send(204, "text/plain", "");
 }
 
 void WebPortal::getNetworkInfo(String& ssid, String& ip) const {
-    const WifiRuntimeStatus status = wifiConnectionManager_.status();
+    const WifiRuntimeStatus status = m_wifiConnectionManager.status();
     if ((status.mode == WifiMode::kStation) && status.connected) {
       ssid = status.ssid;
       ip = status.ip;
@@ -207,19 +207,19 @@ void WebPortal::getNetworkInfo(String& ssid, String& ip) const {
 }
 
 void WebPortal::scheduleReboot(uint32_t delayMs) {
-    pendingRebootMs_ = millis() + delayMs;
+    m_pendingRebootMs = millis() + delayMs;
 }
 
 void WebPortal::handleCaptiveRedirect() {
-    if (wifiConnectionManager_.status().mode != WifiMode::kAccessPoint) {
-      responder_.sendText(404, "Not found");
+    if (m_wifiConnectionManager.status().mode != WifiMode::kAccessPoint) {
+      m_responder.sendText(404, "Not found");
       return;
     }
 
-    ++redirectCount_;
-    responder_.logRequest(302, 0);
-    server_.sendHeader("Location", "http://192.168.4.1/", true);
-    server_.send(302, "text/plain", "");
+    ++m_redirectCount;
+    m_responder.logRequest(302, 0);
+    m_server.sendHeader("Location", "http://192.168.4.1/", true);
+    m_server.send(302, "text/plain", "");
 }
 
 // Sends dynamic identity, mode, and demo state for the static home page.
@@ -228,7 +228,7 @@ void WebPortal::handleApiStatus() {
     getNetworkInfo(ssid, ip);
     JsonDocument doc;
     doc["name"] = ssid;
-    doc["mode"] = modeName(clockController_.activeMode());
-    doc["demoActive"] = clockController_.demoActive();
-    responder_.sendJsonDocument(200, doc);
+    doc["mode"] = modeName(m_clockController.activeMode());
+    doc["demoActive"] = m_clockController.demoActive();
+    m_responder.sendJsonDocument(200, doc);
 }

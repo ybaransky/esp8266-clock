@@ -67,8 +67,7 @@ D8 LOW -> NPN off -> module idle and silent.
 ## Why the 10k is mandatory
 
 - D8 is GPIO15, a boot-strap pin. It must be LOW at reset or the chip boots to
-  the wrong mode and never runs. This is the same constraint that kept D8
-  unconnected before the buzzer existed.
+  the wrong mode and never runs.
 - Connecting the module's S pin to D8 directly holds GPIO15 at 2.7V through the
   forward-biased base-emitter junction inside the module, so the board does not
   boot.
@@ -133,7 +132,7 @@ a 50% duty waveform. Otherwise software attenuation and the pot stack.
 1. Wire it with the ESP powered off, then power on. **If the board still boots
    and flashes normally, the strap is satisfied.** A board that no longer boots
    means the 10k is missing, open, or on the wrong side of the 1k.
-2. Flash the firmware and open `/format`. The preview button next to any sound
-   dropdown plays that sound immediately.
+2. Flash the firmware and open `/sound`. Choose a boundary and press **Play
+   preview**; the pattern plays immediately.
 3. If the buzzer sounds continuously at boot before the firmware runs, the NPN's
    collector and emitter are swapped.

@@ -18,18 +18,18 @@ static constexpr const char* kConfigBackupPath = "/config.bak";  // Previous pri
 
 // -- WiFi ----------------------------------------------------------------------
 bool ConfigManager::ensureLoaded() {
-    if (loaded_) return true;
+    if (m_loaded) return true;
 
     DeviceConfig next;
     initDefaultClockConfig(next.clock);
     next.wifi = defaultWifiConfig();
     if (!readAll(next)) {
-        current_ = next;
-        loaded_ = true;
+        m_current = next;
+        m_loaded = true;
         return false;
     }
-    current_ = next;
-    loaded_ = true;
+    m_current = next;
+    m_loaded = true;
     return true;
 }
 
@@ -179,31 +179,31 @@ bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
 
 const WifiConfig& ConfigManager::wifiConfig() {
     ensureLoaded();
-    return current_.wifi;
+    return m_current.wifi;
 }
 
 bool ConfigManager::saveWifiConfig(const WifiConfig& config) {
     ensureLoaded();
-    DeviceConfig next = current_;
+    DeviceConfig next = m_current;
     next.wifi = config;
     sanitizeWifiConfig(next.wifi);
     if (!writeAll(next, "save WiFi config")) return false;
-    current_ = next;
+    m_current = next;
     return true;
 }
 
 const ClockConfig& ConfigManager::clockConfig() {
     ensureLoaded();
-    return current_.clock;
+    return m_current.clock;
 }
 
 bool ConfigManager::saveClockConfig(ClockConfig& config) {
     ensureLoaded();
     sanitizeClockConfig(config);
-    DeviceConfig next = current_;
+    DeviceConfig next = m_current;
     next.clock = config;
     if (!writeAll(next, "save clock config")) return false;
-    current_ = next;
+    m_current = next;
     return true;
 }
 
@@ -213,7 +213,7 @@ bool ConfigManager::saveConfig(ClockConfig& clock, const WifiConfig& wifi) {
     DeviceConfig next{clock, wifi};
     sanitizeWifiConfig(next.wifi);
     if (!writeAll(next, "save complete config")) return false;
-    current_ = next;
+    m_current = next;
     return true;
 }
 

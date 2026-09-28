@@ -17,20 +17,20 @@ class WifiApi {
           ConfigManager& configManager,
           WifiConnectionManager& wifiConnectionManager,
           RebootScheduler& rebootScheduler)
-      : server_(server),
-        responder_(responder),
-        configManager_(configManager),
-        wifiConnectionManager_(wifiConnectionManager),
-        rebootScheduler_(rebootScheduler) {}
+      : m_server(server),
+        m_responder(responder),
+        m_configManager(configManager),
+        m_wifiConnectionManager(wifiConnectionManager),
+        m_rebootScheduler(rebootScheduler) {}
 
   void handleStatus();
   void handleScan();
   void handleConnect();
 
  private:
-  ESP8266WebServer& server_;       // Source of WiFi API request bodies.
-  HttpResponder& responder_;       // Sends WiFi API responses.
-  ConfigManager& configManager_;   // Persists requested station credentials.
-  WifiConnectionManager& wifiConnectionManager_;  // Performs scans and connection changes.
-  RebootScheduler& rebootScheduler_;  // Schedules reboot after credentials are saved.
+  ESP8266WebServer& m_server;       // Source of WiFi API request bodies.
+  HttpResponder& m_responder;       // Sends WiFi API responses.
+  ConfigManager& m_configManager;   // Persists requested station credentials.
+  WifiConnectionManager& m_wifiConnectionManager;  // Performs scans and connection changes.
+  RebootScheduler& m_rebootScheduler;  // Schedules reboot after credentials are saved.
 };

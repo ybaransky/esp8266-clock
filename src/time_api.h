@@ -13,17 +13,17 @@ class TimeApi {
  public:
   TimeApi(ESP8266WebServer& server, HttpResponder& responder,
           ClockController& clockController, RtcService& rtc)
-      : server_(server),
-        responder_(responder),
-        clockController_(clockController),
-        rtc_(rtc) {}
+      : m_server(server),
+        m_responder(responder),
+        m_clockController(clockController),
+        m_rtc(rtc) {}
 
   void handleGetTime();
   void handleTimeSync();
 
  private:
-  ESP8266WebServer& server_;  // Source of time-sync request bodies.
-  HttpResponder& responder_;  // Sends time API responses.
-  ClockController& clockController_;  // Applies synchronized time to the application.
-  RtcService& rtc_;  // Supplies current RTC time for read responses.
+  ESP8266WebServer& m_server;  // Source of time-sync request bodies.
+  HttpResponder& m_responder;  // Sends time API responses.
+  ClockController& m_clockController;  // Applies synchronized time to the application.
+  RtcService& m_rtc;  // Supplies current RTC time for read responses.
 };

@@ -27,17 +27,17 @@ class ClockApplication {
   void checkRtcHealth(uint32_t nowMs);
   void logModeOrViewTransition();
 
-  SegmentDisplay segmentDisplay_;  // Physical three-panel display driver.
-  BeepPlayer beepPlayer_;  // Generated beep output and timing.
-  RtcService rtc_;  // RTC access, SQW processing, and cached wall-clock time.
-  DisplayManager displayManager_;  // Display view, overlay, and render policy.
-  ClockController clockController_;  // Application actions shared with APIs.
-  ConfigManager configManager_;  // Persistent clock and WiFi configuration.
-  PageManager pageManager_;  // Builds paged button-information overlays.
-  WifiConnectionManager wifiConnectionManager_;  // Station/AP network lifecycle.
-  WebPortal webPortal_;  // HTTP and captive-portal DNS service.
-  uint32_t lastRtcHealthCheckMs_ = 0;  // Last RTC health-poll time.
-  bool rtcWasHealthy_ = true;  // Health state used to detect RTC transitions.
-  Mode lastLoggedMode_ = kModeClock;  // Mode in the last transition log.
-  View lastLoggedView_ = View::kClock;  // View in the last transition log.
+  SegmentDisplay m_segmentDisplay;  // Physical three-panel display driver.
+  BeepPlayer m_beepPlayer;  // Generated beep output and timing.
+  RtcService m_rtc;  // RTC access, SQW processing, and cached wall-clock time.
+  DisplayManager m_displayManager;  // Display view, overlay, and render policy.
+  ClockController m_clockController;  // Application actions shared with APIs.
+  ConfigManager m_configManager;  // Persistent clock and WiFi configuration.
+  PageManager m_pageManager;  // Builds paged button-information overlays.
+  WifiConnectionManager m_wifiConnectionManager;  // Station/AP network lifecycle.
+  WebPortal m_webPortal;  // HTTP and captive-portal DNS service.
+  uint32_t m_lastRtcHealthCheckMs = 0;  // Last RTC health-poll time.
+  bool m_rtcWasHealthy = true;  // Health state used to detect RTC transitions.
+  Mode m_lastLoggedMode = kModeClock;  // Mode in the last transition log.
+  View m_lastLoggedView = View::kClock;  // View in the last transition log.
 };

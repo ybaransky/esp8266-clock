@@ -29,7 +29,7 @@ public:
 private:
   // TM1637Display has no default constructor, so the array is brace-initialized
   // in the constructor's member-initializer list with each panel's pin pair.
-  TM1637Display panels_[kDisplayPanelCount];  // One driver per physical panel.
-  uint8_t lastSegments_[kDisplayPanelCount][4] = {};  // Last segment bytes written per panel.
-  bool cacheValid_[kDisplayPanelCount] = {};  // True once lastSegments_ is initialized.
+  TM1637Display m_panels[kDisplayPanelCount];  // One driver per physical panel.
+  uint8_t m_lastSegments[kDisplayPanelCount][4] = {};  // Last segment bytes written per panel.
+  bool m_cacheValid[kDisplayPanelCount] = {};  // True once m_lastSegments is initialized.
 };

@@ -18,21 +18,21 @@ void BeepPlayer::begin() {
 }
 
 void BeepPlayer::setVolume(uint8_t percent) {
-  volumePercent_ = (percent > 100) ? 100 : percent;
-  if (soundingHz_ != 0) {
-    analogWrite(Hardware::Pins::BUZZER, volumePercent_ * kMaxDuty / 100);
+  m_volumePercent = (percent > 100) ? 100 : percent;
+  if (m_soundingHz != 0) {
+    analogWrite(Hardware::Pins::BUZZER, m_volumePercent * kMaxDuty / 100);
   }
 }
 
 void BeepPlayer::output(uint16_t toneHz) {
-  if (toneHz == soundingHz_) return;
-  soundingHz_ = toneHz;
+  if (toneHz == m_soundingHz) return;
+  m_soundingHz = toneHz;
   if (toneHz == 0) {
     analogWrite(Hardware::Pins::BUZZER, 0);
     digitalWrite(Hardware::Pins::BUZZER, LOW);
   } else {
     analogWriteFreq((toneHz < 100) ? 100 : toneHz);
-    analogWrite(Hardware::Pins::BUZZER, volumePercent_ * kMaxDuty / 100);
+    analogWrite(Hardware::Pins::BUZZER, m_volumePercent * kMaxDuty / 100);
   }
 }
 
@@ -44,9 +44,9 @@ BeepPlayer::Window BeepPlayer::windowFor(const BeepPattern& pattern,
 
 void BeepPlayer::beep(uint16_t toneHz, uint32_t nowMs) {
   tick(nowMs);  // Expire a finished preview before deciding whether it owns output.
-  if (override_ == Override::kPreview) return;
-  temporary_ = {nowMs, kEventBeepMs, toneHz, 0};
-  override_ = Override::kBeep;
+  if (m_override == Override::kPreview) return;
+  m_temporary = {nowMs, kEventBeepMs, toneHz, 0};
+  m_override = Override::kBeep;
   tick(nowMs);
 }
 
@@ -54,44 +54,44 @@ void BeepPlayer::updateBoundaryAlert(uint32_t targetLocalSeconds,
                                       uint32_t nowLocalSeconds,
                                       uint32_t secondStartedAtMs,
                                       const BeepPattern& pattern) {
-  if (targetLocalSeconds != targetLocalSeconds_) suppressed_ = false;
-  targetLocalSeconds_ = targetLocalSeconds;
-  scheduled_.durationMs = 0;
-  if (suppressed_ || (targetLocalSeconds <= nowLocalSeconds) ||
+  if (targetLocalSeconds != m_targetLocalSeconds) m_suppressed = false;
+  m_targetLocalSeconds = targetLocalSeconds;
+  m_scheduled.durationMs = 0;
+  if (m_suppressed || (targetLocalSeconds <= nowLocalSeconds) ||
       (pattern.toneHz == 0) || (pattern.startingBeatsHz == 0)) return;
   const uint32_t remainingSeconds = targetLocalSeconds - nowLocalSeconds;
   if (remainingSeconds > pattern.totalDurationSeconds) return;
-  scheduled_ = windowFor(pattern, secondStartedAtMs);
-  scheduled_.startedAtMs -= scheduled_.durationMs - remainingSeconds * 1000U;
+  m_scheduled = windowFor(pattern, secondStartedAtMs);
+  m_scheduled.startedAtMs -= m_scheduled.durationMs - remainingSeconds * 1000U;
 }
 
 void BeepPlayer::cancelBoundaryAlert() {
-  targetLocalSeconds_ = 0;
-  suppressed_ = false;
-  scheduled_.durationMs = 0;
+  m_targetLocalSeconds = 0;
+  m_suppressed = false;
+  m_scheduled.durationMs = 0;
   // A schedule cancellation cannot cancel a preview or event beep.
-  if (override_ == Override::kNone) output(0);
+  if (m_override == Override::kNone) output(0);
 }
 
 void BeepPlayer::previewBoundaryAlert(const BeepPattern& pattern, uint32_t nowMs) {
-  temporary_ = windowFor(pattern, nowMs);
-  override_ = Override::kPreview;
+  m_temporary = windowFor(pattern, nowMs);
+  m_override = Override::kPreview;
   tick(nowMs);
 }
 
 void BeepPlayer::stop() {
-  override_ = Override::kNone;
-  suppressed_ = targetLocalSeconds_ != 0;
-  scheduled_.durationMs = 0;
+  m_override = Override::kNone;
+  m_suppressed = m_targetLocalSeconds != 0;
+  m_scheduled.durationMs = 0;
   output(0);
 }
 
 void BeepPlayer::tick(uint32_t nowMs) {
-  if ((override_ != Override::kNone) &&
-      ((nowMs - temporary_.startedAtMs) >= temporary_.durationMs)) {
-    override_ = Override::kNone;
+  if ((m_override != Override::kNone) &&
+      ((nowMs - m_temporary.startedAtMs) >= m_temporary.durationMs)) {
+    m_override = Override::kNone;
   }
-  const Window& window = (override_ == Override::kNone) ? scheduled_ : temporary_;
+  const Window& window = (m_override == Override::kNone) ? m_scheduled : m_temporary;
   const uint32_t elapsedMs = nowMs - window.startedAtMs;
   const bool on = (elapsedMs < window.durationMs) &&
       ((window.startingBeatsHz == 0) ||

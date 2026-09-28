@@ -10,18 +10,18 @@
 // -----------------------------------------------------------------------------
 
 void TimeApi::handleGetTime() {
-  const DateTime now = rtc_.getNow();
+  const DateTime now = m_rtc.getNow();
   char buffer[96];
   snprintf(buffer, sizeof(buffer),
            "{\"date\":\"%04d-%02d-%02d\",\"time\":\"%02d:%02d:%02d\",\"dateTime\":\"%04d-%02d-%02d %02d:%02d:%02d\"}",
            now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second(),
            now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
-  responder_.sendJson(200, buffer);
+  m_responder.sendJson(200, buffer);
 }
 
 void TimeApi::handleTimeSync() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/time")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/time")) return;
 
   const int year = doc["year"] | 0;
   const int month = doc["month"] | 0;
@@ -33,12 +33,12 @@ void TimeApi::handleTimeSync() {
       !isValidTime(hour, minute, second)) {
     LOG_PRINTF("/api/time failed: invalid time %04d-%02d-%02d %02d:%02d:%02d",
                year, month, day, hour, minute, second);
-    responder_.sendJsonError(400, "Invalid time");
+    m_responder.sendJsonError(400, "Invalid time");
     return;
   }
 
   LOG_PRINTF("Browser time sync requested: %04d-%02d-%02d %02d:%02d:%02d",
              year, month, day, hour, minute, second);
-  clockController_.setTime(DateTime(year, month, day, hour, minute, second));
-  responder_.sendJson(200, "{\"message\":\"RTC synced\"}");
+  m_clockController.setTime(DateTime(year, month, day, hour, minute, second));
+  m_responder.sendJson(200, "{\"message\":\"RTC synced\"}");
 }

@@ -35,18 +35,18 @@ class ScheduledModeController {
   const BeepPattern* patternFor(
       const ScheduleBoundary& boundary) const;
 
-  Mode mode_ = kModeClock;  // Selects the active schedule, or disables ticking.
-  FridayConfig friday_{};  // Friday presentation settings.
-  TradingConfig trading_{};  // Trading sessions and presentation settings.
-  Location location_{};  // Physical device location and numeric UTC offset.
-  BoundaryCue fridayCue_;  // Friday-sunset announcement.
-  BoundaryCue openCue_;  // Announcement for every Trading open.
-  BoundaryCue closeCue_;  // Announcement for every Trading close.
-  SoundConfig::BoundaryAlertConfig alerts_{};  // Master-resolved approach patterns.
-  uint32_t fridayMidnight_ = 0;  // Cache key; zero invalidates the sunsets.
-  uint32_t fridaySunset_ = 0;  // Cached local Friday sunset.
-  uint32_t saturdaySunset_ = 0;  // Cached local Saturday sunset.
-  bool hasPrevious_ = false;  // False after boot, config changes, or time changes.
-  ScheduleDecision previous_;  // Last decision installed as the base view.
-  uint32_t previousTime_ = 0;  // Local seconds at the previous accepted sample.
+  Mode m_mode = kModeClock;  // Selects the active schedule, or disables ticking.
+  FridayConfig m_friday{};  // Friday presentation settings.
+  TradingConfig m_trading{};  // Trading sessions and presentation settings.
+  Location m_location{};  // Physical device location and numeric UTC offset.
+  BoundaryCue m_fridayCue;  // Friday-sunset announcement.
+  BoundaryCue m_openCue;  // Announcement for every Trading open.
+  BoundaryCue m_closeCue;  // Announcement for every Trading close.
+  SoundConfig::BoundaryAlertConfig m_alerts{};  // Master-resolved approach patterns.
+  uint32_t m_fridayMidnight = 0;  // Cache key; zero invalidates the sunsets.
+  uint32_t m_fridaySunset = 0;  // Cached local Friday sunset.
+  uint32_t m_saturdaySunset = 0;  // Cached local Saturday sunset.
+  bool m_hasPrevious = false;  // False after boot, config changes, or time changes.
+  ScheduleDecision m_previous;  // Last decision installed as the base view.
+  uint32_t m_previousTime = 0;  // Local seconds at the previous accepted sample.
 };

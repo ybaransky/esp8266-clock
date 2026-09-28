@@ -18,7 +18,7 @@ class ClockController {
  public:
   ClockController(DisplayManager& displayManager, RtcService& rtc,
                   BeepPlayer& beepPlayer)
-      : displayManager_(displayManager), rtc_(rtc), sound_(beepPlayer) {}
+      : m_displayManager(displayManager), m_rtc(rtc), m_sound(beepPlayer) {}
 
   void applyConfig(const ClockConfig& config);
 
@@ -32,7 +32,7 @@ class ClockController {
   // Beep previews are NOT routed through here. They have
   // no application logic to add, and tunnelling them turned this class into a
   // service locator for the web handlers. ConfigApi holds BeepPlayer directly.
-  Mode activeMode() const { return mode_; }
+  Mode activeMode() const { return m_mode; }
   View activeView() const;
   bool demoActive() const;
 
@@ -41,12 +41,12 @@ class ClockController {
   void updateCountdown(const DateTime& now, bool announce);
   void refreshSchedule(const DateTime& now, uint32_t secondStartedAtMs);
 
-  DisplayManager& displayManager_;  // Applies view, overlay, and brightness actions.
-  RtcService& rtc_;  // Reads and updates the hardware clock.
-  BeepPlayer& sound_;  // Generates approach alerts and event beeps.
-  ScheduledModeController scheduledMode_;  // Shared Friday/Trading boundary tracking.
-  Mode mode_ = kModeClock;  // Persisted selection applied to the application.
-  DateTime countdownEnd_;  // Application deadline for ordinary Countdown mode.
-  bool countdownComplete_ = false;  // One-shot completion state, independent of rendering.
-  bool finalBeep_ = false;  // Master-resolved countdown-completion beep.
+  DisplayManager& m_displayManager;  // Applies view, overlay, and brightness actions.
+  RtcService& m_rtc;  // Reads and updates the hardware clock.
+  BeepPlayer& m_sound;  // Generates approach alerts and event beeps.
+  ScheduledModeController m_scheduledMode;  // Shared Friday/Trading boundary tracking.
+  Mode m_mode = kModeClock;  // Persisted selection applied to the application.
+  DateTime m_countdownEnd;  // Application deadline for ordinary Countdown mode.
+  bool m_countdownComplete = false;  // One-shot completion state, independent of rendering.
+  bool m_finalBeep = false;  // Master-resolved countdown-completion beep.
 };

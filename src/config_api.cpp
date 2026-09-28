@@ -37,11 +37,11 @@ bool ConfigApi::resolveCountupStart(ClockConfig& config) {
   // lost-power recovery leaves the chip holding the firmware build date - both
   // are wrong things to write into /config.json, where they would outlive the
   // fault and never self-correct.
-  if (!rtc_.timeIsTrustworthy()) {
+  if (!m_rtc.timeIsTrustworthy()) {
     LOG_PRINTLN("countup start left unset: no trustworthy RTC time to stamp");
     return false;
   }
-  formatLocalDateTime(rtc_.getNowCached(), config.countup.start,
+  formatLocalDateTime(m_rtc.getNowCached(), config.countup.start,
                       sizeof(config.countup.start));
   LOG_PRINTF("countup start resolved from \"now\" to %s", config.countup.start);
   return true;
@@ -49,82 +49,82 @@ bool ConfigApi::resolveCountupStart(ClockConfig& config) {
 
 bool ConfigApi::persistClockConfig(ClockConfig& config) {
   resolveCountupStart(config);
-  return configManager_.saveClockConfig(config);
+  return m_configManager.saveClockConfig(config);
 }
 
 bool ConfigApi::persistClockConfig(ClockConfig& config, const WifiConfig& wifi) {
   resolveCountupStart(config);
-  return configManager_.saveConfig(config, wifi);
+  return m_configManager.saveConfig(config, wifi);
 }
 
 void ConfigApi::handleDemoTest() {
-  if (server_.hasArg("plain") && (server_.arg("plain").length() > 0)) {
+  if (m_server.hasArg("plain") && (m_server.arg("plain").length() > 0)) {
     JsonDocument doc;
-    if (!responder_.parseJsonBody(doc, "/api/demo/test")) return;
+    if (!m_responder.parseJsonBody(doc, "/api/demo/test")) return;
     JsonVariant finalMessage = doc["display"]["messages"]["final"];
     if (!finalMessage.isNull()) {
-      ClockConfig config = configManager_.clockConfig();
+      ClockConfig config = m_configManager.clockConfig();
       sanitizeDisplayMessage(finalMessage.as<const char*>(),
                              config.messages.countdownDone,
                              sizeof(config.messages.countdownDone));
-      clockController_.applyConfig(config);
+      m_clockController.applyConfig(config);
     }
   }
 
-  clockController_.showDemo();
-  responder_.sendJson(200, "{\"preview_ms\":10000}");
+  m_clockController.showDemo();
+  m_responder.sendJson(200, "{\"preview_ms\":10000}");
 }
 
 void ConfigApi::handleMessageTest() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/message/test")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/message/test")) return;
 
   char message[kDisplayMessageLength];
   sanitizeDisplayMessage(doc["message"] | "", message, sizeof(message));
   if (doc["blink"] | false) {
     // Preview with the same blinking treatment the message gets for real
     // (e.g. the Friday sunset message).
-    clockController_.showInfo(message, 5000);
+    m_clockController.showInfo(message, 5000);
   } else {
-    clockController_.showSplash(message);
+    m_clockController.showSplash(message);
   }
-  responder_.sendJson(200, "{\"message\":\"Previewing message\",\"preview_ms\":5000}");
+  m_responder.sendJson(200, "{\"message\":\"Previewing message\",\"preview_ms\":5000}");
 }
 
 void ConfigApi::handleSetMode() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/mode")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/mode")) return;
 
   Mode nextMode;
   const String mode = doc["mode"] | "";
   if (!modeFromName(mode, &nextMode)) {
     LOG_PRINTF("/api/mode failed: invalid mode=\"%s\"", mode.c_str());
-    responder_.sendJsonError(400, "Invalid mode");
+    m_responder.sendJsonError(400, "Invalid mode");
     return;
   }
 
-  ClockConfig config = configManager_.clockConfig();
+  ClockConfig config = m_configManager.clockConfig();
   config.activeMode = nextMode;
   if (!persistClockConfig(config)) {
     LOG_PRINTLN("/api/mode failed: complete config write failed");
-    responder_.sendJsonError(500, "Configuration write failed");
+    m_responder.sendJsonError(500, "Configuration write failed");
     return;
   }
-  clockController_.applyConfig(config);
-  responder_.sendJson(200, "{\"message\":\"Mode changed\"}");
+  m_clockController.applyConfig(config);
+  m_responder.sendJson(200, "{\"message\":\"Mode changed\"}");
 }
 
 void ConfigApi::handleBrightness() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/brightness")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/brightness")) return;
   if (doc["brightness"].isNull()) {
     LOG_PRINTLN("/api/brightness failed: brightness required");
-    responder_.sendJsonError(400, "Brightness required");
+    m_responder.sendJsonError(400, "Brightness required");
     return;
   }
 
-  clockController_.setBrightness(sanitizeBrightness(doc["brightness"].as<int>()));
-  responder_.sendJson(200, "{\"message\":\"Brightness previewed\"}");
+  m_clockController.setBrightness(sanitizeBrightness(doc["brightness"].as<int>()));
+  m_responder.sendJson(200, "{\"message\":\"Brightness previewed\"}");
 }
 
 // Each entry is {key, label}: the key is what the page posts back and what
@@ -155,16 +155,16 @@ void ConfigApi::handleFormats() {
       entry["label"] = label;
     }
   }
-  responder_.sendJsonDocument(200, doc);
+  m_responder.sendJsonDocument(200, doc);
 }
 
 void ConfigApi::handleSoundTest() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/sound/test")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/sound/test")) return;
 
   if (doc["stop"] | false) {
-    sound_.stop();
-    responder_.sendJson(200, "{\"message\":\"Stopped\"}");
+    m_sound.stop();
+    m_responder.sendJson(200, "{\"message\":\"Stopped\"}");
     return;
   }
 
@@ -172,7 +172,7 @@ void ConfigApi::handleSoundTest() {
   if (boundaryAlert["frequencyHz"].isNull() ||
       boundaryAlert["totalDurationSeconds"].isNull() ||
       boundaryAlert["startingBeatsHz"].isNull()) {
-    responder_.sendJsonError(400, "Tone, total duration, and starting beats required");
+    m_responder.sendJsonError(400, "Tone, total duration, and starting beats required");
     return;
   }
   const BeepPattern pattern{
@@ -180,57 +180,57 @@ void ConfigApi::handleSoundTest() {
       sanitizeBoundaryDurationSeconds(boundaryAlert["totalDurationSeconds"].as<int>()),
       sanitizeBoundaryStartingBeatsHz(boundaryAlert["startingBeatsHz"].as<int>())};
   // An explicit preview bypasses the automatic-sound master switch.
-  sound_.previewBoundaryAlert(pattern, millis());
+  m_sound.previewBoundaryAlert(pattern, millis());
   JsonDocument response;
   response["message"] = "Playing boundary alert";
   response["durationMs"] = static_cast<uint32_t>(pattern.totalDurationSeconds) * 1000U;
-  responder_.sendJsonDocument(200, response);
+  m_responder.sendJsonDocument(200, response);
 }
 
 void ConfigApi::handleGetConfig() {
   JsonDocument doc;
   populateConfigJson(doc);
-  responder_.sendJsonDocument(200, doc);
+  m_responder.sendJsonDocument(200, doc);
   logConfigJson(doc);
 }
 
 void ConfigApi::handleSaveConfig() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/config")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/config")) return;
   JsonVariantConst payload = doc.as<JsonVariantConst>();
 
-  ClockConfig clockConfig = configManager_.clockConfig();
+  ClockConfig clockConfig = m_configManager.clockConfig();
   const char* error = applyJsonToClockConfig(payload, clockConfig);
   if (error != nullptr) {
     LOG_PRINTF("/api/config rejected clock settings: %s", error);
-    responder_.sendJson(400, error);
+    m_responder.sendJson(400, error);
     return;
   }
-  WifiConfig wifiConfig = configManager_.wifiConfig();
+  WifiConfig wifiConfig = m_configManager.wifiConfig();
   const bool wifiChanged = applyJsonToWifiConfig(payload, wifiConfig);
   if (!persistClockConfig(clockConfig, wifiConfig)) {
     LOG_PRINTLN("/api/config failed: complete config write failed");
-    responder_.sendJsonError(500, "Configuration write failed");
+    m_responder.sendJsonError(500, "Configuration write failed");
     return;
   }
-  clockController_.applyConfig(clockConfig);
+  m_clockController.applyConfig(clockConfig);
 
   if (wifiChanged) {
-    responder_.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
-    rebootScheduler_.scheduleReboot(kRebootDelayMs);
+    m_responder.sendJson(200, "{\"message\":\"Saved \xe2\x80\x94 rebooting\xe2\x80\xa6\",\"reboot\":true}");
+    m_rebootScheduler.scheduleReboot(kRebootDelayMs);
   } else {
     // Return canonical values so forms can retain server-resolved datetimes.
     // Reuse the request document after all payload readers have finished.
     doc.clear();
     serializeClockConfig(doc, clockConfig);
     doc["message"] = "Saved";
-    responder_.sendJsonDocument(200, doc);
+    m_responder.sendJsonDocument(200, doc);
   }
 }
 
 void ConfigApi::handleFieldMismatch() {
   JsonDocument doc;
-  if (!responder_.parseJsonBody(doc, "/api/field-mismatch")) return;
+  if (!m_responder.parseJsonBody(doc, "/api/field-mismatch")) return;
 
   char page[32], field[32], configValue[80], acceptedValue[80], reason[80];
   sanitizePrintableText(doc["page"]          | "", page,          sizeof(page));
@@ -241,12 +241,12 @@ void ConfigApi::handleFieldMismatch() {
 
   LOG_PRINTF("FIELD MISMATCH page=\"%s\" field=\"%s\" config=\"%s\" accepted=\"%s\" reason=\"%s\"",
              page, field, configValue, acceptedValue, reason);
-  responder_.sendJson(200, "{\"message\":\"logged\"}");
+  m_responder.sendJson(200, "{\"message\":\"logged\"}");
 }
 
 void ConfigApi::populateConfigJson(JsonDocument& doc) {
-  const ClockConfig& clockConfig = configManager_.clockConfig();
-  const WifiConfig&  wifiConfig  = configManager_.wifiConfig();
+  const ClockConfig& clockConfig = m_configManager.clockConfig();
+  const WifiConfig&  wifiConfig  = m_configManager.wifiConfig();
   LOG_PRINTF("/api/config response: mode=%s brightness=%u staSsid=\"%s\"",
              modeName(clockConfig.activeMode),
              clockConfig.display.brightness,

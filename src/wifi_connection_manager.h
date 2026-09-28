@@ -41,16 +41,16 @@ class WifiConnectionManager {
   uint8_t pickLeastCongestedChannel();
   String resolveApSsid() const;
 
-  WifiConfig config_;  // Last loaded WiFi configuration.
-  String apSsid_;      // Effective AP SSID: the configured one, or derived when it is empty.
-  WifiMode mode_ = WifiMode::kAccessPoint;  // Current runtime WiFi mode.
+  WifiConfig m_config;  // Last loaded WiFi configuration.
+  String m_apSsid;      // Effective AP SSID: the configured one, or derived when it is empty.
+  WifiMode m_mode = WifiMode::kAccessPoint;  // Current runtime WiFi mode.
 
-  volatile bool apClientConnectedPending_ = false;  // Deferred AP-client log flag.
-  uint8_t apClientMac_[6] = {};  // MAC used to find the DHCP-assigned client IP.
-  uint32_t apClientLookupStartedMs_ = 0;  // Start time for deferred DHCP lookup.
+  volatile bool m_apClientConnectedPending = false;  // Deferred AP-client log flag.
+  uint8_t m_apClientMac[6] = {};  // MAC used to find the DHCP-assigned client IP.
+  uint32_t m_apClientLookupStartedMs = 0;  // Start time for deferred DHCP lookup.
 
-  volatile bool apClientDisconnectedPending_ = false;  // Deferred disconnect log flag.
-  uint8_t apDisconnectedMac_[6] = {};  // MAC reported by the disconnect event.
-  uint8_t lastClientMac_[6] = {};  // MAC of the most recently connected client.
-  IPAddress lastClientIp_;  // Its DHCP IP; names the client in the disconnect log.
+  volatile bool m_apClientDisconnectedPending = false;  // Deferred disconnect log flag.
+  uint8_t m_apDisconnectedMac[6] = {};  // MAC reported by the disconnect event.
+  uint8_t m_lastClientMac[6] = {};  // MAC of the most recently connected client.
+  IPAddress m_lastClientIp;  // Its DHCP IP; names the client in the disconnect log.
 };

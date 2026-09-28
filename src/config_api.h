@@ -23,13 +23,13 @@ class ConfigApi {
             BeepPlayer& beepPlayer,
             RtcService& rtc,
             RebootScheduler& rebootScheduler)
-      : server_(server),
-        responder_(responder),
-        clockController_(clockController),
-        configManager_(configManager),
-        sound_(beepPlayer),
-        rtc_(rtc),
-        rebootScheduler_(rebootScheduler) {}
+      : m_server(server),
+        m_responder(responder),
+        m_clockController(clockController),
+        m_configManager(configManager),
+        m_sound(beepPlayer),
+        m_rtc(rtc),
+        m_rebootScheduler(rebootScheduler) {}
 
   void handleDemoTest();
   void handleMessageTest();
@@ -44,8 +44,7 @@ class ConfigApi {
  private:
   // Stamps an absolute datetime over the kCountupStartNow sentinel. Reads the
   // clock itself rather than taking a DateTime, so no caller can hand it a time
-  // the RTC does not vouch for - the previous signature made that the caller's
-  // problem and a missing DS3231 returned BCD garbage from an absent device.
+  // the RTC does not vouch for.
   // A no-op, logged, when RtcService::timeIsTrustworthy() is false.
   bool resolveCountupStart(ClockConfig& config);
 
@@ -61,11 +60,11 @@ class ConfigApi {
   // 150ms, which must not sit on the browser's wait.
   void logConfigJson(const JsonDocument& doc) const;
 
-  ESP8266WebServer& server_;       // Source of request payloads and query args.
-  HttpResponder& responder_;       // Sends JSON/HTML API responses.
-  ClockController& clockController_;  // Executes application-level clock actions.
-  ConfigManager& configManager_;      // Loads, validates, and saves configuration.
-  BeepPlayer& sound_;  // Generated-beep previews for /sound.
-  RtcService& rtc_;  // Stamps the count-up origin when a save resolves "now".
-  RebootScheduler& rebootScheduler_;  // Schedules a reboot after WiFi changes.
+  ESP8266WebServer& m_server;       // Source of request payloads and query args.
+  HttpResponder& m_responder;       // Sends JSON/HTML API responses.
+  ClockController& m_clockController;  // Executes application-level clock actions.
+  ConfigManager& m_configManager;      // Loads, validates, and saves configuration.
+  BeepPlayer& m_sound;  // Generated-beep previews for /sound.
+  RtcService& m_rtc;  // Stamps the count-up origin when a save resolves "now".
+  RebootScheduler& m_rebootScheduler;  // Schedules a reboot after WiFi changes.
 };

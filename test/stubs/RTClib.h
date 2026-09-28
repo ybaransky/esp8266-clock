@@ -45,45 +45,45 @@ inline void civilFromDays(int32_t days, int* year, uint8_t* month, uint8_t* day)
 
 class DateTime {
  public:
-  DateTime() : unix_(0) { split(); }
+  DateTime() : m_unix(0) { split(); }
 
-  explicit DateTime(uint32_t unixSeconds) : unix_(unixSeconds) { split(); }
+  explicit DateTime(uint32_t unixSeconds) : m_unix(unixSeconds) { split(); }
 
   DateTime(int year, uint8_t month, uint8_t day, uint8_t hour = 0,
            uint8_t minute = 0, uint8_t second = 0) {
     const int32_t days = rtclib_stub::daysFromCivil(year, month, day);
-    unix_ = static_cast<uint32_t>(days) * 86400UL + hour * 3600UL +
+    m_unix = static_cast<uint32_t>(days) * 86400UL + hour * 3600UL +
             minute * 60UL + second;
     split();
   }
 
-  uint32_t unixtime() const { return unix_; }
-  int year() const { return year_; }
-  uint8_t month() const { return month_; }
-  uint8_t day() const { return day_; }
-  uint8_t hour() const { return hour_; }
-  uint8_t minute() const { return minute_; }
-  uint8_t second() const { return second_; }
+  uint32_t unixtime() const { return m_unix; }
+  int year() const { return m_year; }
+  uint8_t month() const { return m_month; }
+  uint8_t day() const { return m_day; }
+  uint8_t hour() const { return m_hour; }
+  uint8_t minute() const { return m_minute; }
+  uint8_t second() const { return m_second; }
   // 0 = Sunday, matching RTClib. 1970-01-01 was a Thursday.
   uint8_t dayOfTheWeek() const {
-    return static_cast<uint8_t>((unix_ / 86400UL + 4UL) % 7UL);
+    return static_cast<uint8_t>((m_unix / 86400UL + 4UL) % 7UL);
   }
 
  private:
   void split() {
-    const int32_t days = static_cast<int32_t>(unix_ / 86400UL);
-    const uint32_t secondOfDay = unix_ % 86400UL;
-    rtclib_stub::civilFromDays(days, &year_, &month_, &day_);
-    hour_ = static_cast<uint8_t>(secondOfDay / 3600UL);
-    minute_ = static_cast<uint8_t>((secondOfDay % 3600UL) / 60UL);
-    second_ = static_cast<uint8_t>(secondOfDay % 60UL);
+    const int32_t days = static_cast<int32_t>(m_unix / 86400UL);
+    const uint32_t secondOfDay = m_unix % 86400UL;
+    rtclib_stub::civilFromDays(days, &m_year, &m_month, &m_day);
+    m_hour = static_cast<uint8_t>(secondOfDay / 3600UL);
+    m_minute = static_cast<uint8_t>((secondOfDay % 3600UL) / 60UL);
+    m_second = static_cast<uint8_t>(secondOfDay % 60UL);
   }
 
-  uint32_t unix_;           // Seconds since 1970-01-01, the canonical value.
-  int year_ = 1970;         // Calendar fields derived from unix_.
-  uint8_t month_ = 1;       // 1-12.
-  uint8_t day_ = 1;         // Day of month, 1-31.
-  uint8_t hour_ = 0;        // 0-23.
-  uint8_t minute_ = 0;      // 0-59.
-  uint8_t second_ = 0;      // 0-59.
+  uint32_t m_unix;           // Seconds since 1970-01-01, the canonical value.
+  int m_year = 1970;         // Calendar fields derived from m_unix.
+  uint8_t m_month = 1;       // 1-12.
+  uint8_t m_day = 1;         // Day of month, 1-31.
+  uint8_t m_hour = 0;        // 0-23.
+  uint8_t m_minute = 0;      // 0-59.
+  uint8_t m_second = 0;      // 0-59.
 };

@@ -46,40 +46,40 @@ void copyDisplayTitle(char destination[kDisplayPanelChars + 1], const char* sour
 // -----------------------------------------------------------------------------
 
 void DisplayScheduler::reset(uint32_t nowMs) {
-  blinkOn_ = true;
-  blinkMs_ = nowMs;
-  colonVisible_ = true;
-  colonMs_ = 0;
-  lastRenderMs_ = nowMs;
-  renderInvalidated_ = true;
+  m_blinkOn = true;
+  m_blinkMs = nowMs;
+  m_colonVisible = true;
+  m_colonMs = 0;
+  m_lastRenderMs = nowMs;
+  m_renderInvalidated = true;
 }
 
 void DisplayScheduler::resetBlink(uint32_t nowMs) {
-  blinkOn_ = true;
-  blinkMs_ = nowMs;
+  m_blinkOn = true;
+  m_blinkMs = nowMs;
 }
 
-void DisplayScheduler::invalidateRender() { renderInvalidated_ = true; }
+void DisplayScheduler::invalidateRender() { m_renderInvalidated = true; }
 
 bool DisplayScheduler::shouldRender(uint32_t nowMs, uint32_t intervalMs,
                                     bool force) {
-  if (!force && !renderInvalidated_ && (nowMs - lastRenderMs_ < intervalMs)) return false;
-  renderInvalidated_ = false;
-  lastRenderMs_ = nowMs;
+  if (!force && !m_renderInvalidated && (nowMs - m_lastRenderMs < intervalMs)) return false;
+  m_renderInvalidated = false;
+  m_lastRenderMs = nowMs;
   return true;
 }
 
 bool DisplayScheduler::toggleBlinkIfDue(uint32_t nowMs, uint32_t intervalMs) {
-  if ((nowMs - blinkMs_) < intervalMs) return false;
-  blinkMs_ = nowMs;
-  blinkOn_ = !blinkOn_;
+  if ((nowMs - m_blinkMs) < intervalMs) return false;
+  m_blinkMs = nowMs;
+  m_blinkOn = !m_blinkOn;
   return true;
 }
 
 bool DisplayScheduler::toggleColonIfDue(uint32_t nowMs, uint32_t intervalMs) {
-  if ((nowMs - colonMs_) < intervalMs) return false;
-  colonMs_ = nowMs;
-  colonVisible_ = !colonVisible_;
+  if ((nowMs - m_colonMs) < intervalMs) return false;
+  m_colonMs = nowMs;
+  m_colonVisible = !m_colonVisible;
   return true;
 }
 
@@ -102,20 +102,20 @@ DisplaySettings DisplaySettings::fromConfig(const ClockConfig& config) {
 void DisplayManager::applySettings(const ClockConfig& config,
                                     const ViewState& initialView) {
   const char* oldName = renderedName();
-  settings_ = DisplaySettings::fromConfig(config);
+  m_settings = DisplaySettings::fromConfig(config);
   const uint32_t nowMs = millis();
-  scheduler_.reset(nowMs);
-  baseView_ = initialView;
-  countdownComplete_ = false;
-  if (overlay_.overlay != Overlay::kHardwareFault) overlay_.overlay = Overlay::kNone;
-  display_.setBrightness(config.display.brightness);
+  m_scheduler.reset(nowMs);
+  m_baseView = initialView;
+  m_countdownComplete = false;
+  if (m_overlay.overlay != Overlay::kHardwareFault) m_overlay.overlay = Overlay::kNone;
+  m_display.setBrightness(config.display.brightness);
   logTransition(oldName, renderedName(), "settings applied");
   render(nowMs, true);
 }
 
 void DisplayManager::setBrightness(uint8_t brightness) {
-  settings_.display.brightness = constrain(brightness, 0, 7);
-  display_.setBrightness(settings_.display.brightness);
+  m_settings.display.brightness = constrain(brightness, 0, 7);
+  m_display.setBrightness(m_settings.display.brightness);
 }
 
 void DisplayManager::tick(uint32_t nowMs) {
@@ -127,8 +127,8 @@ void DisplayManager::tick(uint32_t nowMs) {
 }
 
 void DisplayManager::notifySecondBoundary(bool forceHardwareRefresh) {
-  if (forceHardwareRefresh) display_.invalidateCache();
-  scheduler_.invalidateRender();
+  if (forceHardwareRefresh) m_display.invalidateCache();
+  m_scheduler.invalidateRender();
 }
 
 void DisplayManager::showSplash(const char* message) {
@@ -205,18 +205,18 @@ void DisplayManager::showPages(const DisplayPage* pages,
 }
 
 bool DisplayManager::demoActive() const {
-  return (overlay_.overlay == Overlay::kDemoCountdown) ||
-         (overlay_.overlay == Overlay::kDemoFinalMessage);
+  return (m_overlay.overlay == Overlay::kDemoCountdown) ||
+         (m_overlay.overlay == Overlay::kDemoFinalMessage);
 }
 
 const char* DisplayManager::renderedName() const {
-  if (hasOverlay()) return overlayName(overlay_.overlay);
-  return countdownComplete_ ? "complete" : viewName(baseView_.view);
+  if (hasOverlay()) return overlayName(m_overlay.overlay);
+  return m_countdownComplete ? "complete" : viewName(m_baseView.view);
 }
 
 void DisplayManager::showFault(const char* message) {
-  if ((overlay_.overlay == Overlay::kHardwareFault) &&
-      (strcmp(overlay_.message, message) == 0)) return;
+  if ((m_overlay.overlay == Overlay::kHardwareFault) &&
+      (strcmp(m_overlay.message, message) == 0)) return;
   OverlayState state;
   state.overlay = Overlay::kHardwareFault;
   copyMessage(state.message, message);
@@ -226,35 +226,35 @@ void DisplayManager::showFault(const char* message) {
 }
 
 void DisplayManager::clearFault() {
-  if (overlay_.overlay == Overlay::kHardwareFault) clearOverlayAndRenderView(millis());
+  if (m_overlay.overlay == Overlay::kHardwareFault) clearOverlayAndRenderView(millis());
 }
 
 void DisplayManager::setCountdownComplete(bool complete) {
-  if (countdownComplete_ == complete) return;
+  if (m_countdownComplete == complete) return;
   const char* oldName = renderedName();
-  countdownComplete_ = complete;
+  m_countdownComplete = complete;
   // Completion replaces ordinary information, but a hardware fault stays visible.
-  if (complete && (overlay_.overlay != Overlay::kHardwareFault)) {
-    overlay_.overlay = Overlay::kNone;
+  if (complete && (m_overlay.overlay != Overlay::kHardwareFault)) {
+    m_overlay.overlay = Overlay::kNone;
   }
-  scheduler_.invalidateRender();
+  m_scheduler.invalidateRender();
   logTransition(oldName, renderedName(), "countdown completion");
   render(millis(), true);
 }
 
 void DisplayManager::setView(const ViewState& state) {
   const char* oldName = renderedName();
-  baseView_ = state;
+  m_baseView = state;
   if (hasOverlay()) {
     // Becomes visible once the active overlay clears - there's no separate
     // snapshot to keep in sync, since renderedName()/render() always read
-    // baseView_ live at that point.
+    // m_baseView live at that point.
     return;
   }
 
   const uint32_t nowMs = millis();
-  scheduler_.invalidateRender();
-  logTransition(oldName, viewName(baseView_.view), "view update");
+  m_scheduler.invalidateRender();
+  logTransition(oldName, viewName(m_baseView.view), "view update");
   render(nowMs, true);
 }
 
@@ -285,17 +285,17 @@ void DisplayManager::logTransition(const char* from, const char* to, const char*
 }
 
 void DisplayManager::installOverlay(const OverlayState& state, uint32_t nowMs) {
-  if ((overlay_.overlay == Overlay::kHardwareFault) &&
+  if ((m_overlay.overlay == Overlay::kHardwareFault) &&
       (state.overlay != Overlay::kHardwareFault)) return;
   const char* oldName = renderedName();
-  overlay_ = state;
-  scheduler_.invalidateRender();
-  scheduler_.resetBlink(nowMs);
+  m_overlay = state;
+  m_scheduler.invalidateRender();
+  m_scheduler.resetBlink(nowMs);
   logTransition(oldName, renderedName(), "overlay");
 }
 
 void DisplayManager::finishOverlay(uint32_t nowMs) {
-  if (overlay_.overlay == Overlay::kDemoCountdown) {
+  if (m_overlay.overlay == Overlay::kDemoCountdown) {
     startDemoMessageOverlay(nowMs);
     return;
   }
@@ -305,8 +305,8 @@ void DisplayManager::finishOverlay(uint32_t nowMs) {
 
 void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
   const char* oldName = renderedName();
-  overlay_.overlay = Overlay::kNone;
-  scheduler_.invalidateRender();
+  m_overlay.overlay = Overlay::kNone;
+  m_scheduler.invalidateRender();
   logTransition(oldName, renderedName(), "overlay cleared");
   render(nowMs, true);
 }
@@ -314,7 +314,7 @@ void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
 void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
   OverlayState state;
   state.overlay = Overlay::kDemoFinalMessage;
-  copyMessage(state.message, settings_.finalMessage);
+  copyMessage(state.message, m_settings.finalMessage);
   state.transition = {true, nowMs + kDemoMessageMs};
 
   installOverlay(state, nowMs);
@@ -326,42 +326,42 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
 // to the long-range format at >= 24h remaining/elapsed and reverts on its own
 // the moment the duration drops below 24h - no crossing state is kept.
 uint8_t DisplayManager::activeCountingFormatIndex() const {
-  if (baseView_.longFormatIndex == kSameFormat) return baseView_.formatIndex;
-  const long nowUnix = static_cast<long>(rtc_.getNowCached().unixtime());
-  const long anchorUnix = static_cast<long>(baseView_.anchor.unixtime());
-  const long durationSeconds = (baseView_.view == View::kCountup) ? (nowUnix - anchorUnix)
+  if (m_baseView.longFormatIndex == kSameFormat) return m_baseView.formatIndex;
+  const long nowUnix = static_cast<long>(m_rtc.getNowCached().unixtime());
+  const long anchorUnix = static_cast<long>(m_baseView.anchor.unixtime());
+  const long durationSeconds = (m_baseView.view == View::kCountup) ? (nowUnix - anchorUnix)
                                                        : (anchorUnix - nowUnix);
-  return (durationSeconds >= kLongRangeSeconds) ? baseView_.longFormatIndex
-                                     : baseView_.formatIndex;
+  return (durationSeconds >= kLongRangeSeconds) ? m_baseView.longFormatIndex
+                                     : m_baseView.formatIndex;
 }
 
 bool DisplayManager::viewBlinkActive() const {
-  return baseView_.blink.contains(rtc_.getNowCached().unixtime());
+  return m_baseView.blink.contains(m_rtc.getNowCached().unixtime());
 }
 
 bool DisplayManager::renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force) {
-  return scheduler_.shouldRender(nowMs, intervalMs, force);
+  return m_scheduler.shouldRender(nowMs, intervalMs, force);
 }
 
 bool DisplayManager::overlayExpired(uint32_t nowMs) const {
   // Unsigned wraparound: "now is at or past the deadline" is the same test
   // whether or not millis() has rolled over, as long as the deadline is less
   // than ~24 days out. Every overlay duration here is seconds.
-  return overlay_.transition.hasExpiration &&
-         ((nowMs - overlay_.transition.expiresAtMs) < 0x80000000UL);
+  return m_overlay.transition.hasExpiration &&
+         ((nowMs - m_overlay.transition.expiresAtMs) < 0x80000000UL);
 }
 
 bool DisplayManager::overlayBlinks() const {
-  return (overlay_.overlay == Overlay::kBlinkingMessage) ||
-         (overlay_.overlay == Overlay::kHardwareFault) ||
-         (overlay_.overlay == Overlay::kDemoFinalMessage);
+  return (m_overlay.overlay == Overlay::kBlinkingMessage) ||
+         (m_overlay.overlay == Overlay::kHardwareFault) ||
+         (m_overlay.overlay == Overlay::kDemoFinalMessage);
 }
 
 void DisplayManager::render(uint32_t nowMs, bool force) {
   DisplayFrame frame;
   bool frameReady = false;
   if (hasOverlay()) {
-    switch (overlay_.overlay) {
+    switch (m_overlay.overlay) {
       case Overlay::kNone:              break;
       case Overlay::kDemoCountdown:
         frameReady = buildDemoFrame(nowMs, force, frame);
@@ -376,24 +376,24 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
         frameReady = buildPagedMessageFrame(nowMs, force, frame);
         break;
     }
-  } else if (countdownComplete_) {
+  } else if (m_countdownComplete) {
     frameReady = renderElapsed(nowMs, kSecondMs, force);
-    frame = renderMessageDisplayFrame(settings_.finalMessage, true);
+    frame = renderMessageDisplayFrame(m_settings.finalMessage, true);
   } else {
     // The blink phase advances before the build functions consult the render
     // throttle, so every toggle produces a frame of its own regardless of the
     // format's normal refresh rate.
     const bool blinking = viewBlinkActive();
     if (blinking) {
-      if (scheduler_.toggleBlinkIfDue(nowMs, kViewBlinkMs)) force = true;
-    } else if (!scheduler_.blinkOn()) {
+      if (m_scheduler.toggleBlinkIfDue(nowMs, kViewBlinkMs)) force = true;
+    } else if (!m_scheduler.blinkOn()) {
       // The window closed (or an overlay cleared) on an "off" phase: restore
       // visibility now instead of waiting for the view's refresh interval.
-      scheduler_.resetBlink(nowMs);
+      m_scheduler.resetBlink(nowMs);
       force = true;
     }
 
-    switch (baseView_.view) {
+    switch (m_baseView.view) {
       case View::kClock:
         frameReady = buildClockFrame(nowMs, force, frame);
         break;
@@ -405,21 +405,21 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
         break;
     }
 
-    if (frameReady && blinking && !scheduler_.blinkOn()) {
+    if (frameReady && blinking && !m_scheduler.blinkOn()) {
       frame = renderBlankDisplayFrame();
     }
   }
 
-  if (frameReady) display_.showFrame(frame);
+  if (frameReady) m_display.showFrame(frame);
 }
 
 bool DisplayManager::buildClockFrame(uint32_t nowMs, bool force,
                                      DisplayFrame& frame) {
-  const uint8_t formatIndex = baseView_.formatIndex;
+  const uint8_t formatIndex = m_baseView.formatIndex;
   const DisplayFormatInfo& format =
       displayFormatInfo(kFmtGroupClock, formatIndex);
   if ((format.colonAnimation == ColonAnimation::kBlinking) &&
-      scheduler_.toggleColonIfDue(nowMs, kColonBlinkMs)) {
+      m_scheduler.toggleColonIfDue(nowMs, kColonBlinkMs)) {
     force = true;
   }
   if (!renderElapsed(nowMs, intervalForRefreshRate(format.refreshRate), force))
@@ -427,15 +427,15 @@ bool DisplayManager::buildClockFrame(uint32_t nowMs, bool force,
 
   // Cached read: this runs up to 10x/sec for tenths formats, and the RTC's
   // registers only change once a second anyway.
-  const DateTime now = rtc_.getNowCached();
+  const DateTime now = m_rtc.getNowCached();
   uint8_t tenths = 0;
   if (format.refreshRate == RefreshRate::kOneTenth) {
-    tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
+    tenths = m_rtc.msIntoSecond(nowMs) / kTenthMs;
   }
 
   frame = renderClockFormat(
-      formatIndex, now, settings_.display.clockUse12Hour, tenths,
-      format.colonAnimation != ColonAnimation::kBlinking || scheduler_.colonVisible());
+      formatIndex, now, m_settings.display.clockUse12Hour, tenths,
+      format.colonAnimation != ColonAnimation::kBlinking || m_scheduler.colonVisible());
   return true;
 }
 
@@ -447,15 +447,15 @@ bool DisplayManager::buildCountdownFrame(uint32_t nowMs, bool force,
   if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
     return false;
 
-  const DateTime now = rtc_.getNowCached();
-  const long remainingSeconds = static_cast<long>(baseView_.anchor.unixtime()) -
+  const DateTime now = m_rtc.getNowCached();
+  const long remainingSeconds = static_cast<long>(m_baseView.anchor.unixtime()) -
                     static_cast<long>(now.unixtime());
   // Completion and schedule changes belong to application logic. A delayed
   // schedule sample can show zero here but cannot create a permanent overlay.
 
   uint8_t tenths = 0;
   if ((refreshRate == RefreshRate::kOneTenth) && (remainingSeconds > 0)) {
-    tenths = (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10;
+    tenths = (10 - m_rtc.msIntoSecond(nowMs) / kTenthMs) % 10;
   }
 
   frame = renderCountingFormat(formatIndex, remainingSeconds, tenths);
@@ -470,13 +470,13 @@ bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,
   if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
     return false;
 
-  const DateTime now = rtc_.getNowCached();
+  const DateTime now = m_rtc.getNowCached();
   const long elapsedSeconds = static_cast<long>(now.unixtime()) -
-                    static_cast<long>(baseView_.anchor.unixtime());
+                    static_cast<long>(m_baseView.anchor.unixtime());
 
   uint8_t tenths = 0;
   if (refreshRate == RefreshRate::kOneTenth) {
-    tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
+    tenths = m_rtc.msIntoSecond(nowMs) / kTenthMs;
   }
 
   frame = renderCountingFormat(formatIndex, elapsedSeconds, tenths);
@@ -487,7 +487,7 @@ bool DisplayManager::buildDemoFrame(uint32_t nowMs, bool force,
                                     DisplayFrame& frame) {
   if (!renderElapsed(nowMs, kTenthMs, force)) return false;
 
-  const uint32_t remaining = overlay_.transition.expiresAtMs - nowMs;
+  const uint32_t remaining = m_overlay.transition.expiresAtMs - nowMs;
   const uint8_t whole  = static_cast<uint8_t>(min<uint32_t>(9, remaining / kSecondMs));
   const uint8_t tenths = static_cast<uint8_t>(min<uint32_t>(9, (remaining % kSecondMs) / kTenthMs));
   frame = renderDemoDisplayFrame(whole, tenths);
@@ -497,7 +497,7 @@ bool DisplayManager::buildDemoFrame(uint32_t nowMs, bool force,
 bool DisplayManager::buildMessageFrame(uint32_t nowMs, bool force,
                                        DisplayFrame& frame) {
   const bool blink = overlayBlinks();
-  if (blink && scheduler_.toggleBlinkIfDue(nowMs, kMessageBlinkMs)) {
+  if (blink && m_scheduler.toggleBlinkIfDue(nowMs, kMessageBlinkMs)) {
     force = true;
   }
 
@@ -505,13 +505,13 @@ bool DisplayManager::buildMessageFrame(uint32_t nowMs, bool force,
   if (!renderElapsed(nowMs, intervalMs, force)) return false;
 
   frame = renderMessageDisplayFrame(
-      overlay_.message, !blink || scheduler_.blinkOn());
+      m_overlay.message, !blink || m_scheduler.blinkOn());
   return true;
 }
 
 bool DisplayManager::buildPagedMessageFrame(uint32_t nowMs, bool force,
                                             DisplayFrame& frame) {
-  PagedDisplayPayload& paged = overlay_.paged;
+  PagedDisplayPayload& paged = m_overlay.paged;
   if (paged.pageCount == 0) {
     return false;
   }
@@ -530,9 +530,9 @@ bool DisplayManager::buildPagedMessageFrame(uint32_t nowMs, bool force,
   }
 
   if (pageChanged) {
-    scheduler_.resetBlink(nowMs);
+    m_scheduler.resetBlink(nowMs);
     force = true;
-  } else if (scheduler_.toggleBlinkIfDue(nowMs, kMessageBlinkMs)) {
+  } else if (m_scheduler.toggleBlinkIfDue(nowMs, kMessageBlinkMs)) {
     force = true;
   }
 
@@ -542,6 +542,6 @@ bool DisplayManager::buildPagedMessageFrame(uint32_t nowMs, bool force,
 
   const DisplayPage& page = paged.pages[paged.currentPage];
   frame = renderPageDisplayFrame(
-      page.panels[0], page.panels[1], page.panels[2], scheduler_.blinkOn());
+      page.panels[0], page.panels[1], page.panels[2], m_scheduler.blinkOn());
   return true;
 }

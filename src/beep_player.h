@@ -31,11 +31,11 @@ class BeepPlayer {
   void output(uint16_t toneHz);
   static Window windowFor(const BeepPattern& pattern, uint32_t nowMs);
 
-  Window scheduled_;  // Current scheduled approach window, if armed and near enough.
-  Window temporary_;  // Preview or event beep, independent of schedule updates.
-  Override override_ = Override::kNone;  // Preview takes priority over event beeps.
-  uint32_t targetLocalSeconds_ = 0;  // Identifies the currently armed occurrence.
-  bool suppressed_ = false;  // Stop silences this occurrence even on later RTC ticks.
-  uint16_t soundingHz_ = 0;  // Last hardware pitch; zero means the pin is silent.
-  uint8_t volumePercent_ = 40;  // PWM loudness as a percentage of half duty.
+  Window m_scheduled;  // Current scheduled approach window, if armed and near enough.
+  Window m_temporary;  // Preview or event beep, independent of schedule updates.
+  Override m_override = Override::kNone;  // Preview takes priority over event beeps.
+  uint32_t m_targetLocalSeconds = 0;  // Identifies the currently armed occurrence.
+  bool m_suppressed = false;  // Stop silences this occurrence even on later RTC ticks.
+  uint16_t m_soundingHz = 0;  // Last hardware pitch; zero means the pin is silent.
+  uint8_t m_volumePercent = 40;  // PWM loudness as a percentage of half duty.
 };

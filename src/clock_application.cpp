@@ -86,11 +86,11 @@ void handleButtonEvent(ButtonEvent event, PageManager& pageManager,
 // -----------------------------------------------------------------------------
 
 ClockApplication::ClockApplication()
-    : displayManager_(segmentDisplay_, rtc_),
-      clockController_(displayManager_, rtc_, beepPlayer_),
-      pageManager_(displayManager_),
-      webPortal_(clockController_, configManager_, wifiConnectionManager_, rtc_,
-                 beepPlayer_) {}
+    : m_displayManager(m_segmentDisplay, m_rtc),
+      m_clockController(m_displayManager, m_rtc, m_beepPlayer),
+      m_pageManager(m_displayManager),
+      m_webPortal(m_clockController, m_configManager, m_wifiConnectionManager, m_rtc,
+                 m_beepPlayer) {}
 
 void ClockApplication::begin() {
   Serial.begin(74880);
@@ -101,16 +101,16 @@ void ClockApplication::begin() {
 
   initializeRtc();
   initializeDisplayAndConfig();
-  reportInitialRtcStatus(rtc_.getStatus());
+  reportInitialRtcStatus(m_rtc.getStatus());
 
-  const WifiConfig& config = configManager_.wifiConfig();
-  wifiConnectionManager_.begin(config);
-  webPortal_.begin();
+  const WifiConfig& config = m_configManager.wifiConfig();
+  m_wifiConnectionManager.begin(config);
+  m_webPortal.begin();
 
   buttonBegin();
   // Start after blocking WiFi setup, so the loop can service the beep deadline.
-  const SoundConfig& sound = configManager_.clockConfig().sound;
-  if (sound.enabled && sound.startupBeep) beepPlayer_.beep(880, millis());
+  const SoundConfig& sound = m_configManager.clockConfig().sound;
+  if (sound.enabled && sound.startupBeep) m_beepPlayer.beep(880, millis());
 }
 
 void ClockApplication::initializeRtc() {
@@ -120,10 +120,10 @@ void ClockApplication::initializeRtc() {
              Hardware::Pins::I2C_SDA,
              Hardware::Pins::I2C_SCL);
 
-  if (rtc_.begin()) {
-    rtc_.beginSqwProcessing();
+  if (m_rtc.begin()) {
+    m_rtc.beginSqwProcessing();
   } else {
-    const RtcStatus status = rtc_.getStatus();
+    const RtcStatus status = m_rtc.getStatus();
     printRtcErrorBanner(status.error);
     LOG_PRINTF("Init failed: %s", status.error);
   }
@@ -131,26 +131,26 @@ void ClockApplication::initializeRtc() {
 }
 
 void ClockApplication::initializeDisplayAndConfig() {
-  const ClockConfig& cs = configManager_.clockConfig();
-  segmentDisplay_.begin(cs.display.brightness);
-  beepPlayer_.begin();
+  const ClockConfig& cs = m_configManager.clockConfig();
+  m_segmentDisplay.begin(cs.display.brightness);
+  m_beepPlayer.begin();
   LOG_PRINTF("Mode %u, brightness %u",
              (unsigned)cs.activeMode, cs.display.brightness);
 
-  clockController_.applyConfig(cs);
-  lastLoggedMode_ = clockController_.activeMode();
-  lastLoggedView_ = clockController_.activeView();
+  m_clockController.applyConfig(cs);
+  m_lastLoggedMode = m_clockController.activeMode();
+  m_lastLoggedView = m_clockController.activeView();
   if (cs.messages.splash[0] != '\0') {
-    displayManager_.showSplash(cs.messages.splash);
+    m_displayManager.showSplash(cs.messages.splash);
   }
 }
 
 void ClockApplication::reportInitialRtcStatus(const RtcStatus& status) {
   if (!status.present) {
-    displayManager_.showFault(kNoRtcMessage);
+    m_displayManager.showFault(kNoRtcMessage);
     LOG_PRINTLN("RTC not found - showing no rtc");
   } else if (status.lowBattery) {
-    displayManager_.showFault(kLowBatteryMessage);
+    m_displayManager.showFault(kLowBatteryMessage);
     LOG_PRINTLN("Low battery - showing info state");
   }
 }
@@ -159,56 +159,56 @@ void ClockApplication::tick(uint32_t nowMs) {
   buttonTick();
   processButtonEvents();
   RtcTick rtcTick;
-  if (rtc_.consumeSqwPulse(rtcTick)) {
-    clockController_.onSecondBoundary(rtcTick);
+  if (m_rtc.consumeSqwPulse(rtcTick)) {
+    m_clockController.onSecondBoundary(rtcTick);
     if (rtcTick.now.second() == 0) {
       LOG_PRINTF("SQW: mode=%s view=%s",
-                 modeName(clockController_.activeMode()),
-                 viewName(clockController_.activeView()));
+                 modeName(m_clockController.activeMode()),
+                 viewName(m_clockController.activeView()));
     }
   }
 
   logModeOrViewTransition();
   checkRtcHealth(nowMs);
   nowMs = millis();
-  displayManager_.tick(nowMs);
-  beepPlayer_.tick(nowMs);
-  wifiConnectionManager_.tick();
-  webPortal_.handleClients();
+  m_displayManager.tick(nowMs);
+  m_beepPlayer.tick(nowMs);
+  m_wifiConnectionManager.tick();
+  m_webPortal.handleClients();
 }
 
 void ClockApplication::processButtonEvents() {
   while (buttonHasEvent()) {
-    handleButtonEvent(buttonNextEvent(), pageManager_, rtc_, webPortal_);
+    handleButtonEvent(buttonNextEvent(), m_pageManager, m_rtc, m_webPortal);
   }
 }
 
 void ClockApplication::checkRtcHealth(uint32_t nowMs) {
-  if ((nowMs - lastRtcHealthCheckMs_) < kRtcHealthPollIntervalMs) return;
-  lastRtcHealthCheckMs_ = nowMs;
-  const bool healthy = rtc_.isHealthy();
+  if ((nowMs - m_lastRtcHealthCheckMs) < kRtcHealthPollIntervalMs) return;
+  m_lastRtcHealthCheckMs = nowMs;
+  const bool healthy = m_rtc.isHealthy();
   if (!healthy) {
-    if (rtcWasHealthy_) LOG_PRINTLN("RTC health lost");
-    displayManager_.showFault(kNoRtcMessage);
+    if (m_rtcWasHealthy) LOG_PRINTLN("RTC health lost");
+    m_displayManager.showFault(kNoRtcMessage);
   } else {
-    if (!rtcWasHealthy_) LOG_PRINTLN("RTC health restored");
-    if (rtc_.getStatus().lowBattery) {
-      displayManager_.showFault(kLowBatteryMessage);
+    if (!m_rtcWasHealthy) LOG_PRINTLN("RTC health restored");
+    if (m_rtc.getStatus().lowBattery) {
+      m_displayManager.showFault(kLowBatteryMessage);
     } else {
-      displayManager_.clearFault();
+      m_displayManager.clearFault();
     }
   }
-  rtcWasHealthy_ = healthy;
+  m_rtcWasHealthy = healthy;
 }
 
 void ClockApplication::logModeOrViewTransition() {
-  const Mode mode = clockController_.activeMode();
-  const View view = clockController_.activeView();
-  if ((mode == lastLoggedMode_) && (view == lastLoggedView_)) return;
+  const Mode mode = m_clockController.activeMode();
+  const View view = m_clockController.activeView();
+  if ((mode == m_lastLoggedMode) && (view == m_lastLoggedView)) return;
 
   LOG_PRINTF("mode/view: %s/%s -> %s/%s",
-             modeName(lastLoggedMode_), viewName(lastLoggedView_),
+             modeName(m_lastLoggedMode), viewName(m_lastLoggedView),
              modeName(mode), viewName(view));
-  lastLoggedMode_ = mode;
-  lastLoggedView_ = view;
+  m_lastLoggedMode = mode;
+  m_lastLoggedView = view;
 }

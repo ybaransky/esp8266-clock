@@ -17,16 +17,16 @@ class DisplayScheduler {
   bool shouldRender(uint32_t nowMs, uint32_t intervalMs, bool force);
   bool toggleBlinkIfDue(uint32_t nowMs, uint32_t intervalMs);
   bool toggleColonIfDue(uint32_t nowMs, uint32_t intervalMs);
-  bool blinkOn() const { return blinkOn_; }
-  bool colonVisible() const { return colonVisible_; }
+  bool blinkOn() const { return m_blinkOn; }
+  bool colonVisible() const { return m_colonVisible; }
 
  private:
-  bool blinkOn_ = true;  // Current visibility phase for blinking overlays.
-  uint32_t blinkMs_ = 0;  // Last overlay-blink transition time.
-  bool colonVisible_ = true;  // Current visibility phase for animated colons.
-  uint32_t colonMs_ = 0;  // Last colon transition time.
-  uint32_t lastRenderMs_ = 0;  // Last accepted render time.
-  bool renderInvalidated_ = true;  // Forces the next frame, independent of millis() wrap.
+  bool m_blinkOn = true;  // Current visibility phase for blinking overlays.
+  uint32_t m_blinkMs = 0;  // Last overlay-blink transition time.
+  bool m_colonVisible = true;  // Current visibility phase for animated colons.
+  uint32_t m_colonMs = 0;  // Last colon transition time.
+  uint32_t m_lastRenderMs = 0;  // Last accepted render time.
+  bool m_renderInvalidated = true;  // Forces the next frame, independent of millis() wrap.
 };
 
 class SegmentDisplay;
@@ -141,7 +141,7 @@ struct DisplaySettings {
 class DisplayManager {
  public:
   DisplayManager(SegmentDisplay& display, RtcService& rtc)
-      : display_(display), rtc_(rtc) {}
+      : m_display(display), m_rtc(rtc) {}
   void applySettings(const ClockConfig& config, const ViewState& initialView);
   void setBrightness(uint8_t brightness);
   void tick(uint32_t nowMs);
@@ -175,12 +175,12 @@ class DisplayManager {
   const char* renderedName() const;
   bool demoActive() const;
 
-  // The View backing the base view (i.e. baseView_, not whatever overlay -
+  // The View backing the base view (i.e. m_baseView, not whatever overlay -
   // if any - is currently covering it, so a splash/info/demo overlay never
   // counts as a view change). Fixed by the configured mode for countdown, countup,
   // and clock modes; Friday and Trading schedule controllers vary it over
   // time by calling setView().
-  View activeView() const { return baseView_.view; }
+  View activeView() const { return m_baseView.view; }
 
  private:
   void logTransition(const char* from, const char* to, const char* reason) const;
@@ -198,7 +198,7 @@ class DisplayManager {
   bool renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force = false);
   bool overlayExpired(uint32_t nowMs) const;
   bool overlayBlinks() const;
-  bool hasOverlay() const { return overlay_.overlay != Overlay::kNone; }
+  bool hasOverlay() const { return m_overlay.overlay != Overlay::kNone; }
 
   void render(uint32_t nowMs, bool force = false);
   bool buildClockFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
@@ -211,12 +211,12 @@ class DisplayManager {
   // Default-constructed rather than built from a default ClockConfig: every
   // member has its own initializer, and applySettings() overwrites all of them
   // before the first render.
-  DisplaySettings settings_{};  // Applied settings snapshot.
-  ViewState baseView_;                           // What to show when no overlay is active.
-  OverlayState overlay_;                         // kNone unless an overlay is active.
+  DisplaySettings m_settings{};  // Applied settings snapshot.
+  ViewState m_baseView;                           // What to show when no overlay is active.
+  OverlayState m_overlay;                         // kNone unless an overlay is active.
 
-  bool countdownComplete_ = false;  // Application says to show the final base message.
-  DisplayScheduler scheduler_;   // Blink/colon cadence + render throttling.
-  SegmentDisplay& display_;  // Hardware target for completed frames.
-  RtcService& rtc_;  // Cached time and SQW phase source for renderers.
+  bool m_countdownComplete = false;  // Application says to show the final base message.
+  DisplayScheduler m_scheduler;   // Blink/colon cadence + render throttling.
+  SegmentDisplay& m_display;  // Hardware target for completed frames.
+  RtcService& m_rtc;  // Cached time and SQW phase source for renderers.
 };

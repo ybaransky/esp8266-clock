@@ -95,7 +95,7 @@ struct MessageConfig {
   char tradingClose[kDisplayMessageLength] = {};   // Blinked when a Trading session stops live.
 };
 
-// Stores generated-beep settings; legacy song names are ignored on load.
+// Stores generated-beep settings: master switch, volume, event beeps, and approach patterns.
 struct SoundConfig {
   bool enabled = true;            // Master switch for automatic beeps and approach alerts.
   uint8_t volumePercent = 40;     // PWM loudness from 0 through 100.
@@ -140,9 +140,8 @@ struct DeviceConfig {
 };
 
 // ClockConfig is copied onto the ESP8266's 4KB cont stack by any handler that
-// takes one by value, so its size is a budget, not a detail. The assert is here
-// rather than in a comment because the comment already rotted once (it claimed
-// ~450 bytes while the struct had grown past 700).
+// takes one by value, so its size is a budget, not a detail. An assert enforces
+// it because a size stated only in a comment goes stale unnoticed.
 static_assert(sizeof(ClockConfig) <= 768,
               "ClockConfig grew past its stack budget; see ConfigManager");
 
@@ -176,6 +175,6 @@ private:
     bool installVerifiedTemp(const char* context);
     bool writeAll(const DeviceConfig& config, const char* context);
 
-    DeviceConfig current_;  // Cached configuration loaded from storage.
-    bool loaded_ = false;   // True after current_ has been initialized.
+    DeviceConfig m_current;  // Cached configuration loaded from storage.
+    bool m_loaded = false;   // True after m_current has been initialized.
 };

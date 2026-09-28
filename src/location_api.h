@@ -9,12 +9,12 @@
 class LocationApi {
  public:
   LocationApi(ESP8266WebServer& server, HttpResponder& responder)
-      : server_(server), responder_(responder) {}
+      : m_server(server), m_responder(responder) {}
 
   void handleZipcodeLookup();
   void handleSunset();
 
  private:
-  ESP8266WebServer& server_;  // Source of location request arguments and bodies.
-  HttpResponder& responder_;  // Sends location API responses.
+  ESP8266WebServer& m_server;  // Source of location request arguments and bodies.
+  HttpResponder& m_responder;  // Sends location API responses.
 };
