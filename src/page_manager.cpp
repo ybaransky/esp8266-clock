@@ -4,7 +4,7 @@
 
 namespace {
 
-constexpr uint16_t kNetworkInfoPageMs = 3000;
+constexpr uint16_t kNetworkInfoPageMs = 3000;  // Per-page time for SSID and IP pages.
 
 void copyPagePanel(DisplayPage& page, uint8_t panel, const char* text) {
   snprintf(page.panels[panel], sizeof(page.panels[panel]), "%-4.4s", text);

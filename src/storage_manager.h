@@ -14,4 +14,4 @@ class StorageManager {
   bool ensureMounted(const char* context = nullptr);
 };
 
-extern StorageManager storageManager;
+extern StorageManager storageManager;  // Single LittleFS mount owner.

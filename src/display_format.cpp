@@ -34,9 +34,9 @@ enum class Shape : uint8_t {
 
 // Identifies the layout and source fields used to render one physical panel.
 struct PanelSpec {
-  Shape shape = Shape::kBlank;  // Panel layout renderer.
-  Field a = Field::kNone;  // Main or left-of-colon value.
-  Field b = Field::kNone;  // Right-of-colon value; kNone otherwise.
+  Shape shape = Shape::kBlank;     // Panel layout renderer.
+  Field primary = Field::kNone;    // Sole value, or the value left of the colon.
+  Field secondary = Field::kNone;  // Value right of the colon; kNone otherwise.
 };
 
 // The render specification for one format. The matching key and label live in
@@ -47,6 +47,7 @@ struct FormatSpec {
   PanelSpec panels[kDisplayPanelCount];  // Direct render specification per panel.
 };
 
+// Short aliases keep each format-table row on one line.
 using S = Shape;
 using F = Field;
 
@@ -186,6 +187,7 @@ const FormatSpec kClockFormats[] = {
     {{{S::kNumber, F::kDay},           {S::kNumber, F::kHours},                  {S::kNumber, F::kMinutes}}},
 };
 
+// Rows in each format table.
 constexpr uint8_t kCountingFormatCount = sizeof(kCountingFormats) / sizeof(kCountingFormats[0]);
 constexpr uint8_t kClockFormatCount = sizeof(kClockFormats) / sizeof(kClockFormats[0]);
 
@@ -229,18 +231,18 @@ struct RenderValues {
   bool colonVisible = true;  // Current phase for blinking-colon formats.
 };
 
-int fieldValue(Field field, const RenderValues& v) {
+int fieldValue(Field field, const RenderValues& values) {
   switch (field) {
-    case Field::kDays: return v.days;
-    case Field::kHours: return v.hours;
-    case Field::kTotalHours: return v.totalHours;
-    case Field::kMinutes: return v.minutes;
-    case Field::kSeconds: return v.seconds;
-    case Field::kTenths: return v.tenths;
-    case Field::kYear: return v.year;
-    case Field::kMonth: return v.month;
-    case Field::kDay: return v.day;
-    case Field::kDow: return v.dayOfWeek;
+    case Field::kDays: return values.days;
+    case Field::kHours: return values.hours;
+    case Field::kTotalHours: return values.totalHours;
+    case Field::kMinutes: return values.minutes;
+    case Field::kSeconds: return values.seconds;
+    case Field::kTenths: return values.tenths;
+    case Field::kYear: return values.year;
+    case Field::kMonth: return values.month;
+    case Field::kDay: return values.day;
+    case Field::kDow: return values.dayOfWeek;
     default: return 0;
   }
 }
@@ -258,7 +260,7 @@ char labelFor(Field field) {
 const char* dayOfWeekAbbreviation(int dayOfWeek) {
   static const char* const kNames[] = {
       "Sun", "NNon", "tu", "UUEd", "thu", "Fri", "Sat"};
-  return dayOfWeek >= 0 && dayOfWeek < 7 ? kNames[dayOfWeek] : "   ";
+  return ((dayOfWeek >= 0) && (dayOfWeek < 7)) ? kNames[dayOfWeek] : "   ";
 }
 
 // Right-packed value + unit letter. The label is dropped entirely once the
@@ -276,34 +278,37 @@ void formatLabeled(char* out, int value, char label, bool blankIfZero) {
   }
 }
 
-void renderPanel(const PanelSpec& spec, const RenderValues& v, char* out) {
-  const int a = fieldValue(spec.a, v);
-  const int b = fieldValue(spec.b, v);
+void renderPanel(const PanelSpec& spec, const RenderValues& values, char* out) {
+  const int primaryValue = fieldValue(spec.primary, values);
+  const int secondaryValue = fieldValue(spec.secondary, values);
   switch (spec.shape) {
     case Shape::kBlank:
       snprintf(out, kDisplayFramePanelSize, "    ");
       break;
     case Shape::kNumber:
-      snprintf(out, kDisplayFramePanelSize, "%4d", a);
+      snprintf(out, kDisplayFramePanelSize, "%4d", primaryValue);
       break;
     case Shape::kLabel:
-      formatLabeled(out, a, labelFor(spec.a), false);
+      formatLabeled(out, primaryValue, labelFor(spec.primary), false);
       break;
     case Shape::kLabelBlankZero:
-      formatLabeled(out, a, labelFor(spec.a), true);
+      formatLabeled(out, primaryValue, labelFor(spec.primary), true);
       break;
     case Shape::kColon:
-      snprintf(out, kDisplayFramePanelSize, "%2d:%02d", a, b);
+      snprintf(out, kDisplayFramePanelSize, "%2d:%02d", primaryValue, secondaryValue);
       break;
     case Shape::kColonBlink:
-      if (v.colonVisible) snprintf(out, kDisplayFramePanelSize, "%2d:%02d", a, b);
-      else snprintf(out, kDisplayFramePanelSize, "%2d%02d", a, b);
+      if (values.colonVisible) {
+        snprintf(out, kDisplayFramePanelSize, "%2d:%02d", primaryValue, secondaryValue);
+      } else {
+        snprintf(out, kDisplayFramePanelSize, "%2d%02d", primaryValue, secondaryValue);
+      }
       break;
     case Shape::kColonTenths:
-      snprintf(out, kDisplayFramePanelSize, "%2d:%d", a, b);
+      snprintf(out, kDisplayFramePanelSize, "%2d:%d", primaryValue, secondaryValue);
       break;
     case Shape::kDow:
-      snprintf(out, kDisplayFramePanelSize, "%4s", dayOfWeekAbbreviation(a));
+      snprintf(out, kDisplayFramePanelSize, "%4s", dayOfWeekAbbreviation(primaryValue));
       break;
   }
 }
@@ -325,13 +330,14 @@ const FormatSpec& safeFormat(FormatGroup group, uint8_t index) {
   return table[index < count ? index : 0];
 }
 
-bool samePanel(const PanelSpec& a, const PanelSpec& b) {
-  return a.shape == b.shape && a.a == b.a && a.b == b.b;
+bool samePanel(const PanelSpec& lhs, const PanelSpec& rhs) {
+  return (lhs.shape == rhs.shape) && (lhs.primary == rhs.primary) &&
+         (lhs.secondary == rhs.secondary);
 }
 
 bool rendersCombinedTotalHours(const FormatSpec& format) {
   for (const PanelSpec& panel : format.panels) {
-    if ((panel.shape == Shape::kColon) && (panel.a == Field::kTotalHours)) return true;
+    if ((panel.shape == Shape::kColon) && (panel.primary == Field::kTotalHours)) return true;
   }
   return false;
 }
@@ -344,9 +350,9 @@ const FormatSpec& resolveCountingOverflow(const FormatSpec& format,
   if ((totalHours <= 99) || !rendersCombinedTotalHours(format)) return format;
   for (const FormatSpec& candidate : kCountingFormats) {
     if ((candidate.panels[0].shape == Shape::kNumber) &&
-        (candidate.panels[0].a == Field::kTotalHours) &&
+        (candidate.panels[0].primary == Field::kTotalHours) &&
         (candidate.panels[1].shape == Shape::kNumber) &&
-        (candidate.panels[1].a == Field::kMinutes) &&
+        (candidate.panels[1].primary == Field::kMinutes) &&
         samePanel(candidate.panels[2], format.panels[2])) {
       return candidate;
     }
@@ -356,9 +362,9 @@ const FormatSpec& resolveCountingOverflow(const FormatSpec& format,
 
 // True when every value field the panel reads is zero, so the panel carries
 // no information during a countdown/countup.
-bool panelValueIsZero(const PanelSpec& spec, const RenderValues& v) {
+bool panelValueIsZero(const PanelSpec& spec, const RenderValues& values) {
   if (spec.shape == Shape::kBlank) return true;
-  return (fieldValue(spec.a, v) == 0) && (fieldValue(spec.b, v) == 0);
+  return (fieldValue(spec.primary, values) == 0) && (fieldValue(spec.secondary, values) == 0);
 }
 
 // Counting formats hide leading zero panels: panel 0 blanks when zero, and
@@ -366,10 +372,10 @@ bool panelValueIsZero(const PanelSpec& spec, const RenderValues& v) {
 // panel always renders so the most active unit stays visible. Once a panel is
 // visible, everything to its right shows real values, zeros included.
 FormatSpec suppressLeadingZeroPanels(FormatSpec format,
-                                     const RenderValues& v) {
-  if (!panelValueIsZero(format.panels[0], v)) return format;
+                                     const RenderValues& values) {
+  if (!panelValueIsZero(format.panels[0], values)) return format;
   format.panels[0] = {S::kBlank, F::kNone, F::kNone};
-  if (panelValueIsZero(format.panels[1], v)) {
+  if (panelValueIsZero(format.panels[1], values)) {
     format.panels[1] = {S::kBlank, F::kNone, F::kNone};
   }
   return format;

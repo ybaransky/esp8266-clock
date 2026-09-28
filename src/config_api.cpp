@@ -16,7 +16,7 @@
 
 namespace {
 
-constexpr uint32_t kRebootDelayMs = 1500;
+constexpr uint32_t kRebootDelayMs = 1500;  // Lets the HTTP response flush before restarting.
 
 }  // namespace
 
@@ -30,8 +30,8 @@ constexpr uint32_t kRebootDelayMs = 1500;
 static_assert(sizeof(CountupConfig::start) >= kLocalDateTimeLength,
               "CountupConfig::start cannot hold a canonical datetime");
 
-bool ConfigApi::resolveCountupStart(ClockConfig& cfg) {
-  if (strcmp(cfg.countup.start, kCountupStartNow) != 0) return false;
+bool ConfigApi::resolveCountupStart(ClockConfig& config) {
+  if (strcmp(config.countup.start, kCountupStartNow) != 0) return false;
   // Leave an unset origin unset rather than persist a time the clock does not
   // vouch for. getNowCached()'s fallback exists for fault presentation, and
   // lost-power recovery leaves the chip holding the firmware build date - both
@@ -41,20 +41,20 @@ bool ConfigApi::resolveCountupStart(ClockConfig& cfg) {
     LOG_PRINTLN("countup start left unset: no trustworthy RTC time to stamp");
     return false;
   }
-  formatLocalDateTime(rtc_.getNowCached(), cfg.countup.start,
-                      sizeof(cfg.countup.start));
-  LOG_PRINTF("countup start resolved from \"now\" to %s", cfg.countup.start);
+  formatLocalDateTime(rtc_.getNowCached(), config.countup.start,
+                      sizeof(config.countup.start));
+  LOG_PRINTF("countup start resolved from \"now\" to %s", config.countup.start);
   return true;
 }
 
-bool ConfigApi::persistClockConfig(ClockConfig& cfg) {
-  resolveCountupStart(cfg);
-  return configManager_.saveClockConfig(cfg);
+bool ConfigApi::persistClockConfig(ClockConfig& config) {
+  resolveCountupStart(config);
+  return configManager_.saveClockConfig(config);
 }
 
-bool ConfigApi::persistClockConfig(ClockConfig& cfg, const WifiConfig& wifi) {
-  resolveCountupStart(cfg);
-  return configManager_.saveConfig(cfg, wifi);
+bool ConfigApi::persistClockConfig(ClockConfig& config, const WifiConfig& wifi) {
+  resolveCountupStart(config);
+  return configManager_.saveConfig(config, wifi);
 }
 
 void ConfigApi::handleDemoTest() {
@@ -63,11 +63,11 @@ void ConfigApi::handleDemoTest() {
     if (!responder_.parseJsonBody(doc, "/api/demo/test")) return;
     JsonVariant finalMessage = doc["display"]["messages"]["final"];
     if (!finalMessage.isNull()) {
-      ClockConfig cfg = configManager_.clockConfig();
+      ClockConfig config = configManager_.clockConfig();
       sanitizeDisplayMessage(finalMessage.as<const char*>(),
-                             cfg.messages.final,
-                             sizeof(cfg.messages.final));
-      clockController_.applyConfig(cfg);
+                             config.messages.countdownDone,
+                             sizeof(config.messages.countdownDone));
+      clockController_.applyConfig(config);
     }
   }
 
@@ -103,14 +103,14 @@ void ConfigApi::handleSetMode() {
     return;
   }
 
-  ClockConfig cfg = configManager_.clockConfig();
-  cfg.activeMode = nextMode;
-  if (!persistClockConfig(cfg)) {
+  ClockConfig config = configManager_.clockConfig();
+  config.activeMode = nextMode;
+  if (!persistClockConfig(config)) {
     LOG_PRINTLN("/api/mode failed: complete config write failed");
     responder_.sendJsonError(500, "Configuration write failed");
     return;
   }
-  clockController_.applyConfig(cfg);
+  clockController_.applyConfig(config);
   responder_.sendJson(200, "{\"message\":\"Mode changed\"}");
 }
 
@@ -134,8 +134,8 @@ void ConfigApi::handleBrightness() {
 void ConfigApi::handleFormats() {
   JsonDocument doc;
   const struct {
-    const char* jsonKey;
-    FormatGroup group;
+    const char* jsonKey;  // Response property naming the group.
+    FormatGroup group;    // Catalog listed under that property.
   } kGroups[] = {
       {"countdown", kFmtGroupCountdown},
       {"countup", kFmtGroupCountUp},

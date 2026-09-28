@@ -7,9 +7,9 @@ namespace {
 
 // 802.11 limits that softAP() enforces. A refused AP is unrecoverable when no
 // station credentials are configured - nothing else serves the config pages.
-constexpr size_t kMaxApSsidLength     = 32;
-constexpr size_t kMinApPasswordLength = 8;
-constexpr size_t kMaxApPasswordLength = 63;
+constexpr size_t kMaxApSsidLength     = 32;  // Longest SSID 802.11 allows.
+constexpr size_t kMinApPasswordLength = 8;   // Shortest WPA2 passphrase.
+constexpr size_t kMaxApPasswordLength = 63;  // Longest WPA2 passphrase.
 
 }  // namespace
 

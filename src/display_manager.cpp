@@ -8,15 +8,15 @@
 
 namespace {
 
-constexpr uint32_t kSecondMs = 1000;
-constexpr uint32_t kTenthMs = 100;
-constexpr uint32_t kMessageBlinkMs = 500;
-constexpr uint32_t kViewBlinkMs = 250;  // 2 blinks/second for view blink windows.
-constexpr uint32_t kColonBlinkMs = 1000;
-constexpr uint32_t kSplashDurationMs = 5000;
-constexpr uint32_t kDemoCountdownMs = 5000;
-constexpr uint32_t kDemoMessageMs = 5000;
-constexpr long kLongRangeSeconds = 24L * 3600L;
+constexpr uint32_t kSecondMs = 1000;           // Render interval for whole-second formats.
+constexpr uint32_t kTenthMs = 100;             // Render interval for tenths formats.
+constexpr uint32_t kMessageBlinkMs = 500;      // Half-period of blinking messages and pages.
+constexpr uint32_t kViewBlinkMs = 250;         // Half-period in view blink windows (2 blinks/s).
+constexpr uint32_t kColonBlinkMs = 1000;       // Half-period of the clock colon.
+constexpr uint32_t kSplashDurationMs = 5000;   // How long a splash overlay stays up.
+constexpr uint32_t kDemoCountdownMs = 5000;    // Length of the demo countdown.
+constexpr uint32_t kDemoMessageMs = 5000;      // Final-message hold after the demo countdown.
+constexpr long kLongRangeSeconds = 24L * 3600L;  // Duration at which longFormatIndex takes over.
 
 uint32_t intervalForRefreshRate(RefreshRate rate) {
   return rate == RefreshRate::kOneTenth ? kTenthMs : kSecondMs;
@@ -90,7 +90,7 @@ bool DisplayScheduler::toggleColonIfDue(uint32_t nowMs, uint32_t intervalMs) {
 DisplaySettings DisplaySettings::fromConfig(const ClockConfig& config) {
   DisplaySettings settings;
   settings.display = config.display;
-  strlcpy(settings.finalMessage, config.messages.final,
+  strlcpy(settings.finalMessage, config.messages.countdownDone,
           sizeof(settings.finalMessage));
   return settings;
 }
@@ -329,9 +329,9 @@ uint8_t DisplayManager::activeCountingFormatIndex() const {
   if (baseView_.longFormatIndex == kSameFormat) return baseView_.formatIndex;
   const long nowUnix = static_cast<long>(rtc_.getNowCached().unixtime());
   const long anchorUnix = static_cast<long>(baseView_.anchor.unixtime());
-  const long secs = (baseView_.view == View::kCountup) ? (nowUnix - anchorUnix)
+  const long durationSeconds = (baseView_.view == View::kCountup) ? (nowUnix - anchorUnix)
                                                        : (anchorUnix - nowUnix);
-  return (secs >= kLongRangeSeconds) ? baseView_.longFormatIndex
+  return (durationSeconds >= kLongRangeSeconds) ? baseView_.longFormatIndex
                                      : baseView_.formatIndex;
 }
 
@@ -448,17 +448,17 @@ bool DisplayManager::buildCountdownFrame(uint32_t nowMs, bool force,
     return false;
 
   const DateTime now = rtc_.getNowCached();
-  const long secs = static_cast<long>(baseView_.anchor.unixtime()) -
+  const long remainingSeconds = static_cast<long>(baseView_.anchor.unixtime()) -
                     static_cast<long>(now.unixtime());
   // Completion and schedule changes belong to application logic. A delayed
   // schedule sample can show zero here but cannot create a permanent overlay.
 
   uint8_t tenths = 0;
-  if ((refreshRate == RefreshRate::kOneTenth) && (secs > 0)) {
+  if ((refreshRate == RefreshRate::kOneTenth) && (remainingSeconds > 0)) {
     tenths = (10 - rtc_.msIntoSecond(nowMs) / kTenthMs) % 10;
   }
 
-  frame = renderCountingFormat(formatIndex, secs, tenths);
+  frame = renderCountingFormat(formatIndex, remainingSeconds, tenths);
   return true;
 }
 
@@ -471,7 +471,7 @@ bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,
     return false;
 
   const DateTime now = rtc_.getNowCached();
-  const long secs = static_cast<long>(now.unixtime()) -
+  const long elapsedSeconds = static_cast<long>(now.unixtime()) -
                     static_cast<long>(baseView_.anchor.unixtime());
 
   uint8_t tenths = 0;
@@ -479,7 +479,7 @@ bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,
     tenths = rtc_.msIntoSecond(nowMs) / kTenthMs;
   }
 
-  frame = renderCountingFormat(formatIndex, secs, tenths);
+  frame = renderCountingFormat(formatIndex, elapsedSeconds, tenths);
   return true;
 }
 

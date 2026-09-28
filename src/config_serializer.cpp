@@ -40,13 +40,13 @@ bool parseTimeOfDay(const char* value, uint16_t* minute) {
 // [fieldKey]), which format group governs valid indexes, whether kSameFormat
 // is an accepted value, and how to reach the target ClockConfig member. Using
 // an accessor instead of a member pointer lets one table cover fields nested
-// at different depths (e.g. cfg.countdown.format vs cfg.display.clockFmt).
+// at different depths (e.g. config.countdown.format vs config.display.clockFormat).
 struct FormatFieldDescriptor {
-  const char* modeKey;
-  const char* fieldKey;
-  FormatGroup group;
-  bool optional;  // True if kSameFormat/-1 means "no secondary format".
-  uint8_t& (*field)(ClockConfig&);
+  const char* modeKey;                 // Object under display.modes that holds the field.
+  const char* fieldKey;                // Property holding the format key.
+  FormatGroup group;                   // Catalog that valid keys and indexes come from.
+  bool optional;                       // True if kSameFormat/-1 means "no secondary format".
+  uint8_t& (*field)(ClockConfig&);     // Mutable accessor, for applying JSON.
   uint8_t (*get)(const ClockConfig&);  // Read-only twin, for serialization.
 };
 
@@ -58,17 +58,17 @@ const FormatFieldDescriptor kFormatFields[] = {
      [](ClockConfig& c) -> uint8_t& { return c.countup.format; },
      [](const ClockConfig& c) { return c.countup.format; }},
     {"clock", "format", kFmtGroupClock, false,
-     [](ClockConfig& c) -> uint8_t& { return c.display.clockFmt; },
-     [](const ClockConfig& c) { return c.display.clockFmt; }},
+     [](ClockConfig& c) -> uint8_t& { return c.display.clockFormat; },
+     [](const ClockConfig& c) { return c.display.clockFormat; }},
     {"friday", "clockFormat", kFmtGroupClock, false,
-     [](ClockConfig& c) -> uint8_t& { return c.friday.clockFmt; },
-     [](const ClockConfig& c) { return c.friday.clockFmt; }},
+     [](ClockConfig& c) -> uint8_t& { return c.friday.clockFormat; },
+     [](const ClockConfig& c) { return c.friday.clockFormat; }},
     {"friday", "toFridaySunsetFormat", kFmtGroupCountdown, false,
-     [](ClockConfig& c) -> uint8_t& { return c.friday.toFridaySunsetFmt; },
-     [](const ClockConfig& c) { return c.friday.toFridaySunsetFmt; }},
+     [](ClockConfig& c) -> uint8_t& { return c.friday.toFridaySunsetFormat; },
+     [](const ClockConfig& c) { return c.friday.toFridaySunsetFormat; }},
     {"friday", "toSaturdaySunsetFormat", kFmtGroupCountdown, false,
-     [](ClockConfig& c) -> uint8_t& { return c.friday.toSaturdaySunsetFmt; },
-     [](const ClockConfig& c) { return c.friday.toSaturdaySunsetFmt; }},
+     [](ClockConfig& c) -> uint8_t& { return c.friday.toSaturdaySunsetFormat; },
+     [](const ClockConfig& c) { return c.friday.toSaturdaySunsetFormat; }},
     {"trading", "format", kFmtGroupCountdown, false,
      [](ClockConfig& c) -> uint8_t& { return c.trading.format; },
      [](const ClockConfig& c) { return c.trading.format; }},
@@ -84,19 +84,19 @@ constexpr char kSameFormatKey[] = "same";
 // One row per free-text display-message field: JSON key under "messages" and
 // how to reach the target fixed-size buffer.
 struct MessageFieldDescriptor {
-  const char* jsonKey;
-  char* (*field)(ClockConfig&);
+  const char* jsonKey;                     // Property name under display.messages.
+  char* (*field)(ClockConfig&);            // Mutable accessor, for applying JSON.
   const char* (*get)(const ClockConfig&);  // Read-only twin, for serialization.
-  size_t size;
+  size_t size;                             // Capacity of the target buffer.
 };
 
 const MessageFieldDescriptor kMessageFields[] = {
     {"splash", [](ClockConfig& c) -> char* { return c.messages.splash; },
      [](const ClockConfig& c) -> const char* { return c.messages.splash; },
      sizeof(MessageConfig::splash)},
-    {"final", [](ClockConfig& c) -> char* { return c.messages.final; },
-     [](const ClockConfig& c) -> const char* { return c.messages.final; },
-     sizeof(MessageConfig::final)},
+    {"final", [](ClockConfig& c) -> char* { return c.messages.countdownDone; },
+     [](const ClockConfig& c) -> const char* { return c.messages.countdownDone; },
+     sizeof(MessageConfig::countdownDone)},
     {"fridaySunset",
      [](ClockConfig& c) -> char* { return c.messages.fridaySunset; },
      [](const ClockConfig& c) -> const char* { return c.messages.fridaySunset; },
@@ -146,15 +146,15 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   display["clock12Hour"] = clock.display.clockUse12Hour;
 
   JsonObject messages = display["messages"].to<JsonObject>();
-  for (const MessageFieldDescriptor& d : kMessageFields) {
-    messages[d.jsonKey] = d.get(clock);
+  for (const MessageFieldDescriptor& descriptor : kMessageFields) {
+    messages[descriptor.jsonKey] = descriptor.get(clock);
   }
 
   JsonObject sound = doc["sound"].to<JsonObject>();
   sound["enabled"] = clock.sound.enabled;
   sound["volume"]  = clock.sound.volumePercent;
-  for (const BeepFieldDescriptor& d : kBeepFields) {
-    sound[d.jsonKey] = clock.sound.*(d.field);
+  for (const BeepFieldDescriptor& descriptor : kBeepFields) {
+    sound[descriptor.jsonKey] = clock.sound.*(descriptor.field);
   }
   JsonObject boundaryAlert = sound["boundaryAlert"].to<JsonObject>();
   boundaryAlert["enabled"] = clock.sound.boundaryAlert.enabled;
@@ -180,17 +180,17 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
   // Nested subscript assignment creates the intermediate mode objects on
   // demand; .to<JsonObject>() would clear a mode that an earlier row already
   // populated (both "friday" and "trading" appear more than once here).
-  for (const FormatFieldDescriptor& d : kFormatFields) {
-    const uint8_t index = d.get(clock);
-    if (d.optional && (index == kSameFormat)) {
-      modes[d.modeKey][d.fieldKey] = kSameFormatKey;
+  for (const FormatFieldDescriptor& descriptor : kFormatFields) {
+    const uint8_t index = descriptor.get(clock);
+    if (descriptor.optional && (index == kSameFormat)) {
+      modes[descriptor.modeKey][descriptor.fieldKey] = kSameFormatKey;
       continue;
     }
     // The key table is in flash, so it is copied out here. ArduinoJson copies
     // this local into its own pool, unlike the const char* fields above.
     char key[kFormatKeyLength];
-    displayFormatKey(d.group, index, key, sizeof(key));
-    modes[d.modeKey][d.fieldKey] = key;
+    displayFormatKey(descriptor.group, index, key, sizeof(key));
+    modes[descriptor.modeKey][descriptor.fieldKey] = key;
   }
 
   modes["countdown"]["end"] = clock.countdown.end;
@@ -260,24 +260,24 @@ bool applyZipcode(const char* zipcode, char* destination, size_t destinationSize
   return true;
 }
 
-void applySoundFields(JsonVariantConst sound, ClockConfig& cfg) {
+void applySoundFields(JsonVariantConst sound, ClockConfig& config) {
   if (!sound["enabled"].isNull()) {
-    cfg.sound.enabled = sound["enabled"].as<bool>();
+    config.sound.enabled = sound["enabled"].as<bool>();
   }
   if (!sound["volume"].isNull()) {
-    cfg.sound.volumePercent = sanitizeVolumePercent(sound["volume"].as<int>());
+    config.sound.volumePercent = sanitizeVolumePercent(sound["volume"].as<int>());
   }
-  for (const BeepFieldDescriptor& d : kBeepFields) {
-    JsonVariantConst value = sound[d.jsonKey];
-    if (value.is<bool>()) cfg.sound.*(d.field) = value.as<bool>();
+  for (const BeepFieldDescriptor& descriptor : kBeepFields) {
+    JsonVariantConst value = sound[descriptor.jsonKey];
+    if (value.is<bool>()) config.sound.*(descriptor.field) = value.as<bool>();
   }
   JsonVariantConst boundaryAlert = sound["boundaryAlert"];
   if (!boundaryAlert["enabled"].isNull()) {
-    cfg.sound.boundaryAlert.enabled = boundaryAlert["enabled"].as<bool>();
+    config.sound.boundaryAlert.enabled = boundaryAlert["enabled"].as<bool>();
   }
   BeepPattern* patterns[] = {
-      &cfg.sound.boundaryAlert.boundary1,
-      &cfg.sound.boundaryAlert.boundary2};
+      &config.sound.boundaryAlert.boundary1,
+      &config.sound.boundaryAlert.boundary2};
   const char* keys[] = {"boundary1", "boundary2"};
   for (uint8_t i = 0; i < 2; ++i) {
     JsonVariantConst source = boundaryAlert[keys[i]];
@@ -305,46 +305,46 @@ void applySoundFields(JsonVariantConst sound, ClockConfig& cfg) {
 // next save rewrites it as a key. Anything unrecognized leaves the field at
 // whatever the caller started from (defaults on load, the previous value on
 // patch), which is the same fallback behavior the index sanitizers had.
-void applyFormatField(const FormatFieldDescriptor& d, JsonVariantConst value,
-                      ClockConfig& cfg) {
-  uint8_t& field = d.field(cfg);
+void applyFormatField(const FormatFieldDescriptor& descriptor, JsonVariantConst value,
+                      ClockConfig& config) {
+  uint8_t& field = descriptor.field(config);
 
   if (value.is<const char*>()) {
     const char* key = value.as<const char*>();
-    if (d.optional && (key != nullptr) && (strcmp(key, kSameFormatKey) == 0)) {
+    if (descriptor.optional && (key != nullptr) && (strcmp(key, kSameFormatKey) == 0)) {
       field = kSameFormat;
       return;
     }
     uint8_t resolved = field;
-    if (displayFormatIndexForKey(d.group, key, &resolved)) field = resolved;
+    if (displayFormatIndexForKey(descriptor.group, key, &resolved)) field = resolved;
     return;
   }
 
   if (value.is<int>()) {
-    field = d.optional
-                ? sanitizeOptionalFormatIndex(d.group, value.as<int>(), field)
-                : sanitizeFormatIndex(d.group, value.as<int>(), field);
+    field = descriptor.optional
+                ? sanitizeOptionalFormatIndex(descriptor.group, value.as<int>(), field)
+                : sanitizeFormatIndex(descriptor.group, value.as<int>(), field);
   }
 }
 
-void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& cfg) {
-  for (const FormatFieldDescriptor& d : kFormatFields) {
-    JsonVariantConst value = modes[d.modeKey][d.fieldKey];
+void applyFormatFields(JsonVariantConst display, JsonVariantConst modes, ClockConfig& config) {
+  for (const FormatFieldDescriptor& descriptor : kFormatFields) {
+    JsonVariantConst value = modes[descriptor.modeKey][descriptor.fieldKey];
     if (value.isNull()) continue;
-    applyFormatField(d, value, cfg);
+    applyFormatField(descriptor, value, config);
   }
   if (!display["brightness"].isNull()) {
-    cfg.display.brightness = sanitizeBrightness(display["brightness"].as<int>());
+    config.display.brightness = sanitizeBrightness(display["brightness"].as<int>());
   }
   if (!display["clock12Hour"].isNull()) {
-    cfg.display.clockUse12Hour = display["clock12Hour"].as<bool>();
+    config.display.clockUse12Hour = display["clock12Hour"].as<bool>();
   }
   if (!modes["friday"]["blinkBeforeMinutes"].isNull()) {
-    cfg.friday.blinkBeforeMinutes =
+    config.friday.blinkBeforeMinutes =
         sanitizeBlinkMinutes(modes["friday"]["blinkBeforeMinutes"].as<int>());
   }
   if (!modes["friday"]["blinkAfterMinutes"].isNull()) {
-    cfg.friday.blinkAfterMinutes =
+    config.friday.blinkAfterMinutes =
         sanitizeBlinkMinutes(modes["friday"]["blinkAfterMinutes"].as<int>());
   }
 }
@@ -369,11 +369,11 @@ bool applyDateTimeField(JsonVariantConst value, char* destination,
   return true;
 }
 
-bool applyTradingSchedule(JsonVariantConst trading, ClockConfig& cfg) {
+bool applyTradingSchedule(JsonVariantConst trading, ClockConfig& config) {
   const bool hasIntervals = !trading["intervals"].isNull();
   const bool hasCount = !trading["intervalCount"].isNull();
   if (!hasIntervals && !hasCount) return true;
-  TradingSchedule candidate = cfg.trading.schedule;
+  TradingSchedule candidate = config.trading.schedule;
   if (hasIntervals) {
     JsonArrayConst intervals = trading["intervals"].as<JsonArrayConst>();
     if ((intervals.size() < 1) || (intervals.size() > kMaxTradingIntervals)) {
@@ -398,15 +398,15 @@ bool applyTradingSchedule(JsonVariantConst trading, ClockConfig& cfg) {
     candidate.intervalCount = intervalCount;
   }
   if (!isValidTradingSchedule(candidate)) return false;
-  cfg.trading.schedule = candidate;
+  config.trading.schedule = candidate;
   return true;
 }
 
-void applyMessageFields(JsonVariantConst messages, ClockConfig& cfg) {
-  for (const MessageFieldDescriptor& d : kMessageFields) {
-    JsonVariantConst value = messages[d.jsonKey];
+void applyMessageFields(JsonVariantConst messages, ClockConfig& config) {
+  for (const MessageFieldDescriptor& descriptor : kMessageFields) {
+    JsonVariantConst value = messages[descriptor.jsonKey];
     if (value.isNull()) continue;
-    sanitizeDisplayMessage(value.as<const char*>(), d.field(cfg), d.size);
+    sanitizeDisplayMessage(value.as<const char*>(), descriptor.field(config), descriptor.size);
   }
 }
 
@@ -428,22 +428,22 @@ bool applyLocationInfo(JsonVariantConst source, LocationInfo& info) {
   return true;
 }
 
-void applyTimezoneFields(JsonVariantConst time, ClockConfig& cfg) {
+void applyTimezoneFields(JsonVariantConst time, ClockConfig& config) {
   JsonVariantConst timezone = time["timezone"];
   if (!timezone["name"].isNull()) {
     sanitizePrintableText(timezone["name"].as<const char*>(),
-                          cfg.timezone.name,
-                          sizeof(cfg.timezone.name));
+                          config.timezone.name,
+                          sizeof(config.timezone.name));
   }
   if (!timezone["utcOffsetMinutes"].isNull()) {
-    cfg.timezone.utcOffsetMinutes =
+    config.timezone.utcOffsetMinutes =
         sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
   }
 }
 
 }  // namespace
 
-void sanitizeFormatFields(ClockConfig& cfg) {
+void sanitizeFormatFields(ClockConfig& config) {
   // The fallback for a field is its group's default format, resolved from the
   // default key. That is both cheaper than materializing a whole default
   // ClockConfig and more honest: the fallback for a countdown format field is
@@ -456,28 +456,28 @@ void sanitizeFormatFields(ClockConfig& cfg) {
   displayFormatIndexForKey(kFmtGroupClock, defaultClockFormatKey(),
                            &clockFallback);
 
-  for (const FormatFieldDescriptor& d : kFormatFields) {
-    uint8_t& field = d.field(cfg);
+  for (const FormatFieldDescriptor& descriptor : kFormatFields) {
+    uint8_t& field = descriptor.field(config);
     const uint8_t fallback =
-        (d.group == kFmtGroupClock) ? clockFallback : countingFallback;
-    field = d.optional
-        ? sanitizeOptionalFormatIndex(d.group, field, fallback)
-        : sanitizeFormatIndex(d.group, field, fallback);
+        (descriptor.group == kFmtGroupClock) ? clockFallback : countingFallback;
+    field = descriptor.optional
+        ? sanitizeOptionalFormatIndex(descriptor.group, field, fallback)
+        : sanitizeFormatIndex(descriptor.group, field, fallback);
   }
 }
 
-void sanitizeMessageFields(ClockConfig& cfg) {
-  for (const MessageFieldDescriptor& d : kMessageFields) {
-    char* field = d.field(cfg);
-    sanitizeDisplayMessage(field, field, d.size);
+void sanitizeMessageFields(ClockConfig& config) {
+  for (const MessageFieldDescriptor& descriptor : kMessageFields) {
+    char* field = descriptor.field(config);
+    sanitizeDisplayMessage(field, field, descriptor.size);
   }
 }
 
-void sanitizeSoundFields(ClockConfig& cfg) {
-  cfg.sound.volumePercent = sanitizeVolumePercent(cfg.sound.volumePercent);
+void sanitizeSoundFields(ClockConfig& config) {
+  config.sound.volumePercent = sanitizeVolumePercent(config.sound.volumePercent);
   BeepPattern* patterns[] = {
-      &cfg.sound.boundaryAlert.boundary1,
-      &cfg.sound.boundaryAlert.boundary2};
+      &config.sound.boundaryAlert.boundary1,
+      &config.sound.boundaryAlert.boundary2};
   for (BeepPattern* pattern : patterns) {
     pattern->toneHz = sanitizeBoundaryFrequencyHz(pattern->toneHz);
     pattern->totalDurationSeconds = sanitizeBoundaryDurationSeconds(
@@ -487,48 +487,48 @@ void sanitizeSoundFields(ClockConfig& cfg) {
   }
 }
 
-const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg) {
+const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& config) {
   // Every present field is applied even after an invalid one is seen, so a
   // single bad value in config.json can't wipe out the rest of the file on
   // load. The first error is still reported for API callers, which discard
-  // the partially updated cfg.
+  // the partially updated config.
   const char* error = nullptr;
   JsonVariantConst display = root["display"];
 
   if (!display["activeMode"].isNull()) {
     Mode nextMode;
     if (modeFromName(display["activeMode"] | "", &nextMode)) {
-      cfg.activeMode = nextMode;
+      config.activeMode = nextMode;
     } else {
       error = "{\"error\":\"Invalid active mode\"}";
     }
   }
 
-  applyFormatFields(display, display["modes"], cfg);
+  applyFormatFields(display, display["modes"], config);
   const JsonVariantConst modes = display["modes"];
   const bool countdownOk = applyDateTimeField(modes["countdown"]["end"],
-      cfg.countdown.end, sizeof(cfg.countdown.end), false);
+      config.countdown.end, sizeof(config.countdown.end), false);
   const bool countupOk = applyDateTimeField(modes["countup"]["start"],
-      cfg.countup.start, sizeof(cfg.countup.start), true);
+      config.countup.start, sizeof(config.countup.start), true);
   if ((!countdownOk || !countupOk) && (error == nullptr)) {
     error = "{\"error\":\"Invalid countdown or count-up datetime\"}";
   }
-  if (!applyTradingSchedule(display["modes"]["trading"], cfg) &&
+  if (!applyTradingSchedule(display["modes"]["trading"], config) &&
       (error == nullptr)) {
     error = "{\"error\":\"Trading sessions must be valid, ordered, and separated\"}";
   }
-  applyMessageFields(display["messages"], cfg);
-  applySoundFields(root["sound"], cfg);
+  applyMessageFields(display["messages"], config);
+  applySoundFields(root["sound"], config);
 
   const bool locationOk =
-      applyLocationInfo(root["location"], cfg.locations.device);
+      applyLocationInfo(root["location"], config.locations.device);
   const bool sunsetOk =
-      applyLocationInfo(root["sunset"], cfg.locations.sunsetTest);
+      applyLocationInfo(root["sunset"], config.locations.sunsetTest);
   if ((!locationOk || !sunsetOk) && (error == nullptr)) {
     error = "{\"error\":\"ZIP code must be 5 digits\"}";
   }
 
-  applyTimezoneFields(root["time"], cfg);
+  applyTimezoneFields(root["time"], config);
   return error;
 }
 

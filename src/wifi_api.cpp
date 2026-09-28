@@ -6,7 +6,7 @@
 
 namespace {
 
-constexpr uint32_t kRebootDelayMs = 1500;
+constexpr uint32_t kRebootDelayMs = 1500;  // Lets the HTTP response flush before restarting.
 
 }  // namespace
 

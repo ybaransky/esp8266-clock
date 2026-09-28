@@ -34,7 +34,7 @@ ViewState ClockController::initialView(const ClockConfig& config, const DateTime
       view.formatIndex = config.countup.format;
       break;
     case kModeClock:
-      view.formatIndex = config.display.clockFmt;
+      view.formatIndex = config.display.clockFormat;
       break;
   }
   return view;

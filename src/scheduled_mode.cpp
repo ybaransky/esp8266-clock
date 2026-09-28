@@ -6,8 +6,8 @@
 
 namespace {
 
-constexpr uint32_t kMaxAnnouncementDelaySeconds = 5;
-constexpr int32_t kBoundaryMessageMs = 5000;
+constexpr uint32_t kMaxAnnouncementDelaySeconds = 5;  // Later than this, a crossing is installed silently.
+constexpr int32_t kBoundaryMessageMs = 5000;          // How long a boundary message blinks.
 
 void copyCue(BoundaryCue& cue, const char* message, bool beep) {
   strlcpy(cue.message, message, sizeof(cue.message));
@@ -86,16 +86,16 @@ ViewState ScheduledModeController::fridayViewFor(
     const ScheduleDecision& decision) const {
   ViewState view;
   if (decision.view == ScheduleView::kClock) {
-    view.formatIndex = friday_.clockFmt;
+    view.formatIndex = friday_.clockFormat;
     return view;
   }
   view.view = View::kCountdown;
   view.anchor = DateTime(decision.next.atLocalSeconds);
   if (decision.next.kind == BoundaryKind::kFridaySunset) {
-    view.formatIndex = friday_.toFridaySunsetFmt;
+    view.formatIndex = friday_.toFridaySunsetFormat;
     view.blink = {fridaySunset_ - friday_.blinkBeforeMinutes * 60UL, fridaySunset_};
   } else {
-    view.formatIndex = friday_.toSaturdaySunsetFmt;
+    view.formatIndex = friday_.toSaturdaySunsetFormat;
     view.blink = {fridaySunset_, fridaySunset_ + friday_.blinkAfterMinutes * 60UL};
   }
   return view;

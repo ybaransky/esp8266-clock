@@ -5,9 +5,9 @@
 #include "hardware.h"
 
 namespace {
-constexpr int kPwmRange = 255;
-constexpr int kMaxDuty = kPwmRange / 2;
-constexpr uint32_t kEventBeepMs = 150;
+constexpr int kPwmRange = 255;           // analogWrite() full-scale value.
+constexpr int kMaxDuty = kPwmRange / 2;  // 50% duty, the loudest square wave; 100% volume.
+constexpr uint32_t kEventBeepMs = 150;   // Length of a one-shot event beep.
 }  // namespace
 
 void BeepPlayer::begin() {

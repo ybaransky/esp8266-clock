@@ -79,11 +79,11 @@ class DateTime {
     second_ = static_cast<uint8_t>(secondOfDay % 60UL);
   }
 
-  uint32_t unix_;
-  int year_ = 1970;
-  uint8_t month_ = 1;
-  uint8_t day_ = 1;
-  uint8_t hour_ = 0;
-  uint8_t minute_ = 0;
-  uint8_t second_ = 0;
+  uint32_t unix_;           // Seconds since 1970-01-01, the canonical value.
+  int year_ = 1970;         // Calendar fields derived from unix_.
+  uint8_t month_ = 1;       // 1-12.
+  uint8_t day_ = 1;         // Day of month, 1-31.
+  uint8_t hour_ = 0;        // 0-23.
+  uint8_t minute_ = 0;      // 0-59.
+  uint8_t second_ = 0;      // 0-59.
 };

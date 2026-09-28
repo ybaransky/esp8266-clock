@@ -5,7 +5,7 @@
 
 namespace {
 
-LogTimeProvider timeProvider = nullptr;
+LogTimeProvider timeProvider = nullptr;  // Cached-time source; nullptr prints --:--:--.
 
 const char* baseName(const char* path) {
   const char* fileName = path;

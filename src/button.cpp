@@ -22,9 +22,9 @@ public:
     startupRecheckDone_ = false;
 
     // D3/GPIO0 uses pull-up logic; pressed state is LOW.
-    btn_.attachClick(onBtnClick);
-    btn_.attachDoubleClick(onBtnDoubleClick);
-    btn_.attachLongPressStart(onBtnLongPressStart);
+    driver_.attachClick(onBtnClick);
+    driver_.attachDoubleClick(onBtnDoubleClick);
+    driver_.attachLongPressStart(onBtnLongPressStart);
   }
 
   void tick() {
@@ -34,7 +34,7 @@ public:
       }
       startupRecheckDone_ = true;
     }
-    btn_.tick();
+    driver_.tick();
   }
 
   bool hasEvent() const {
@@ -66,7 +66,7 @@ private:
     eventTail_ = nextTail;
   }
 
-  OneButton btn_ = OneButton(Hardware::Pins::BUTTON, true, true);  // Debounced button driver.
+  OneButton driver_ = OneButton(Hardware::Pins::BUTTON, true, true);  // Debounced button driver.
   volatile ButtonEvent eventQueue_[kEventQueueCapacity] = {};     // Pending button events.
   volatile int eventHead_ = 0;                                     // Queue read index.
   volatile int eventTail_ = 0;                                     // Queue write index.
@@ -74,21 +74,21 @@ private:
   unsigned long startupRecheckAtMs_ = 0;                           // millis() deadline for recheck.
 };
 
-static ButtonController btn;
+static ButtonController controller;  // The one physical button behind the free functions below.
 
 static void onBtnClick() {
-  btn.handleAction("Single press", ButtonEvent::kShowSsid);
+  controller.handleAction("Single press", ButtonEvent::kShowSsid);
 }
 
 static void onBtnDoubleClick() {
-  btn.handleAction("Double click", ButtonEvent::kShowIpAddress);
+  controller.handleAction("Double click", ButtonEvent::kShowIpAddress);
 }
 
 static void onBtnLongPressStart() {
-  btn.handleAction("Long press", ButtonEvent::kShowRtcStatus);
+  controller.handleAction("Long press", ButtonEvent::kShowRtcStatus);
 }
 
-void buttonBegin()                    { btn.begin(); }
-void buttonTick()                     { btn.tick(); }
-bool buttonHasEvent()                 { return btn.hasEvent(); }
-ButtonEvent buttonNextEvent()         { return btn.nextEvent(); }
+void buttonBegin()                    { controller.begin(); }
+void buttonTick()                     { controller.tick(); }
+bool buttonHasEvent()                 { return controller.hasEvent(); }
+ButtonEvent buttonNextEvent()         { return controller.nextEvent(); }

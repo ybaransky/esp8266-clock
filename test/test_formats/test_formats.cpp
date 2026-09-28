@@ -114,12 +114,12 @@ void test_unknown_key_does_not_resolve() {
 }
 
 // The values defaults.cpp and data/config.json ship must name real formats.
-// This is the test that would have caught clockFmt = 7 claiming to be
+// This is the test that would have caught clockFormat = 7 claiming to be
 // " YYYY | MM:DD | hh;mm" when index 7 was " DOW  | hh  H |  mm N".
 void test_shipped_default_keys_resolve() {
   const struct {
-    FormatGroup group;
-    const char* key;
+    FormatGroup group;  // Catalog the default key must resolve in.
+    const char* key;    // Default format key under test.
   } kShippedDefaults[] = {
       {kFmtGroupClock, "yyyy-mmdd-hhmm"},
       {kFmtGroupCountdown, "ddl-hhmm-ssu"},

@@ -19,4 +19,4 @@ bool StorageManager::ensureMounted(const char* context) {
   return false;
 }
 
-StorageManager storageManager;
+StorageManager storageManager;  // Definition of the shared mount owner declared in storage_manager.h.

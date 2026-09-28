@@ -47,13 +47,13 @@ class ConfigApi {
   // the RTC does not vouch for - the previous signature made that the caller's
   // problem and a missing DS3231 returned BCD garbage from an absent device.
   // A no-op, logged, when RtcService::timeIsTrustworthy() is false.
-  bool resolveCountupStart(ClockConfig& cfg);
+  bool resolveCountupStart(ClockConfig& config);
 
   // The only two ways this class writes a ClockConfig to disk. Both resolve the
   // count-up origin first, so a save path added later cannot skip it; that is
   // the whole reason they exist rather than calling ConfigManager directly.
-  bool persistClockConfig(ClockConfig& cfg);
-  bool persistClockConfig(ClockConfig& cfg, const WifiConfig& wifi);
+  bool persistClockConfig(ClockConfig& config);
+  bool persistClockConfig(ClockConfig& config, const WifiConfig& wifi);
 
   void populateConfigJson(JsonDocument& doc);
   // Mirrors a /api/config response body to the serial monitor. Call it after

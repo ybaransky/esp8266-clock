@@ -10,14 +10,14 @@ extern "C" {
 
 namespace {
 
-constexpr uint32_t kStationConnectTimeoutMs = 15000;
-constexpr uint16_t kStationConnectPollMs = 250;
-constexpr uint32_t kApClientIpTimeoutMs = 10000;
-constexpr uint32_t kApAddressTimeoutMs = 5000;
+constexpr uint32_t kStationConnectTimeoutMs = 15000;  // Station join attempt before falling back to AP.
+constexpr uint16_t kStationConnectPollMs = 250;       // Status poll interval during a join.
+constexpr uint32_t kApClientIpTimeoutMs = 10000;     // Wait for a new AP client to be leased an IP.
+constexpr uint32_t kApAddressTimeoutMs = 5000;       // Bounded wait for softAPIP() after softAP().
 
-WiFiEventHandler apStationConnectedHandler;
-WiFiEventHandler apStationDisconnectedHandler;
-WifiConnectionManager* gInstance = nullptr;
+WiFiEventHandler apStationConnectedHandler;     // Keeps the SDK subscription alive.
+WiFiEventHandler apStationDisconnectedHandler;  // Keeps the SDK subscription alive.
+WifiConnectionManager* activeManager = nullptr;  // Target of the static SDK event callbacks.
 
 bool isSecureNetwork(uint8_t encryptionType) {
   return encryptionType != ENC_TYPE_NONE;
@@ -26,15 +26,15 @@ bool isSecureNetwork(uint8_t encryptionType) {
 void onApStationConnected(const WiFiEventSoftAPModeStationConnected& event) {
   // I2C (used by LOG_PRINTF via logCurrentTime) is unsafe in WiFi event
   // callbacks - defer to tick() which runs from loop().
-  if (gInstance) {
-    gInstance->onApClientConnected(event.mac);
+  if (activeManager) {
+    activeManager->onApClientConnected(event.mac);
   }
 }
 
 void onApStationDisconnected(const WiFiEventSoftAPModeStationDisconnected& event) {
   // Same deferral rule as onApStationConnected.
-  if (gInstance) {
-    gInstance->onApClientDisconnected(event.mac);
+  if (activeManager) {
+    activeManager->onApClientDisconnected(event.mac);
   }
 }
 
@@ -50,7 +50,7 @@ void formatMac(const uint8_t mac[6], char out[18]) {
 // -----------------------------------------------------------------------------
 
 void WifiConnectionManager::begin(const WifiConfig& config) {
-  gInstance = this;
+  activeManager = this;
   config_ = config;
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);

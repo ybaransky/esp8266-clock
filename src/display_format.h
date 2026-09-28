@@ -24,8 +24,8 @@ enum class ColonAnimation : uint8_t {
 
 // Row widths for the flash-resident key and label tables. Both keys and labels
 // live in PROGMEM, so these also size the scratch buffers callers copy into.
-static constexpr size_t kFormatKeyLength = 24;
-static constexpr size_t kFormatLabelLength = 24;
+static constexpr size_t kFormatKeyLength = 24;    // Key row width, including NUL.
+static constexpr size_t kFormatLabelLength = 24;  // Label row width, including NUL.
 
 // Describes the scheduling behavior derived from a format's panel shapes.
 // The label is not here: it lives in flash and is fetched with

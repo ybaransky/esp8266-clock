@@ -27,7 +27,7 @@ class BeepPlayer {
     uint8_t startingBeatsHz = 0;  // Zero selects a continuous short beep.
   };
 
-  enum class Override : uint8_t { kNone, kBeep, kPreview };
+  enum class Override : uint8_t { kNone, kBeep, kPreview };  // Which temporary sound owns the buzzer.
   void output(uint16_t toneHz);
   static Window windowFor(const BeepPattern& pattern, uint32_t nowMs);
 

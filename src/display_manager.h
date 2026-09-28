@@ -5,6 +5,9 @@
 
 #include "config.h"
 
+// Overlay duration meaning "until explicitly replaced or cleared".
+static constexpr int32_t kForever = INT32_MAX;
+
 // Tracks render deadlines and independently advances message and colon blink phases.
 class DisplayScheduler {
  public:
@@ -91,10 +94,10 @@ enum class Overlay : uint8_t {
 // Short lowercase name for logging (e.g. "message", "pages").
 const char* overlayName(Overlay overlay);
 
-static constexpr uint8_t kDisplayPanelsPerPage = 3;
-static constexpr uint8_t kDisplayPanelChars = 4;
-static constexpr uint8_t kMaxDisplayPages = 8;
-static constexpr uint16_t kDefaultPageDurationMs = 2000;
+static constexpr uint8_t kDisplayPanelsPerPage = 3;       // Panels filled by one overlay page.
+static constexpr uint8_t kDisplayPanelChars = 4;          // Visible characters per panel.
+static constexpr uint8_t kMaxDisplayPages = 8;            // Page capacity of one paged overlay.
+static constexpr uint16_t kDefaultPageDurationMs = 2000;  // Time each page stays up by default.
 
 // Holds the three panel strings that make up one page of an overlay.
 struct DisplayPage {

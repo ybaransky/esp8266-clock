@@ -52,7 +52,7 @@ struct StorageInfo {
   size_t usedBytes;   // LittleFS used capacity.
 };
 
-constexpr I2CDeviceAddressLabel KNOWN_I2C_DEVICES[] = {
+constexpr I2CDeviceAddressLabel kKnownI2cDevices[] = {
     {0x20, "PCF8574 GPIO expander / LCD backpack"},
     {0x21, "PCF8574 GPIO expander / LCD backpack"},
     {0x22, "PCF8574 GPIO expander / LCD backpack"},
@@ -140,7 +140,7 @@ const char* flashModeName(FlashMode_t mode) {
 // -----------------------------------------------------------------------------
 
 const char *I2CBusScanner::deviceNameForAddress(uint8_t address) {
-  for (const I2CDeviceAddressLabel &device : KNOWN_I2C_DEVICES) {
+  for (const I2CDeviceAddressLabel &device : kKnownI2cDevices) {
     if (device.address == address) {
       return device.name;
     }
@@ -152,7 +152,7 @@ void I2CBusScanner::scan() {
   LOG_PRINTLN("Scanning I2C bus...");
   size_t found = 0;
 
-  for (uint8_t address = FIRST_VALID_ADDRESS; address <= LAST_VALID_ADDRESS; address++) {
+  for (uint8_t address = kFirstValidAddress; address <= kLastValidAddress; address++) {
     Wire.beginTransmission(address);
     if (Wire.endTransmission() == 0) {
       LOG_PRINTF("Found device at 0x%02X: (%s)", address, deviceNameForAddress(address));
@@ -163,7 +163,7 @@ void I2CBusScanner::scan() {
   LOG_PRINTF("Scan complete. %u device(s) found.", static_cast<unsigned>(found));
 }
 
-I2CBusScanner i2cBusScanner;
+I2CBusScanner i2cBusScanner;  // Definition of the shared scanner declared in hardware.h.
 
 void printDeviceInfo() {
   const HeapInfo    heap    = getHeapInfo();

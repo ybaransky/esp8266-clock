@@ -17,11 +17,11 @@
 
 namespace {
 
-constexpr uint32_t kRtcHealthPollIntervalMs = 2000;
+constexpr uint32_t kRtcHealthPollIntervalMs = 2000;  // How often the "no rtc" overlay is re-evaluated.
 
 //                                 123412341234
-const char kMsgNoRtc[]  = "  no rtc    ";
-const char kMsgLowBat[] = "  LO BAT    ";
+const char kNoRtcMessage[]      = "  no rtc    ";  // Fault overlay when the RTC is missing.
+const char kLowBatteryMessage[] = "  LO BAT    ";  // Fault overlay for a low RTC backup battery.
 
 // Deliberately raw Serial (not LOG_PRINTLN): this is a hand-aligned ASCII-art
 // box meant to catch a human's eye during hardware bring-up, and the
@@ -103,8 +103,8 @@ void ClockApplication::begin() {
   initializeDisplayAndConfig();
   reportInitialRtcStatus(rtc_.getStatus());
 
-  const WifiConfig& cfg = configManager_.wifiConfig();
-  wifiConnectionManager_.begin(cfg);
+  const WifiConfig& config = configManager_.wifiConfig();
+  wifiConnectionManager_.begin(config);
   webPortal_.begin();
 
   buttonBegin();
@@ -147,10 +147,10 @@ void ClockApplication::initializeDisplayAndConfig() {
 
 void ClockApplication::reportInitialRtcStatus(const RtcStatus& status) {
   if (!status.present) {
-    displayManager_.showFault(kMsgNoRtc);
+    displayManager_.showFault(kNoRtcMessage);
     LOG_PRINTLN("RTC not found - showing no rtc");
   } else if (status.lowBattery) {
-    displayManager_.showFault(kMsgLowBat);
+    displayManager_.showFault(kLowBatteryMessage);
     LOG_PRINTLN("Low battery - showing info state");
   }
 }
@@ -189,11 +189,11 @@ void ClockApplication::checkRtcHealth(uint32_t nowMs) {
   const bool healthy = rtc_.isHealthy();
   if (!healthy) {
     if (rtcWasHealthy_) LOG_PRINTLN("RTC health lost");
-    displayManager_.showFault(kMsgNoRtc);
+    displayManager_.showFault(kNoRtcMessage);
   } else {
     if (!rtcWasHealthy_) LOG_PRINTLN("RTC health restored");
     if (rtc_.getStatus().lowBattery) {
-      displayManager_.showFault(kMsgLowBat);
+      displayManager_.showFault(kLowBatteryMessage);
     } else {
       displayManager_.clearFault();
     }

@@ -25,21 +25,21 @@ void serializeWifiStatus(JsonDocument& doc, const WifiConfig& wifi);
 // falling back to that group's default format. Shares the field list
 // (mode/JSON key, target member, format group) with applyJsonToClockConfig
 // so the two directions can't drift apart.
-void sanitizeFormatFields(ClockConfig& cfg);
+void sanitizeFormatFields(ClockConfig& config);
 
 // Re-sanitizes every display message field in place (trims to printable
 // ASCII, clamps length). Shares the field list with applyJsonToClockConfig.
-void sanitizeMessageFields(ClockConfig& cfg);
+void sanitizeMessageFields(ClockConfig& config);
 
 // Clamps volume and generated boundary-pattern settings to supported ranges.
-void sanitizeSoundFields(ClockConfig& cfg);
+void sanitizeSoundFields(ClockConfig& config);
 
-// Applies every clock-config field present in root onto cfg (patch semantics:
+// Applies every clock-config field present in root onto config (patch semantics:
 // absent fields are untouched). Used both to load config.json (base = defaults)
 // and to apply a POST /api/config payload (base = loaded config). Returns
 // nullptr on success, or a static error-JSON string for the first invalid value
-// - in that case cfg may be partially updated and should be discarded.
-const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& cfg);
+// - in that case config may be partially updated and should be discarded.
+const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& config);
 
 // Same patch semantics for the wifi section. Returns true when any wifi field
 // was present (callers use this to decide whether a reboot is needed).

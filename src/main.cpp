@@ -2,7 +2,7 @@
 
 #include "clock_application.h"
 
-ClockApplication application;
+ClockApplication application;  // Owns every service; setup() and loop() delegate to it.
 
 void setup() {
   application.begin();

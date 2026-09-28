@@ -27,19 +27,19 @@ struct ScheduleDecision {
   ScheduleBoundary next;  // Strictly future boundary for valid schedule inputs.
 };
 
-static constexpr uint8_t kMaxTradingIntervals = 2;
+static constexpr uint8_t kMaxTradingIntervals = 2;  // Session slots stored, enabled or not.
 
 // A same-day Trading session expressed as minutes after local midnight.
 struct TradingInterval {
-  uint16_t startMinute = 0;
-  uint16_t stopMinute = 0;
+  uint16_t startMinute = 0;  // Session open, minutes after local midnight.
+  uint16_t stopMinute = 0;   // Session close, minutes after midnight; > startMinute.
 };
 
 // Fixed-capacity set of enabled Trading sessions. Entries at and above
 // intervalCount retain their configured values but are not scheduled.
 struct TradingSchedule {
-  uint8_t intervalCount = 1;
-  TradingInterval intervals[kMaxTradingIntervals]{};
+  uint8_t intervalCount = 1;                          // Leading intervals that are scheduled.
+  TradingInterval intervals[kMaxTradingIntervals]{};  // All slots, disabled ones retained.
 };
 
 // Friday sunsets belong to the week beginning at fridayMidnight.

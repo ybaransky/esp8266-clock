@@ -7,14 +7,14 @@
 
 namespace {
 
-constexpr uint8_t kRtcI2cAddress = Hardware::I2CAddress::DS3231;
+constexpr uint8_t kRtcI2cAddress = Hardware::I2CAddress::DS3231;  // Probed to detect the chip on the bus.
 
 // SQW edges advance the cache. RTC servicing owns the 30-second resync;
 // diagnostic logging never changes time and never reads the chip.
 constexpr uint8_t kSqwResyncSeconds = 30;
-constexpr uint32_t kSqwStartupWarnMs = 3500;
-constexpr uint32_t kSqwHealthLogIntervalMs = 10000;
-constexpr uint32_t kSqwPulseStaleMs = 3000;
+constexpr uint32_t kSqwStartupWarnMs = 3500;         // Grace period before a silent SQW is logged.
+constexpr uint32_t kSqwHealthLogIntervalMs = 10000;  // Minimum spacing of SQW health warnings.
+constexpr uint32_t kSqwPulseStaleMs = 3000;          // Pulse age at which SQW counts as missing.
 
 // The only state shared with the ISR, and the only file-static state left in
 // this module. It is genuinely singleton - there is one SQW pin - and keeping
@@ -25,7 +25,7 @@ struct SqwIsrCounters {
   volatile uint32_t lifetimePulseCount = 0;  // Lifetime ISR pulses (diagnostics).
   volatile uint32_t edgeAtMs = 0;  // millis() stamped in the ISR at the last rising edge.
 };
-SqwIsrCounters isrCounters;
+SqwIsrCounters isrCounters;  // Written by the SQW ISR, drained by consumeSqwPulse().
 
 // The instance the log timestamp provider reads from. There is exactly one
 // RtcService, owned by ClockApplication; this is how a plain function pointer

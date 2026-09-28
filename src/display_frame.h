@@ -8,8 +8,8 @@
 // the pure format renderers (and their host tests) can produce frames without
 // pulling in the TM1637 driver.
 
-constexpr size_t kDisplayPanelCount = 3;
-constexpr size_t kDisplayFramePanelSize = 8;
+constexpr size_t kDisplayPanelCount = 3;      // Physical TM1637 panels, left to right.
+constexpr size_t kDisplayFramePanelSize = 8;  // Bytes per panel string: 4 glyphs, colon markup, NUL.
 
 // Carries the complete text payload for one render across all three panels.
 struct DisplayFrame {

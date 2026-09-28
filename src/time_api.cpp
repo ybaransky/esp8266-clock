@@ -10,12 +10,12 @@
 // -----------------------------------------------------------------------------
 
 void TimeApi::handleGetTime() {
-  const DateTime dt = rtc_.getNow();
+  const DateTime now = rtc_.getNow();
   char buffer[96];
   snprintf(buffer, sizeof(buffer),
            "{\"date\":\"%04d-%02d-%02d\",\"time\":\"%02d:%02d:%02d\",\"dateTime\":\"%04d-%02d-%02d %02d:%02d:%02d\"}",
-           dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second(),
-           dt.year(), dt.month(), dt.day(), dt.hour(), dt.minute(), dt.second());
+           now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second(),
+           now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
   responder_.sendJson(200, buffer);
 }
 

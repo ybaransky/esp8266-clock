@@ -3,8 +3,7 @@
 
 #include "schedule.h"
 #include "beep_pattern.h"
-
-static constexpr int32_t kForever = INT32_MAX;
+#include "datetime_validation.h"
 
 // Sentinel for optional secondary format indexes: use the primary format.
 static constexpr uint8_t kSameFormat = 0xFF;
@@ -24,30 +23,30 @@ enum Mode : uint8_t {
 
 // Stores the station and fallback access-point credentials used to configure WiFi.
 struct WifiConfig {
-    String staSsid;      // SSID used when joining an existing WiFi network.
-    String staPassword;  // Password for staSsid.
-    String apSsid;       // SSID for fallback AP mode; empty = derive ESP_XXXXXX from the soft-AP MAC.
-    String apPassword;   // Password for fallback access-point mode.
+  String staSsid;      // SSID used when joining an existing WiFi network.
+  String staPassword;  // Password for staSsid.
+  String apSsid;       // SSID for fallback AP mode; empty = derive ESP_XXXXXX from the soft-AP MAC.
+  String apPassword;   // Password for fallback access-point mode.
 };
 
 // Geographic location used by both the device and sunset calculator inputs.
 struct LocationInfo {
   float latitude  = 0.0f;  // Latitude in decimal degrees.
   float longitude = 0.0f;  // Longitude in decimal degrees.
-  char zipcode[6] = {};     // Five-digit ZIP code plus terminator.
+  char zipcode[6] = {};    // Five-digit ZIP code plus terminator.
 };
 
 // Stores display presentation settings used by the clock renderer and hardware.
 struct DisplayConfig {
-  uint8_t clockFmt = 0;        // Selected clock-format index.
-  uint8_t brightness = 3;      // TM1637 brightness level from 0 through 7.
-  bool clockUse12Hour = false; // True to render clock hours on a 12-hour scale.
+  uint8_t clockFormat = 0;      // Clock-format index used by Clock mode.
+  uint8_t brightness = 3;       // TM1637 brightness level from 0 through 7.
+  bool clockUse12Hour = false;  // True to render clock hours on a 12-hour scale.
 };
 
 // Stores the target and renderer selection for countdown mode.
 struct CountdownConfig {
-  char end[20] = {};   // "YYYY-MM-DD HH:MM:SS"
-  uint8_t format = 0;  // Selected counting-format index.
+  char end[kLocalDateTimeLength] = {};  // Local target, "YYYY-MM-DD HH:MM:SS".
+  uint8_t format = 0;                   // Counting-format index.
 };
 
 // Sentinel stored in CountupConfig::start meaning "never been set": resolve it
@@ -60,25 +59,25 @@ static constexpr char kCountupStartNow[] = "now";
 
 // Stores the origin and renderer selection for count-up mode.
 struct CountupConfig {
-  char start[20] = {};  // "YYYY-MM-DD HH:MM:SS", or kCountupStartNow when unset.
-  uint8_t format = 0;   // Selected counting-format index.
+  char start[kLocalDateTimeLength] = {};  // Local origin, "YYYY-MM-DD HH:MM:SS", or kCountupStartNow when unset.
+  uint8_t format = 0;                     // Counting-format index.
 };
 
 // Stores the format selected for each phase of the Friday schedule, plus the
 // two blink windows that bracket Friday sunset.
 struct FridayConfig {
-  uint8_t clockFmt = 0;             // Clock phase (Saturday sunset through Friday midnight).
-  uint8_t toFridaySunsetFmt = 0;    // Friday-midnight to Friday-sunset countdown.
-  uint8_t toSaturdaySunsetFmt = 0;  // Friday-sunset to Saturday-sunset countdown.
-  uint8_t blinkBeforeMinutes = 0;   // Blink for this many minutes before Friday sunset; 0 = off.
-  uint8_t blinkAfterMinutes = 0;    // Blink for this many minutes after Friday sunset; 0 = off.
+  uint8_t clockFormat = 0;             // Clock-format index, Saturday sunset to Friday midnight.
+  uint8_t toFridaySunsetFormat = 0;    // Counting-format index, Friday midnight to Friday sunset.
+  uint8_t toSaturdaySunsetFormat = 0;  // Counting-format index, Friday sunset to Saturday sunset.
+  uint8_t blinkBeforeMinutes = 0;      // Blink for this many minutes before Friday sunset; 0 = off.
+  uint8_t blinkAfterMinutes = 0;       // Blink for this many minutes after Friday sunset; 0 = off.
 };
 
 // Stores Trading-mode presentation and its local-time session schedule.
 struct TradingConfig {
-  uint8_t format = 0;                   // Selected counting-format index.
-  uint8_t formatOver24 = kSameFormat;   // Format while >= 24h remain; kSameFormat = use format.
-  TradingSchedule schedule;             // Enabled count plus both retained session slots.
+  uint8_t format = 0;                  // Counting-format index.
+  uint8_t formatOver24 = kSameFormat;  // Counting-format index while >= 24h remain; kSameFormat = use format.
+  TradingSchedule schedule;            // Enabled count plus both retained session slots.
 };
 
 // Keeps the physical device location separate from sunset-page test input.
@@ -89,29 +88,29 @@ struct LocationConfig {
 
 // Stores configurable text shown by startup, completion, and scheduled overlays.
 struct MessageConfig {
-  char splash[kDisplayMessageLength] = {};        // Startup message shown on the displays.
-  char final[kDisplayMessageLength] = {};         // Message shown when countdown reaches zero.
-  char fridaySunset[kDisplayMessageLength] = {};  // Blinked when Friday sunset is crossed live.
-  char tradingOpen[kDisplayMessageLength] = {};   // Blinked when a Trading session starts live.
-  char tradingClose[kDisplayMessageLength] = {};  // Blinked when a Trading session stops live.
+  char splash[kDisplayMessageLength] = {};         // Startup message shown on the displays.
+  char countdownDone[kDisplayMessageLength] = {};  // Shown when a countdown reaches zero; JSON key "final".
+  char fridaySunset[kDisplayMessageLength] = {};   // Blinked when Friday sunset is crossed live.
+  char tradingOpen[kDisplayMessageLength] = {};    // Blinked when a Trading session starts live.
+  char tradingClose[kDisplayMessageLength] = {};   // Blinked when a Trading session stops live.
 };
 
 // Stores generated-beep settings; legacy song names are ignored on load.
 struct SoundConfig {
-  bool enabled = true;  // Master switch for automatic beeps and approach alerts.
-  uint8_t volumePercent = 40;  // PWM loudness from 0 through 100.
-  bool startupBeep = false;  // Short beep once startup has finished.
-  bool finalBeep = false;  // Short beep at ordinary countdown completion.
+  bool enabled = true;            // Master switch for automatic beeps and approach alerts.
+  uint8_t volumePercent = 40;     // PWM loudness from 0 through 100.
+  bool startupBeep = false;       // Short beep once startup has finished.
+  bool finalBeep = false;         // Short beep at ordinary countdown completion.
   bool fridaySunsetBeep = false;  // Short beep on a live Friday-sunset crossing.
-  bool tradingOpenBeep = false;  // Short beep on a live session open.
+  bool tradingOpenBeep = false;   // Short beep on a live session open.
   bool tradingCloseBeep = false;  // Short beep on a live session close.
 
   // Generated alerts that finish at scheduled mode boundaries.
   struct BoundaryAlertConfig {
-    bool enabled = true;  // Enables both generated pre-boundary patterns.
-    BeepPattern boundary1;  // Trading open and Friday sunset.
-    BeepPattern boundary2;  // Trading close and Saturday sunset.
-  } boundaryAlert;
+    bool enabled = true;    // Enables both generated pre-boundary patterns.
+    BeepPattern boundary1;  // Approach alert for Friday sunset and the first Trading open.
+    BeepPattern boundary2;  // Approach alert for Saturday sunset and the last Trading close.
+  } boundaryAlert;          // Accelerating alerts that end exactly at a boundary.
 };
 
 // Stores the local timezone identity and the numeric offset used by sunset math.
@@ -123,15 +122,15 @@ struct TimezoneConfig {
 // Aggregates all persisted clock behavior and presentation settings.
 struct ClockConfig {
   Mode activeMode = kModeClock;  // Persistent mode restored after any temporary overlay.
-  FridayConfig friday;  // Friday-mode phase formats.
-  TradingConfig trading;  // Trading-mode countdown format.
-  MessageConfig messages;  // User-configurable display messages.
-  SoundConfig sound;  // Generated approach alerts and optional event beeps.
-  LocationConfig locations;  // Device and sunset-test coordinates.
-  TimezoneConfig timezone;  // Local timezone and UTC offset.
-  DisplayConfig display;  // Clock rendering and hardware brightness settings.
-  CountdownConfig countdown;  // Countdown target and format.
-  CountupConfig countup;  // Count-up origin and format.
+  FridayConfig friday;           // Friday-mode phase formats and sunset blink windows.
+  TradingConfig trading;         // Trading-mode formats and session schedule.
+  MessageConfig messages;        // User-configurable display messages.
+  SoundConfig sound;             // Generated approach alerts and optional event beeps.
+  LocationConfig locations;      // Device and sunset-test coordinates.
+  TimezoneConfig timezone;       // Local timezone and UTC offset.
+  DisplayConfig display;         // Clock rendering and hardware brightness settings.
+  CountdownConfig countdown;     // Countdown target and format.
+  CountupConfig countup;         // Count-up origin and format.
 };
 
 // Groups both persisted configuration domains for complete file serialization.
@@ -157,13 +156,13 @@ public:
     const WifiConfig&  wifiConfig();
     const ClockConfig& clockConfig();
 
-    bool        saveWifiConfig(const WifiConfig& cfg);
-    // Sanitizes cfg in place before persisting, so the caller's copy always
+    bool        saveWifiConfig(const WifiConfig& config);
+    // Sanitizes config in place before persisting, so the caller's copy always
     // matches what was written to disk - no separate re-sanitize step needed.
-    bool        saveClockConfig(ClockConfig& cfg);
+    bool        saveClockConfig(ClockConfig& config);
     bool        saveConfig(ClockConfig& clock, const WifiConfig& wifi);
-    // Sanitizes cfg in place, for the same stack reason as the accessors above.
-    void        sanitizeClockConfig(ClockConfig& cfg) const;
+    // Sanitizes config in place, for the same stack reason as the accessors above.
+    void        sanitizeClockConfig(ClockConfig& config) const;
 
 private:
     bool ensureLoaded();

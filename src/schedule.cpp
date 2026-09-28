@@ -2,7 +2,7 @@
 
 namespace {
 
-constexpr uint32_t kSecondsPerDay = 86400UL;
+constexpr uint32_t kSecondsPerDay = 86400UL;  // Local wall-clock day length.
 
 bool isTradingWeekday(uint8_t dayOfWeek) {
   return (dayOfWeek >= 1) && (dayOfWeek <= 5);

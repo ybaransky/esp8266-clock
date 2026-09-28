@@ -25,16 +25,17 @@ namespace {
 // four-byte read yields both where the bucket starts and how long it is. The
 // prefix itself is implied by the directory slot and never stored.
 
-constexpr size_t kZipcodeLength = 5;
-constexpr size_t kPrefixLength = 3;
+constexpr size_t kZipcodeLength = 5;  // Digits in a US ZIP code.
+constexpr size_t kPrefixLength = 3;   // Leading digits that select a directory slot.
 
-constexpr char kMagic[] = "ZIPB";
-constexpr size_t kMagicLength = 4;
-constexpr uint8_t kFormatVersion = 1;
-constexpr size_t kRecordSize = 5;
-constexpr size_t kHeaderSize = 8;
-constexpr size_t kPrefixCount = 1000;
-constexpr uint32_t kDirectoryOffset = kHeaderSize;
+constexpr char kMagic[] = "ZIPB";                   // File signature at offset 0.
+constexpr size_t kMagicLength = 4;                  // Signature bytes, excluding NUL.
+constexpr uint8_t kFormatVersion = 1;               // Layout version this reader accepts.
+constexpr size_t kRecordSize = 5;                   // Suffix byte plus two int16 coordinates.
+constexpr size_t kHeaderSize = 8;                   // Magic, version, record size, record count.
+constexpr size_t kPrefixCount = 1000;               // Directory slots, one per three-digit prefix.
+constexpr uint32_t kDirectoryOffset = kHeaderSize;  // Directory follows the header.
+// Records follow the directory and its terminating entry.
 constexpr uint32_t kRecordsOffset = kDirectoryOffset + (kPrefixCount + 1) * sizeof(uint16_t);
 constexpr float kCoordinateScale = 100.0f;  // Records hold hundredths of a degree.
 
