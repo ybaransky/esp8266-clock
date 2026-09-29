@@ -10,7 +10,11 @@ struct WifiConfig;
 // patch semantics does not need it. Format selections are stored as stable
 // keys rather than table indexes, so reordering the format catalog is not a
 // schema change.
-static constexpr uint8_t kConfigSchemaVersion = 1;
+//
+// Version 2: the DS3231 holds UTC rather than local time, and the timezone is
+// stored as a POSIX rule. Firmware reading a version-1 file converts the RTC
+// once (ClockApplication::migrateRtcToUtcIfNeeded).
+static constexpr uint8_t kConfigSchemaVersion = 2;
 
 // Writes the clock/display/time/location/sunset sections of the config JSON document.
 void serializeClockConfig(JsonDocument& doc, const ClockConfig& config);
@@ -44,3 +48,6 @@ const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& config);
 // Same patch semantics for the wifi section. Returns true when any wifi field
 // was present (callers use this to decide whether a reboot is needed).
 bool applyJsonToWifiConfig(JsonVariantConst root, WifiConfig& wifi);
+
+// The "configVersion" a loaded document was written with; 1 when absent.
+uint8_t readConfigSchemaVersion(JsonVariantConst root);

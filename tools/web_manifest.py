@@ -19,8 +19,14 @@ PAGES = {
     "/view": "view.html",
 }
 
-# route -> (source file in web/, content type)
+# route -> (source file in web/, content type). Every page must reference each.
 SHARED = {
     "/common.css": ("common.css", "text/css"),
     "/common.js": ("common.js", "application/javascript"),
+}
+
+# route -> content type, for assets built by tools/web_generated.py rather than
+# stored in web/. Unlike SHARED, only the pages that need one reference it.
+GENERATED = {
+    "/tz.js": "application/javascript",
 }

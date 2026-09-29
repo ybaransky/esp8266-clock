@@ -35,8 +35,14 @@ var url = '/api/file?name=' + encodeURIComponent(name);
 var ext = extOf(name);
 var viewer = $('viewer');
 
+// /api/file refuses config.json (403) because it stores the WiFi station
+// password in plain text; /api/config serves the same settings without it.
+function isConfigFile(n) { return n.replace(/^\//, '') === 'config.json'; }
+
 if (!name) {
   setStatus('No file specified.');
+} else if (isConfigFile(name)) {
+  loadConfig();
 } else if (ext === 'pdf') {
   var fr = document.createElement('iframe');
   fr.className = 'viewer';
@@ -51,6 +57,20 @@ if (!name) {
   viewer.appendChild(im);
 } else {
   loadText();
+}
+
+// Shows the device's loaded configuration rather than the raw file bytes.
+function loadConfig() {
+  var pre = document.createElement('pre');
+  pre.textContent = 'Loading...';
+  viewer.appendChild(pre);
+  api('/api/config').then(function (d) {
+    pre.textContent = JSON.stringify(sorted(d), null, 2);
+    setStatus('Current settings from /api/config; the WiFi station password is not shown.');
+  }).catch(function (e) {
+    pre.textContent = '';
+    setStatus('Load failed: ' + e.message);
+  });
 }
 
 // Text files are fetched in chunks that grow while transfers succeed and

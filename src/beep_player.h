@@ -11,7 +11,7 @@ class BeepPlayer {
   void tick(uint32_t nowMs);
   void setVolume(uint8_t percent);
   void beep(uint16_t toneHz, uint32_t nowMs);
-  void updateBoundaryAlert(uint32_t targetLocalSeconds, uint32_t nowLocalSeconds,
+  void updateBoundaryAlert(uint32_t targetUtcSeconds, uint32_t nowUtcSeconds,
                            uint32_t secondStartedAtMs, const BeepPattern& pattern);
   void cancelBoundaryAlert();
   void previewBoundaryAlert(const BeepPattern& pattern, uint32_t nowMs);
@@ -34,7 +34,7 @@ class BeepPlayer {
   Window m_scheduled;  // Current scheduled approach window, if armed and near enough.
   Window m_temporary;  // Preview or event beep, independent of schedule updates.
   Override m_override = Override::kNone;  // Preview takes priority over event beeps.
-  uint32_t m_targetLocalSeconds = 0;  // Identifies the currently armed occurrence.
+  uint32_t m_targetUtcSeconds = 0;  // UTC boundary of the currently armed occurrence.
   bool m_suppressed = false;  // Stop silences this occurrence even on later RTC ticks.
   uint16_t m_soundingHz = 0;  // Last hardware pitch; zero means the pin is silent.
   uint8_t m_volumePercent = 40;  // PWM loudness as a percentage of half duty.

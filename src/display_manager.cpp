@@ -327,8 +327,8 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
 // the moment the duration drops below 24h - no crossing state is kept.
 uint8_t DisplayManager::activeCountingFormatIndex() const {
   if (m_baseView.longFormatIndex == kSameFormat) return m_baseView.formatIndex;
-  const long nowUnix = static_cast<long>(m_rtc.getNowCached().unixtime());
-  const long anchorUnix = static_cast<long>(m_baseView.anchor.unixtime());
+  const long nowUnix = static_cast<long>(m_rtc.getUtcCached());
+  const long anchorUnix = static_cast<long>(m_baseView.anchorUtc);
   const long durationSeconds = (m_baseView.view == View::kCountup) ? (nowUnix - anchorUnix)
                                                        : (anchorUnix - nowUnix);
   return (durationSeconds >= kLongRangeSeconds) ? m_baseView.longFormatIndex
@@ -336,7 +336,7 @@ uint8_t DisplayManager::activeCountingFormatIndex() const {
 }
 
 bool DisplayManager::viewBlinkActive() const {
-  return m_baseView.blink.contains(m_rtc.getNowCached().unixtime());
+  return m_baseView.blink.contains(m_rtc.getUtcCached());
 }
 
 bool DisplayManager::renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force) {
@@ -447,9 +447,10 @@ bool DisplayManager::buildCountdownFrame(uint32_t nowMs, bool force,
   if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
     return false;
 
-  const DateTime now = m_rtc.getNowCached();
-  const long remainingSeconds = static_cast<long>(m_baseView.anchor.unixtime()) -
-                    static_cast<long>(now.unixtime());
+  // Durations are measured in UTC, so a daylight-saving change in between
+  // neither adds nor removes an hour.
+  const long remainingSeconds = static_cast<long>(m_baseView.anchorUtc) -
+                               static_cast<long>(m_rtc.getUtcCached());
   // Completion and schedule changes belong to application logic. A delayed
   // schedule sample can show zero here but cannot create a permanent overlay.
 
@@ -470,9 +471,8 @@ bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,
   if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
     return false;
 
-  const DateTime now = m_rtc.getNowCached();
-  const long elapsedSeconds = static_cast<long>(now.unixtime()) -
-                    static_cast<long>(m_baseView.anchor.unixtime());
+  const long elapsedSeconds = static_cast<long>(m_rtc.getUtcCached()) -
+                             static_cast<long>(m_baseView.anchorUtc);
 
   uint8_t tenths = 0;
   if (refreshRate == RefreshRate::kOneTenth) {

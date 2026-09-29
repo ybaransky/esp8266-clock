@@ -44,7 +44,7 @@ enum class View : uint8_t {
   kCountup,
 };
 
-// A half-open [from, until) window of local wall-clock Unix seconds during
+// A half-open [from, until) window of UTC seconds during
 // which the whole base view blinks. Expressed as absolute times rather than a
 // duration relative to the view's anchor, so one field pair covers both "the
 // last N minutes before a boundary" and "the first M minutes after it".
@@ -65,7 +65,7 @@ struct BlinkWindow {
 // Captures the base content and format-specific anchor needed for rendering a view.
 struct ViewState {
   View view = View::kClock;  // Kind of base content to render.
-  DateTime anchor;          // Countdown: end time. Countup: start time. Clock: unused.
+  uint32_t anchorUtc = 0;   // Countdown: end. Countup: start. UTC seconds; unused for clock.
   uint8_t formatIndex = 0;  // Index into the view's format table.
   uint8_t longFormatIndex = kSameFormat;  // Counting format while the duration
                                           // is >= 24h; kSameFormat disables.

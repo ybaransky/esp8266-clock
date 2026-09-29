@@ -20,9 +20,11 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from web_manifest import PAGES, SHARED
+from web_generated import GENERATORS
+from web_manifest import GENERATED, PAGES, SHARED
 
-WEB_DIR = pathlib.Path(__file__).resolve().parent.parent / "web"
+PROJECT_DIR = pathlib.Path(__file__).resolve().parent.parent
+WEB_DIR = PROJECT_DIR / "web"
 
 
 class DevHandler(http.server.BaseHTTPRequestHandler):
@@ -35,6 +37,8 @@ class DevHandler(http.server.BaseHTTPRequestHandler):
         elif path in SHARED:
             filename, content_type = SHARED[path]
             self.send_file(WEB_DIR / filename, content_type)
+        elif path in GENERATED:
+            self.send_body(GENERATORS[path](PROJECT_DIR), GENERATED[path])
         else:
             self.proxy()
 
@@ -45,7 +49,9 @@ class DevHandler(http.server.BaseHTTPRequestHandler):
         self.proxy()
 
     def send_file(self, file, content_type):
-        body = file.read_bytes()
+        self.send_body(file.read_bytes(), content_type)
+
+    def send_body(self, body, content_type):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))

@@ -16,7 +16,8 @@ build_dir = pathlib.Path(env.subst("$BUILD_DIR"))
 output = build_dir / "generated_web_assets.h"
 
 sys.path.insert(0, str(project / "tools"))
-from web_manifest import PAGES, SHARED
+from web_manifest import GENERATED, PAGES, SHARED
+from web_generated import GENERATORS
 
 
 def short_hash(data: bytes) -> str:
@@ -39,11 +40,19 @@ for route, (filename, content_type) in SHARED.items():
     symbol = "WEB_" + filename.replace(".", "_").upper()
     assets.append((route, content_type, True, symbol, gzip_bytes(raw, filename), filename))
 
+for route, content_type in GENERATED.items():
+    raw = GENERATORS[route](project)
+    versions[route] = short_hash(raw)
+    symbol = "WEB_GEN_" + route.strip("/").replace(".", "_").upper()
+    assets.append((route, content_type, True, symbol, gzip_bytes(raw, route), route))
+
 for route, filename in PAGES.items():
     text = (web_dir / "pages" / filename).read_text(encoding="utf-8")
     for shared_route, version in versions.items():
         reference = f'"{shared_route}"'
         if reference not in text:
+            if shared_route in GENERATED:
+                continue  # Optional: only some pages use a generated asset.
             raise RuntimeError(f"{filename} does not reference {shared_route}")
         text = text.replace(reference, f'"{shared_route}?v={version}"')
     symbol = "WEB_PAGE_" + filename.replace(".html", "").upper()

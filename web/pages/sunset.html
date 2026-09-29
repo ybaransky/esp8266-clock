@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/common.css">
 <script src="/common.js"></script>
+<script src="/tz.js"></script>
 <title>Sunset Calculator</title>
 <style>
 #helpBtn {
@@ -77,8 +78,8 @@
   <table class="timetable">
     <colgroup><col class="rowLabel"><col></colgroup>
     <tr><td class="label">Date</td><td><input type="date" id="date"></td></tr>
-    <tr><td class="label">Timezone</td><td><input type="text" id="timezone" maxlength="39"></td></tr>
-    <tr><td class="label">UTC offset</td><td><input type="number" id="offset" min="-840" max="840" step="1"></td></tr>
+    <tr><td class="label">Region</td><td><select id="tzRegion"></select></td></tr>
+    <tr><td class="label">Zone</td><td><select id="timezone"></select></td></tr>
   </table>
 </div>
 
@@ -89,7 +90,6 @@
 
 <script>
 function setResult(s) { $('result').textContent = s || ''; }
-function browserOffsetMinutes() { return -new Date().getTimezoneOffset(); }
 
 function loadInitialValues() {
   Promise.all([api('/api/config'), api('/api/time')]).then(function (values) {
@@ -101,9 +101,7 @@ function loadInitialValues() {
     $('lon').value = sunset.longitude !== undefined ? sunset.longitude : '';
     $('zip').value = sunset.zipcode || '';
     $('date').value = now.date || '';
-    $('timezone').value = timezone.name || '';
-    $('offset').value = timezone.utcOffsetMinutes !== undefined
-        ? timezone.utcOffsetMinutes : browserOffsetMinutes();
+    initTzPicker('tzRegion', 'timezone', timezone.name);
   }).catch(function () { setStatus('Load failed'); });
 }
 
@@ -111,13 +109,6 @@ function readNumber(id, label, min, max) {
   var value = parseFloat($(id).value);
   if (!isFinite(value) || value < min || value > max) {
     throw new Error(label + ' must be ' + min + ' to ' + max);
-  }
-  return value;
-}
-function readOffset() {
-  var value = parseInt($('offset').value, 10);
-  if (!isFinite(value) || value < -840 || value > 840) {
-    throw new Error('UTC offset must be -840 to 840');
   }
   return value;
 }
@@ -152,7 +143,8 @@ function computeSunset() {
       time: {
         date: $('date').value,
         time: '00:00:00',
-        timezone: { name: $('timezone').value, utcOffsetMinutes: readOffset() }
+        // The device applies the offset in effect on the chosen date.
+        timezone: readTzPicker('timezone')
       }
     };
   } catch (e) {

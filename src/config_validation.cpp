@@ -89,6 +89,19 @@ int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes) {
   return static_cast<int16_t>(constrain(rawOffsetMinutes, -840, 840));
 }
 
+void sanitizeTimezoneRule(char* rule, size_t ruleSize) {
+  if ((rule == nullptr) || (ruleSize == 0)) return;
+  TimeZoneRule parsed;
+  if (parsePosixTimeZone(rule, &parsed)) return;
+  strlcpy(rule, TimezoneConfig{}.posix, ruleSize);
+}
+
+TimeZoneRule timeZoneFromConfig(const TimezoneConfig& timezone) {
+  TimeZoneRule rule;
+  parsePosixTimeZone(timezone.posix, &rule);  // A default rule is UTC.
+  return rule;
+}
+
 uint8_t sanitizeVolumePercent(int rawPercent) {
   return static_cast<uint8_t>(constrain(rawPercent, 0, 100));
 }

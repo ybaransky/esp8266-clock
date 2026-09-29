@@ -1,5 +1,5 @@
 {
-  "configVersion": 1,
+  "configVersion": 2,
   "display": {
     "activeMode": "clock",
     "brightness": 3,
@@ -40,7 +40,7 @@
   "time": {
     "timezone": {
       "name": "America/New_York",
-      "utcOffsetMinutes": -240
+      "posix": "EST5EDT,M3.2.0,M11.1.0"
     }
   },
   "location": {

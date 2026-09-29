@@ -21,12 +21,15 @@ WebPortal::WebPortal(ClockController& clockController,
                      ConfigManager& configManager,
                      WifiConnectionManager& wifiConnectionManager,
                      RtcService& rtc,
-                     BeepPlayer& beepPlayer)
+                     BeepPlayer& beepPlayer,
+                     const NetworkTimeSync& networkTime)
     : m_server(80),
       m_responder(m_server),
       m_configApi(m_server, m_responder, clockController, configManager,
                  beepPlayer, rtc, *this),
-      m_timeApi(m_server, m_responder, clockController, rtc),
+      // m_configApi is declared, and so constructed, before m_timeApi.
+      m_timeApi(m_server, m_responder, clockController, rtc, configManager,
+                m_configApi, networkTime),
       m_fileApi(m_server, m_responder),
       m_locationApi(m_server, m_responder),
       m_wifiApi(m_server, m_responder, configManager, wifiConnectionManager, *this),

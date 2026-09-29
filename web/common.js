@@ -113,6 +113,77 @@ function jsonFetch(url, options) {
 
 function validZip(value) { return /^[0-9]{5}$/.test(value); }
 
+// -- Timezone picker ----------------------------------------------------------
+// For pages that also load /tz.js, which defines TZ_ZONES = [[name, rule]...]:
+// every IANA zone with its POSIX rule. The device stores the name for people
+// and the rule for its own conversions.
+
+function browserZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
+  catch (e) { return ''; }
+}
+
+function tzRuleFor(name) {
+  for (var i = 0; i < TZ_ZONES.length; i++) {
+    if (TZ_ZONES[i][0] === name) return TZ_ZONES[i][1];
+  }
+  return null;
+}
+
+// Two native <select>s - region ("America"), then zone ("New York") - because
+// phones render a select as a scrollable list, where a 461-entry datalist
+// shows nothing until the user types. The zone select's values are the full
+// IANA names.
+function fillTzZones(regionId, zoneId, selectedName) {
+  var region = $(regionId).value, options = [];
+  for (var i = 0; i < TZ_ZONES.length; i++) {
+    var name = TZ_ZONES[i][0];
+    if (name.split('/')[0] !== region) continue;
+    var city = name.slice(region.length + 1).replace(/_/g, ' ').replace(/\//g, ' / ');
+    options.push('<option value="' + name + '"' + (name === selectedName ? ' selected' : '') +
+                 '>' + city + '</option>');
+  }
+  $(zoneId).innerHTML = options.join('');
+}
+
+// Fills both selects and picks the saved zone, else this browser's zone, else
+// UTC. Returns true when the browser's zone was used, so the page can say it
+// was detected rather than saved.
+function initTzPicker(regionId, zoneId, savedName) {
+  var detected = !(savedName && tzRuleFor(savedName));
+  var name = !detected ? savedName : (tzRuleFor(browserZone()) ? browserZone() : 'Etc/UTC');
+  var regions = [];
+  for (var i = 0; i < TZ_ZONES.length; i++) {
+    var region = TZ_ZONES[i][0].split('/')[0];
+    if (regions.indexOf(region) < 0) regions.push(region);
+  }
+  var selectedRegion = name.split('/')[0];
+  $(regionId).innerHTML = regions.map(function (r) {
+    return '<option' + (r === selectedRegion ? ' selected' : '') + '>' + r + '</option>';
+  }).join('');
+  $(regionId).onchange = function () { fillTzZones(regionId, zoneId, null); };
+  fillTzZones(regionId, zoneId, name);
+  return detected;
+}
+
+// Reads the picker as {name, posix}. A non-empty custom-rule field overrides
+// the table; the device validates the rule either way. Throws on an unknown zone.
+function readTzPicker(zoneId, customId) {
+  var name = $(zoneId).value;
+  var custom = customId ? $(customId).value.trim() : '';
+  if (custom) return { name: name || 'Custom', posix: custom };
+  var rule = tzRuleFor(name);
+  if (!rule) throw new Error('Unknown timezone "' + name + '" - pick one from the list');
+  return { name: name, posix: rule };
+}
+
+// "UTC-4", "UTC+5:30"
+function formatUtcOffset(minutes) {
+  var sign = minutes < 0 ? '-' : '+', abs = Math.abs(minutes);
+  var h = Math.floor(abs / 60), m = abs % 60;
+  return 'UTC' + sign + h + (m ? ':' + (m < 10 ? '0' : '') + m : '');
+}
+
 // Tell the device when a config value could not be represented in a form
 // field, so silent browser-side value rejection shows up in the serial log.
 function reportFieldMismatch(page, field, configValue, acceptedValue, reason) {

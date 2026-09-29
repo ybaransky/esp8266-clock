@@ -75,7 +75,20 @@ void LocationApi::handleSunset() {
     return;
   }
 
-  const int utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | 0;
+  // A POSIX rule gives the offset in effect on the requested date, so a date
+  // across a DST change is computed correctly; a bare offset is still accepted.
+  int utcOffsetMinutes = doc["time"]["timezone"]["utcOffsetMinutes"] | 0;
+  const char* posixRule = doc["time"]["timezone"]["posix"] | "";
+  if (posixRule[0] != '\0') {
+    TimeZoneRule zone;
+    if (!parsePosixTimeZone(posixRule, &zone)) {
+      LOG_PRINTF("/api/sunset failed: invalid timezone rule \"%s\"", posixRule);
+      m_responder.sendJsonError(400, "Timezone rule is invalid");
+      return;
+    }
+    const uint32_t eveningLocal = DateTime(year, month, day, 18, 0, 0).unixtime();
+    utcOffsetMinutes = utcOffsetSecondsAt(zone, utcFromLocal(zone, eveningLocal)) / 60;
+  }
   if ((utcOffsetMinutes < -840) || (utcOffsetMinutes > 840)) {
     LOG_PRINTF("/api/sunset failed: invalid UTC offset=%d", utcOffsetMinutes);
     m_responder.sendJsonError(400, "UTC offset is invalid");

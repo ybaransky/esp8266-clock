@@ -50,23 +50,23 @@ void BeepPlayer::beep(uint16_t toneHz, uint32_t nowMs) {
   tick(nowMs);
 }
 
-void BeepPlayer::updateBoundaryAlert(uint32_t targetLocalSeconds,
-                                      uint32_t nowLocalSeconds,
+void BeepPlayer::updateBoundaryAlert(uint32_t targetUtcSeconds,
+                                      uint32_t nowUtcSeconds,
                                       uint32_t secondStartedAtMs,
                                       const BeepPattern& pattern) {
-  if (targetLocalSeconds != m_targetLocalSeconds) m_suppressed = false;
-  m_targetLocalSeconds = targetLocalSeconds;
+  if (targetUtcSeconds != m_targetUtcSeconds) m_suppressed = false;
+  m_targetUtcSeconds = targetUtcSeconds;
   m_scheduled.durationMs = 0;
-  if (m_suppressed || (targetLocalSeconds <= nowLocalSeconds) ||
+  if (m_suppressed || (targetUtcSeconds <= nowUtcSeconds) ||
       (pattern.toneHz == 0) || (pattern.startingBeatsHz == 0)) return;
-  const uint32_t remainingSeconds = targetLocalSeconds - nowLocalSeconds;
+  const uint32_t remainingSeconds = targetUtcSeconds - nowUtcSeconds;
   if (remainingSeconds > pattern.totalDurationSeconds) return;
   m_scheduled = windowFor(pattern, secondStartedAtMs);
   m_scheduled.startedAtMs -= m_scheduled.durationMs - remainingSeconds * 1000U;
 }
 
 void BeepPlayer::cancelBoundaryAlert() {
-  m_targetLocalSeconds = 0;
+  m_targetUtcSeconds = 0;
   m_suppressed = false;
   m_scheduled.durationMs = 0;
   // A schedule cancellation cannot cancel a preview or event beep.
@@ -81,7 +81,7 @@ void BeepPlayer::previewBoundaryAlert(const BeepPattern& pattern, uint32_t nowMs
 
 void BeepPlayer::stop() {
   m_override = Override::kNone;
-  m_suppressed = m_targetLocalSeconds != 0;
+  m_suppressed = m_targetUtcSeconds != 0;
   m_scheduled.durationMs = 0;
   output(0);
 }

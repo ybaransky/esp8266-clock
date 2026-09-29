@@ -103,13 +103,12 @@ bool RtcService::begin() {
   // lines carry a real timestamp even though the provider itself never reads
   // the chip. beginSqwProcessing() re-seeds once the pulse train starts.
   const DateTime now = m_rtc.now();
-  m_cachedNow = now;
-  m_cachedNowSynced = true;
+  setCachedUtc(now);
   // Provisionally trusted: a chip answered and we have its time. The two checks
   // below are the ones that can withdraw that, so this must be set before them.
   m_status.timeTrusted = true;
   logSetTimeProvider(&RtcService::logTimeProvider);
-  logRtcTime("Current RTC time:", now);
+  logRtcTime("Current RTC time (UTC):", now);
 
   recoverIfPowerWasLost();
   flagInvalidTimeIfNeeded();
@@ -122,16 +121,15 @@ bool RtcService::begin() {
 void RtcService::adjustWithLog(const DateTime& newTime, const char* reason) {
   const DateTime oldTime = m_rtc.now();
   LOG_PRINTF("Adjusting time (%s)", reason);
-  logRtcTime("Old:", oldTime);
+  logRtcTime("Old (UTC):", oldTime);
 
   m_rtc.adjust(newTime);
 
   const DateTime updatedTime = m_rtc.now();
-  logRtcTime("New:", updatedTime);
+  logRtcTime("New (UTC):", updatedTime);
   // Keep the cache coherent with the chip we just moved, so the next log line
   // does not report the pre-adjustment second.
-  m_cachedNow = updatedTime;
-  m_cachedNowSynced = true;
+  setCachedUtc(updatedTime);
 }
 
 void RtcService::recoverIfPowerWasLost() {
@@ -145,9 +143,10 @@ void RtcService::recoverIfPowerWasLost() {
   adjustWithLog(DateTime(F(__DATE__), F(__TIME__)), "lost power recovery");
   m_status.powerLost = false;
   m_status.lowBattery = false;
-  // The chip now holds the firmware build date, which is in range and therefore
-  // passes flagInvalidTimeIfNeeded(), but it is a placeholder rather than a
-  // reading. Nothing may persist it as a timestamp until a real sync arrives.
+  // The chip now holds the firmware build date (a local time, read as UTC),
+  // which is in range and therefore passes flagInvalidTimeIfNeeded(), but it is
+  // a placeholder rather than a reading. Nothing may persist it as a timestamp
+  // until a real sync arrives.
   m_status.timeTrusted = false;
   LOG_PRINTLN("INFO: RTC reset to build time to clear lost-power flag");
 }
@@ -169,17 +168,37 @@ void RtcService::configureSquareWaveOutput() {
   m_status.sqwConfigured = true;
 }
 
-DateTime RtcService::getNow() {
+DateTime RtcService::liveUtc() {
   return m_status.present ? m_rtc.now() : DateTime(2000, 1, 1, 0, 0, 0);
 }
 
-void RtcService::setNow(const DateTime& timeValue) {
+DateTime RtcService::getNow() {
+  return DateTime(localFromUtc(m_zone, liveUtc().unixtime()));
+}
+
+uint32_t RtcService::getUtcNow() {
+  return liveUtc().unixtime();
+}
+
+void RtcService::setCachedUtc(const DateTime& utc) {
+  m_cachedUtc = utc;
+  m_cachedLocal = DateTime(localFromUtc(m_zone, utc.unixtime()));
+  m_cachedNowSynced = true;
+}
+
+void RtcService::setTimeZone(const TimeZoneRule& zone) {
+  m_zone = zone;
+  if (m_cachedNowSynced) setCachedUtc(m_cachedUtc);
+}
+
+void RtcService::setUtc(uint32_t utc, const char* reason) {
+  const DateTime timeValue(utc);
   if (!m_status.present) {
     LOG_PRINTLN("RTC time sync skipped: DS3231 not initialized");
     return;
   }
 
-  adjustWithLog(timeValue, "browser time sync");
+  adjustWithLog(timeValue, reason);
   m_status.powerLost = false;
   m_status.lowBattery = false;
   // An explicit sync is the authoritative source; it is what clears a build-date
@@ -189,8 +208,7 @@ void RtcService::setNow(const DateTime& timeValue) {
   noInterrupts();
   isrCounters.pendingPulseCount = 0;
   interrupts();
-  m_cachedNow = timeValue;
-  m_cachedNowSynced = true;
+  setCachedUtc(timeValue);
   m_resyncOnNextPulse = true;
   m_sawPulse = false;
   m_processingStartedAtMs = millis();
@@ -210,7 +228,7 @@ bool RtcService::logTimeProvider(char* buffer, size_t bufferSize) {
     return false;
   }
 
-  const DateTime now = self->m_cachedNow;
+  const DateTime now = self->m_cachedLocal;
   snprintf(buffer, bufferSize, "%02d:%02d:%02d",
            now.hour(), now.minute(), now.second());
   return true;
@@ -257,8 +275,7 @@ void RtcService::beginSqwProcessing() {
   isrCounters.lifetimePulseCount = 0;
   interrupts();
 
-  m_cachedNow = m_rtc.now();
-  m_cachedNowSynced = true;
+  setCachedUtc(m_rtc.now());
 
   const int interruptNumber = digitalPinToInterrupt(Hardware::Pins::RTC_SQW);
   if (interruptNumber == NOT_AN_INTERRUPT) {
@@ -296,7 +313,7 @@ bool RtcService::consumeSqwPulse(RtcTick& tick) {
 
   bool discontinuity = m_resyncOnNextPulse || !m_sawPulse || (count > 1) ||
       (m_sawPulse && ((edgeMs - m_lastAcceptedPulseAtMs) > 1500UL));
-  const DateTime expected(m_cachedNow.unixtime() + 1);
+  const DateTime expected(m_cachedUtc.unixtime() + 1);
   DateTime current = expected;
   if (discontinuity || ((expected.second() % kSqwResyncSeconds) == 0)) {
     current = m_rtc.now();
@@ -311,13 +328,12 @@ bool RtcService::consumeSqwPulse(RtcTick& tick) {
     }
     discontinuity = discontinuity || (current.unixtime() != expected.unixtime());
   }
-  m_cachedNow = current;
-  m_cachedNowSynced = true;
+  setCachedUtc(current);
   m_resyncOnNextPulse = false;
   m_sawPulse = true;
   m_lastPulseAtMs = edgeMs;
   m_lastAcceptedPulseAtMs = edgeMs;
-  tick = {current, edgeMs, discontinuity};
+  tick = {m_cachedLocal, current.unixtime(), edgeMs, discontinuity};
   if (discontinuity) {
     LOG_PRINTF("RTC resynced: pulses=%lu; past announcements suppressed",
                static_cast<unsigned long>(count));
@@ -331,14 +347,19 @@ bool RtcService::isHealthy() const {
   return sqwPulseIsFresh();
 }
 
-// Second-resolution time backed by m_cachedNow, avoiding an I2C transaction on
-// the hot display-render path. Falls back to a live m_rtc.now() read whenever
-// the cache can't be trusted: before beginSqwProcessing() has run, or if the
-// SQW pulse has gone stale.
+// Second-resolution time backed by the SQW-advanced cache, avoiding an I2C
+// transaction on the hot display-render path. Falls back to a live read
+// whenever the cache can't be trusted: before beginSqwProcessing() has run, or
+// if the SQW pulse has gone stale.
 DateTime RtcService::getNowCached() {
   // getNow() also handles failed initialization, when RTClib has no I2C device.
   if (!m_status.present || !m_cachedNowSynced || !sqwPulseIsFresh()) return getNow();
-  return m_cachedNow;
+  return m_cachedLocal;
+}
+
+uint32_t RtcService::getUtcCached() {
+  if (!m_status.present || !m_cachedNowSynced || !sqwPulseIsFresh()) return getUtcNow();
+  return m_cachedUtc.unixtime();
 }
 
 // Phase-locked "how far into the current RTC second are we": elapsed millis
@@ -346,7 +367,7 @@ DateTime RtcService::getNowCached() {
 // won't land exactly 1000 millis() ticks apart (timer jitter, crystal drift) -
 // just before the next edge the raw value can read 1000+, and clamping parks
 // the tenths digit at 9 instead of wrapping to 0 early. Falls back to the
-// old millis()-phase behavior when the SQW pulse can't be trusted, matching
+// millis() phase when the SQW pulse can't be trusted, matching
 // getNowCached()'s degradation.
 uint32_t RtcService::msIntoSecond(uint32_t nowMs) const {
   if (!m_sawPulse || !sqwPulseIsFresh()) return nowMs % 1000UL;

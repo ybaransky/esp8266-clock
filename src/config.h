@@ -4,6 +4,7 @@
 #include "schedule.h"
 #include "beep_pattern.h"
 #include "datetime_validation.h"
+#include "timezone_rule.h"
 
 // Sentinel for optional secondary format indexes: use the primary format.
 static constexpr uint8_t kSameFormat = 0xFF;
@@ -113,10 +114,11 @@ struct SoundConfig {
   } boundaryAlert;          // Accelerating alerts that end exactly at a boundary.
 };
 
-// Stores the local timezone identity and the numeric offset used by sunset math.
+// Stores the local timezone: an IANA name for people, and the POSIX rule that
+// every UTC/local conversion actually uses (offsets plus DST transitions).
 struct TimezoneConfig {
-  char name[40] = {};            // IANA timezone name supplied by the browser.
-  int16_t utcOffsetMinutes = 0;  // Current local offset from UTC in minutes.
+  char name[40] = "UTC";                     // IANA timezone name shown in the UI.
+  char posix[kTimezoneRuleLength] = "UTC0";  // POSIX TZ rule, e.g. "EST5EDT,M3.2.0,M11.1.0".
 };
 
 // Aggregates all persisted clock behavior and presentation settings.
@@ -127,7 +129,7 @@ struct ClockConfig {
   MessageConfig messages;        // User-configurable display messages.
   SoundConfig sound;             // Generated approach alerts and optional event beeps.
   LocationConfig locations;      // Device and sunset-test coordinates.
-  TimezoneConfig timezone;       // Local timezone and UTC offset.
+  TimezoneConfig timezone;       // Local timezone name and its DST rule.
   DisplayConfig display;         // Clock rendering and hardware brightness settings.
   CountdownConfig countdown;     // Countdown target and format.
   CountupConfig countup;         // Count-up origin and format.
@@ -162,6 +164,9 @@ public:
     bool        saveConfig(ClockConfig& clock, const WifiConfig& wifi);
     // Sanitizes config in place, for the same stack reason as the accessors above.
     void        sanitizeClockConfig(ClockConfig& config) const;
+    // The configVersion of the file loaded at boot, or the current version when
+    // defaults were used. Lets startup upgrade state a schema change redefines.
+    uint8_t     loadedSchemaVersion();
 
 private:
     bool ensureLoaded();
@@ -177,4 +182,5 @@ private:
 
     DeviceConfig m_current;  // Cached configuration loaded from storage.
     bool m_loaded = false;   // True after m_current has been initialized.
+    uint8_t m_loadedSchemaVersion = 0;  // configVersion read at boot; 0 before loading.
 };

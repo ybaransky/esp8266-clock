@@ -17,6 +17,11 @@ uint8_t sanitizeBrightness(int rawBrightness);
 // Clamps a blink-window length in minutes to 0 (disabled) through 240.
 uint8_t sanitizeBlinkMinutes(int rawMinutes);
 int16_t sanitizeUtcOffsetMinutes(int rawOffsetMinutes);
+// Replaces a rule that does not parse as a POSIX TZ string with "UTC0", so
+// every stored rule is one the time conversions can use.
+void sanitizeTimezoneRule(char* rule, size_t ruleSize);
+// The parsed rule for a stored timezone; UTC if the text does not parse.
+TimeZoneRule timeZoneFromConfig(const TimezoneConfig& timezone);
 // Clamps a loudness percentage to 0 through 100.
 uint8_t sanitizeVolumePercent(int rawPercent);
 uint16_t sanitizeBoundaryDurationSeconds(int rawSeconds);

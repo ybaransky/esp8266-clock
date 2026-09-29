@@ -8,6 +8,7 @@
 #include "reboot_scheduler.h"
 
 struct ClockConfig;
+struct TimezoneConfig;
 struct WifiConfig;
 class ClockController;
 class ConfigManager;
@@ -41,6 +42,10 @@ class ConfigApi {
   void handleSaveConfig();
   void handleFieldMismatch();
 
+  // Saves and applies a new timezone through the same persist path as every
+  // other config write. Used by /api/time, which owns the timezone UI.
+  bool saveTimezone(const TimezoneConfig& timezone);
+
  private:
   // Stamps an absolute datetime over the kCountupStartNow sentinel. Reads the
   // clock itself rather than taking a DateTime, so no caller can hand it a time
@@ -48,7 +53,7 @@ class ConfigApi {
   // A no-op, logged, when RtcService::timeIsTrustworthy() is false.
   bool resolveCountupStart(ClockConfig& config);
 
-  // The only two ways this class writes a ClockConfig to disk. Both resolve the
+  // The only two ways a ClockConfig reaches disk from the web. Both resolve the
   // count-up origin first, so a save path added later cannot skip it; that is
   // the whole reason they exist rather than calling ConfigManager directly.
   bool persistClockConfig(ClockConfig& config);

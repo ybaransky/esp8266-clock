@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <RTClib.h>
 
+#include "timezone_rule.h"
+
 // Reports RTC presence, oscillator state, SQW setup, and the latest setup error.
 //
 // Deliberately a plain trivially-copyable struct with a fixed error buffer, not
@@ -20,7 +22,8 @@ struct RtcStatus {
 
 // One coherent RTC sample delivered before scheduling and rendering.
 struct RtcTick {
-  DateTime now;  // Cached local wall-clock time after any required resync.
+  DateTime now;  // Local wall-clock time after any required resync.
+  uint32_t utc = 0;  // The same instant as UTC seconds; durations are measured on this scale.
   uint32_t secondStartedAtMs = 0;  // ISR timestamp used for tenths and alerts.
   bool discontinuity = false;  // Boot, recovery, backlog, or a corrected time jump.
 };
@@ -28,18 +31,28 @@ struct RtcTick {
 // Owns the DS3231 and the 1 Hz SQW-driven time cache that keeps I2C off the
 // render path.
 //
-// All state lives in members. The only file-static state in the
-// implementation is the handful of volatile counters the ISR touches: there is
-// exactly one SQW pin, and IRAM_ATTR code should not chase a pointer through
-// DRAM to reach its counters. Everything else belongs to the instance, so this
-// class is a real object rather than a façade over globals.
+// The chip holds UTC. Local wall-clock time is derived through the configured
+// timezone rule, once per accepted pulse, so daylight-saving changes need no
+// write to the chip and the render path never converts.
+//
+// All state lives in members, with two file-static exceptions in the
+// implementation: the volatile counters the ISR touches (there is exactly one
+// SQW pin, and IRAM_ATTR code should not chase a pointer through DRAM to reach
+// them), and the pointer the plain-function log time provider reads through.
 class RtcService {
  public:
   bool begin();
   RtcStatus getStatus() const { return m_status; }
+  // Live I2C reads of the chip: local wall-clock time, and raw UTC seconds.
   DateTime getNow();
-  void setNow(const DateTime& timeValue);
+  uint32_t getUtcNow();
+  // Writes the chip and resyncs the cache. `reason` names the source in the log.
+  void setUtc(uint32_t utc, const char* reason);
   void beginSqwProcessing();
+
+  // Sets the rule local time is derived through and refreshes the local cache.
+  void setTimeZone(const TimeZoneRule& zone);
+  const TimeZoneRule& timeZone() const { return m_zone; }
 
   // Call each loop. Consumes a coherent pulse snapshot, resyncs at :00/:30 or
   // after a backlog, and returns the latest sample once. Never replays a backlog.
@@ -58,8 +71,10 @@ class RtcService {
   // phase only when no recent SQW edge can be trusted.
   uint32_t msIntoSecond(uint32_t nowMs) const;
 
-  // Zero-I2C-cost on the normal render path; live-read fallback if SQW is stale.
+  // Zero-I2C-cost local time and UTC on the normal render path; live-read
+  // fallback if SQW is stale.
   DateTime getNowCached();
+  uint32_t getUtcCached();
 
  private:
   bool probeAddress();
@@ -68,20 +83,26 @@ class RtcService {
   void configureSquareWaveOutput();
   void adjustWithLog(const DateTime& newTime, const char* reason);
   void setError(const char* text);
+  // The chip's UTC time, or 2000-01-01 when no chip answered at boot.
+  DateTime liveUtc();
+  // Stores a UTC second in the cache and derives its local time.
+  void setCachedUtc(const DateTime& utc);
 
-  // True when a SQW pulse arrived recently enough to trust m_cachedNow.
+  // True when a SQW pulse arrived recently enough to trust the cache.
   bool sqwPulseIsFresh() const;
   void logSqwHealthIfNeeded(uint32_t nowMs);
 
   // Installed as the log timestamp source. Reads the cache only - never I2C -
   // so a log line can never cost a bus transaction or reorder around one.
   // Static because logSetTimeProvider() takes a plain function pointer; it
-  // reaches the single application-owned instance through m_loggingInstance.
+  // reaches the single application-owned instance through loggingInstance.
   static bool logTimeProvider(char* buffer, size_t bufferSize);
 
   RTC_DS3231 m_rtc;  // RTClib DS3231 driver instance.
   RtcStatus m_status;  // Cached RTC health and last error text.
-  DateTime m_cachedNow;  // Second-resolution time, advanced by SQW pulses.
+  DateTime m_cachedUtc;  // Second-resolution UTC, advanced by SQW pulses.
+  DateTime m_cachedLocal;  // m_cachedUtc as local wall-clock time.
+  TimeZoneRule m_zone;  // Derives local time from the chip's UTC; UTC until configured.
   uint32_t m_processingStartedAtMs = 0;  // millis() reference for startup health.
   uint32_t m_lastPulseAtMs = 0;  // ISR timestamp of the last accepted pulse.
   uint32_t m_lastAcceptedPulseAtMs = 0;  // Phase reference used for tenths.

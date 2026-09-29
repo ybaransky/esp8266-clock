@@ -5,89 +5,204 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/common.css">
 <script src="/common.js"></script>
+<script src="/tz.js"></script>
 <title>Time Settings</title>
+<style>
+.note { color: #888; font-size: .85em; }
+#zoneNote { text-align: center; margin: 8px 0 0; }
+#zoneNote:empty { display: none; }
+.gridRule { grid-column: 1 / -1; width: 100%; border: 0; border-top: 1px solid #333; margin: 4px 0; }
+/* Same "?" and overlay as the format page; the id outranks `.box button`,
+   which would otherwise make it a centred block with a top margin. */
+#helpBtn {
+  display: inline; margin: 0 0 0 6px; padding: 1px 8px; font-size: .75em;
+  background: #357; border-radius: 50%; vertical-align: middle;
+}
+#help {
+  position: fixed; inset: 0; z-index: 10;
+  background: rgba(0, 0, 0, .6);
+  overflow-y: auto; padding: 24px 18px;
+  box-sizing: border-box; cursor: pointer;
+}
+#help[hidden] { display: none; }
+#help .card {
+  background: #1b1b1b; border: 1px solid #333; border-radius: 8px;
+  max-width: 460px; margin: 0 auto; padding: 4px 18px 12px;
+}
+#help p { line-height: 1.5; color: #bbb; }
+#help ul { padding-left: 20px; margin: 6px 0; }
+#help li { font-size: .9em; line-height: 1.5; color: #bbb; margin: 4px 0; }
+#help b { font-family: monospace; color: #eee; }
+#help .close { text-align: center; color: #777; font-size: .85em; margin: 10px 0 4px; }
+.grid .value { text-align: left; }
+</style>
 </head>
 <body>
 <h1>Time Settings</h1>
 
 <div class="box">
   <div class="grid">
-    <span class="label">Time</span><span class="value" id="bt">--</span>
-    <span class="label">Date</span><span class="value" id="bd">--</span>
-    <span class="label">Timezone</span><span class="value" id="bz">--</span>
-    <span class="label">UTC offset</span><span class="value" id="bo">--</span>
+    <span class="label">Clock</span><span class="value" id="clock">--</span>
+    <span class="label">Offset</span><span class="value" id="offset">--</span>
+    <span class="label">DST</span><span class="value" id="next">--</span>
+    <span class="label">Browser</span><span class="value" id="browser">--</span>
+    <span class="label">RTC</span><span class="value" id="rtc">--</span>
+    <span class="label">Network</span><span class="value" id="ntp">--</span>
+    <hr class="gridRule">
+    <span class="label">Region</span><select id="region"></select>
+    <span class="label">Zone</span><select id="zone"></select>
+    <!-- Optional POSIX TZ rule; overrides the zone's own. Explained by #help. -->
+    <span class="label">Custom<button id="helpBtn" onclick="$('help').hidden = false">?</button></span>
+    <input id="rule" maxlength="47" spellcheck="false" placeholder="optional">
   </div>
-  <button onclick="fromBrowser()">Set Time from Browser</button>
+  <p class="note" id="zoneNote"></p>
+</div>
+
+<div id="help" hidden onclick="this.hidden = true">
+  <div class="card">
+    <h2>Custom rule</h2>
+    <p>Normally leave this empty: the zone you pick already carries its
+      daylight-saving rule. Fill it in only for a place the list gets wrong, or
+      to test. When filled in, it replaces the zone's rule.</p>
+    <p>It is a POSIX timezone rule, for example
+      <b>EST5EDT,M3.2.0,M11.1.0</b> (New York):</p>
+    <ul>
+      <li><b>EST</b> &mdash; name of standard time</li>
+      <li><b>5</b> &mdash; hours <i>behind</i> UTC; the sign is reversed, so
+        <b>-5:30</b> means 5&frac12; hours ahead</li>
+      <li><b>EDT</b> &mdash; name of daylight time, one hour ahead of standard
+        time unless an offset follows it</li>
+      <li><b>M3.2.0</b> &mdash; daylight time starts in month 3, week 2, on day 0
+        (Sunday): the second Sunday of March</li>
+      <li><b>M11.1.0</b> &mdash; it ends on the first Sunday of November</li>
+      <li>Week <b>5</b> means the last such day of the month. A change happens
+        at 02:00 unless a time follows, e.g. <b>M3.5.0/1</b> for 01:00.</li>
+    </ul>
+    <p>A place without daylight saving is just a name and an offset, such as
+      <b>IST-5:30</b>. Names that are not letters go in angle brackets, such as
+      <b>&lt;+0530&gt;-5:30</b>.</p>
+    <p class="close">Tap anywhere to close.</p>
+  </div>
+</div>
+
+<div class="actions">
+  <button onclick="fromBrowser()">Set from Browser</button>
+  <button class="secondary" onclick="saveZone()">Save timezone only</button>
 </div>
 
 <div class="box">
+  <p class="note">Set manually: local time in the timezone above.</p>
   <div class="grid">
-    <span class="label">Time</span><input type="time" step="1" id="time">
     <span class="label">Date</span><input type="date" id="date">
-    <span class="label">Timezone</span><input id="zone" maxlength="39">
-    <span class="label">UTC offset</span><input type="number" min="-840" max="840" id="offset">
+    <span class="label">Time</span><input type="time" step="1" id="time">
   </div>
-  <button onclick="explicitTime()">Set Time Explicitly</button>
+  <button class="secondary" onclick="explicitTime()">Set manually</button>
 </div>
 
 <div id="st"></div>
 <p class="footer"><a href="/">&#8592; Home</a> &nbsp;&nbsp; <a href="/settings">Settings</a></p>
 
 <script>
+var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var device = null;   // Last /api/time response.
+var fetchedAt = 0;   // Date.now() when it arrived.
+
 function pad(x) { return (x < 10 ? '0' : '') + x; }
-function zone() {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
-  catch (e) { return 'UTC'; }
+
+// "YYYY-MM-DD HH:MM:SS" (device local) -> seconds on a UTC-labelled scale, so
+// the browser can advance it without applying its own timezone.
+function wallSeconds(text) {
+  var m = /^(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)$/.exec(text || '');
+  return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) / 1000 : NaN;
 }
-function offset() { return -new Date().getTimezoneOffset(); }
-function show() {
+// Short forms so every status row fits on one line of a phone screen:
+// "Nov 1 01:59:30" and "Nov 1 02:00".
+function formatWall(seconds, withSeconds) {
+  var d = new Date(seconds * 1000);
+  return MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + ' ' + pad(d.getUTCHours()) + ':' +
+      pad(d.getUTCMinutes()) + (withSeconds ? ':' + pad(d.getUTCSeconds()) : '');
+}
+
+function render() {
+  if (!device) return;
+  var elapsed = Math.floor((Date.now() - fetchedAt) / 1000);
+  var tz = device.timezone || {};
+  $('clock').textContent = formatWall(wallSeconds(device.dateTime) + elapsed, true) +
+      ' ' + (tz.abbreviation || '');
+  var drift = (device.utc + elapsed) - Math.floor(Date.now() / 1000);
   var n = new Date();
-  $('bt').textContent = pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds());
-  $('bd').textContent = n.toLocaleDateString();
-  $('bz').textContent = zone();
-  $('bo').textContent = offset();
+  $('browser').textContent = pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' +
+      pad(n.getSeconds()) + ' (' + (drift >= 0 ? '+' : '') + drift + ' s)';
 }
-show();
-setInterval(show, 1000);
 
-api('/api/time').then(function (t) {
-  $('date').value = t.date || '';
-  $('time').value = t.time || '';
-  return api('/api/config');
-}).then(function (c) {
-  var time = c.time || {}, tz = time.timezone || {};
-  $('zone').value = tz.name || zone();
-  $('offset').value = tz.utcOffsetMinutes == null ? offset() : tz.utcOffsetMinutes;
-}).catch(function (e) { setStatus('API failed: ' + e.message); });
+function show(t) {
+  device = t;
+  fetchedAt = Date.now();
+  var tz = t.timezone || {};
+  $('offset').textContent = formatUtcOffset(tz.utcOffsetMinutes || 0);
+  var next = t.nextChange;
+  $('next').textContent = next
+      ? formatWall(wallSeconds(next.localBefore), false) + ' → ' + next.abbreviation
+      : 'none';
+  $('rtc').textContent = !t.rtcPresent ? 'not found' : (t.trusted ? 'OK' : 'not set');
+  var ntp = t.ntp || {};
+  $('ntp').textContent = !ntp.active ? 'off (AP mode)'
+      : (ntp.lastSyncUtc ? 'NTP ' + Math.max(0, Math.round((t.utc - ntp.lastSyncUtc) / 60)) +
+         ' min ago' : 'NTP pending');
+  render();
+}
 
-function sync(date, time, zoneName, utcOffset) {
-  utcOffset = +utcOffset;
-  if (!date || !time || utcOffset < -840 || utcOffset > 840) {
-    setStatus('Date, time, and valid offset are required');
-    return;
-  }
-  var d = date.split('-'), t = time.split(':');
-  apiPost('/api/time', {
-    year: +d[0], month: +d[1], day: +d[2],
-    hour: +t[0], minute: +t[1], second: +(t[2] || 0)
-  }).then(function () {
-    return apiPost('/api/config', {
-      time: { timezone: { name: zoneName, utcOffsetMinutes: utcOffset } }
-    });
-  }).then(function (result) {
-    setStatus(result.message || 'Saved');
-  }).catch(function (e) { setStatus('API failed: ' + e.message); });
+function refresh() {
+  return api('/api/time').then(show);
+}
+
+function post(body, doneMessage) {
+  setStatus('Saving...');
+  jsonFetch('/api/time', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (d) {
+    if (d.error) throw new Error(d.error);
+    setStatus(d.message || doneMessage, 4000);
+    return refresh();
+  }).catch(function (e) { setStatus(e.message || 'Save failed'); });
+}
+
+function zoneOrStatus() {
+  try { return readTzPicker('zone', 'rule'); }
+  catch (e) { setStatus(e.message); return null; }
 }
 
 function fromBrowser() {
-  var n = new Date();
-  sync(n.getFullYear() + '-' + pad(n.getMonth() + 1) + '-' + pad(n.getDate()),
-       pad(n.getHours()) + ':' + pad(n.getMinutes()) + ':' + pad(n.getSeconds()),
-       zone(), offset());
+  var zone = zoneOrStatus();
+  if (zone) post({ utc: Math.round(Date.now() / 1000), timezone: zone }, 'Saved');
+}
+function saveZone() {
+  var zone = zoneOrStatus();
+  if (zone) post({ timezone: zone }, 'Timezone saved');
 }
 function explicitTime() {
-  sync($('date').value, $('time').value, $('zone').value, $('offset').value);
+  var zone = zoneOrStatus();
+  if (!zone) return;
+  var date = $('date').value, time = $('time').value;
+  if (!date || !time) { setStatus('Date and time are required'); return; }
+  if (time.length === 5) time += ':00';
+  post({ local: date + ' ' + time, timezone: zone }, 'Time set');
 }
+
+refresh().then(function () {
+  $('date').value = device.date || '';
+  $('time').value = device.time || '';
+  var saved = device.timezone || {};
+  var detected = initTzPicker('region', 'zone', saved.name);
+  // After the upgrade from firmware without DST support, the saved zone still
+  // carries the fixed offset it was migrated with until it is saved again.
+  var stale = !detected && tzRuleFor(saved.name) !== saved.posix;
+  $('zoneNote').textContent = detected ? 'Detected from this browser - not saved yet.'
+      : (stale ? 'Daylight-saving rule not saved yet - press Save timezone only.' : '');
+}).catch(function (e) { setStatus('API failed: ' + e.message); });
+setInterval(render, 1000);
+setInterval(function () { refresh().catch(function () {}); }, 60000);
 </script>
 </body>
 </html>

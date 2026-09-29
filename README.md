@@ -69,6 +69,13 @@ active overlay.
 Trading times are local wall-clock times. Holidays and early closes are not
 modeled.
 
+## Time
+
+The DS3231 keeps UTC. The timezone is an IANA zone chosen on `/time` and stored
+with its POSIX daylight-saving rule, so the clock changes to and from daylight
+time on its own. On the home network it also corrects itself from NTP; in
+access-point mode the browser on `/time` is the time source.
+
 ## References
 
 Every document here tracks the code; CLAUDE.md is the single detailed reference.
@@ -91,7 +98,7 @@ pio run                          # compile firmware
 pio run --target upload          # compile + flash
 pio run --target uploadfs        # upload the LittleFS image (data/)
 
-# Host tests for the pure modules: schedule, display formats, datetime, beep envelopes.
+# Host tests for the pure modules: schedule, display formats, datetime, beep envelopes, timezone rules.
 # Needs a host C++ compiler; PLATFORMIO_BUILD_DIR is required when a second
 # PlatformIO install shares this project - see AGENTS.md.
 PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native

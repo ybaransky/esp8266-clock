@@ -4,6 +4,7 @@
 
 #include "button.h"
 #include "config.h"
+#include "config_serializer.h"
 #include "config_validation.h"
 #include "display.h"
 #include "display_manager.h"
@@ -89,8 +90,9 @@ ClockApplication::ClockApplication()
     : m_displayManager(m_segmentDisplay, m_rtc),
       m_clockController(m_displayManager, m_rtc, m_beepPlayer),
       m_pageManager(m_displayManager),
+      m_networkTime(m_clockController, m_rtc, m_wifiConnectionManager),
       m_webPortal(m_clockController, m_configManager, m_wifiConnectionManager, m_rtc,
-                 m_beepPlayer) {}
+                  m_beepPlayer, m_networkTime) {}
 
 void ClockApplication::begin() {
   Serial.begin(74880);
@@ -100,11 +102,13 @@ void ClockApplication::begin() {
   LOG_PRINTF("Built ========= %s %s ==========", __DATE__, __TIME__);
 
   initializeRtc();
+  migrateRtcToUtcIfNeeded();
   initializeDisplayAndConfig();
   reportInitialRtcStatus(m_rtc.getStatus());
 
   const WifiConfig& config = m_configManager.wifiConfig();
   m_wifiConnectionManager.begin(config);
+  m_networkTime.begin();
   m_webPortal.begin();
 
   buttonBegin();
@@ -128,6 +132,32 @@ void ClockApplication::initializeRtc() {
     LOG_PRINTF("Init failed: %s", status.error);
   }
   i2cBusScanner.scan();
+}
+
+// Schema 1 kept local time in the DS3231; schema 2 keeps UTC. The stored rule
+// is the fixed offset the RTC was last set with (see applyTimezoneFields), so
+// subtracting it recovers UTC exactly - even if DST changed since, because
+// the chip never followed DST either.
+//
+// The config is saved before the chip is written. A failed save then changes
+// nothing and the next boot retries; the reverse order could convert twice.
+void ClockApplication::migrateRtcToUtcIfNeeded() {
+  if (m_configManager.loadedSchemaVersion() >= kConfigSchemaVersion) return;
+  ClockConfig config = m_configManager.clockConfig();
+  if (!m_configManager.saveClockConfig(config)) {
+    LOG_PRINTLN("RTC UTC migration postponed: config write failed");
+    return;
+  }
+  if (!m_rtc.timeIsTrustworthy()) {
+    LOG_PRINTLN("RTC UTC migration: config upgraded; RTC time untrusted, left as is");
+    return;
+  }
+  const TimeZoneRule zone = timeZoneFromConfig(config.timezone);
+  const uint32_t rtcLocal = m_rtc.getUtcNow();  // Raw chip value: still local.
+  const uint32_t utc = utcFromLocal(zone, rtcLocal);
+  LOG_PRINTF("RTC UTC migration: rule \"%s\", offset %ld s",
+             config.timezone.posix, static_cast<long>(utcOffsetSecondsAt(zone, utc)));
+  m_rtc.setUtc(utc, "schema 2 UTC migration");
 }
 
 void ClockApplication::initializeDisplayAndConfig() {
@@ -174,6 +204,7 @@ void ClockApplication::tick(uint32_t nowMs) {
   m_displayManager.tick(nowMs);
   m_beepPlayer.tick(nowMs);
   m_wifiConnectionManager.tick();
+  m_networkTime.tick();
   m_webPortal.handleClients();
 }
 

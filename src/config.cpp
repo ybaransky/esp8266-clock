@@ -19,6 +19,9 @@ static constexpr const char* kConfigBackupPath = "/config.bak";  // Previous pri
 // -- WiFi ----------------------------------------------------------------------
 bool ConfigManager::ensureLoaded() {
     if (m_loaded) return true;
+    // Defaults are already in the current schema; readAll() lowers this when
+    // it loads an older file.
+    m_loadedSchemaVersion = kConfigSchemaVersion;
 
     DeviceConfig next;
     initDefaultClockConfig(next.clock);
@@ -76,6 +79,7 @@ bool ConfigManager::readAll(DeviceConfig& config) {
         LOG_PRINTLN("No config found; creating defaults");
         return writeAll(config, "create default config");
     }
+    m_loadedSchemaVersion = readConfigSchemaVersion(doc.as<JsonVariantConst>());
     const char* validationError =
         applyJsonToClockConfig(doc.as<JsonVariantConst>(), config.clock);
     applyJsonToWifiConfig(doc.as<JsonVariantConst>(), config.wifi);
@@ -197,6 +201,11 @@ const ClockConfig& ConfigManager::clockConfig() {
     return m_current.clock;
 }
 
+uint8_t ConfigManager::loadedSchemaVersion() {
+    ensureLoaded();
+    return m_loadedSchemaVersion;
+}
+
 bool ConfigManager::saveClockConfig(ClockConfig& config) {
     ensureLoaded();
     sanitizeClockConfig(config);
@@ -238,8 +247,7 @@ void ConfigManager::sanitizeClockConfig(ClockConfig& config) const {
         sanitizeBlinkMinutes(config.friday.blinkBeforeMinutes);
     config.friday.blinkAfterMinutes =
         sanitizeBlinkMinutes(config.friday.blinkAfterMinutes);
-    config.timezone.utcOffsetMinutes =
-        sanitizeUtcOffsetMinutes(config.timezone.utcOffsetMinutes);
+    sanitizeTimezoneRule(config.timezone.posix, sizeof(config.timezone.posix));
     sanitizeMessageFields(config);
     sanitizeSoundFields(config);
     sanitizePrintableText(config.timezone.name, config.timezone.name,

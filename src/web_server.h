@@ -14,6 +14,7 @@
 
 class ClockController;
 class ConfigManager;
+class NetworkTimeSync;
 class RtcService;
 class BeepPlayer;
 class WifiConnectionManager;
@@ -28,7 +29,8 @@ class WebPortal : public RebootScheduler {
             ConfigManager& configManager,
             WifiConnectionManager& wifiConnectionManager,
             RtcService& rtc,
-            BeepPlayer& beepPlayer);
+            BeepPlayer& beepPlayer,
+            const NetworkTimeSync& networkTime);
 
   void begin();
   void handleClients();

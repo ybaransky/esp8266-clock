@@ -57,6 +57,18 @@ bool ConfigApi::persistClockConfig(ClockConfig& config, const WifiConfig& wifi) 
   return m_configManager.saveConfig(config, wifi);
 }
 
+bool ConfigApi::saveTimezone(const TimezoneConfig& timezone) {
+  ClockConfig config = m_configManager.clockConfig();
+  config.timezone = timezone;
+  if (!persistClockConfig(config)) {
+    LOG_PRINTLN("timezone save failed: complete config write failed");
+    return false;
+  }
+  LOG_PRINTF("timezone saved: %s \"%s\"", config.timezone.name, config.timezone.posix);
+  m_clockController.applyConfig(config);
+  return true;
+}
+
 void ConfigApi::handleDemoTest() {
   if (m_server.hasArg("plain") && (m_server.arg("plain").length() > 0)) {
     JsonDocument doc;

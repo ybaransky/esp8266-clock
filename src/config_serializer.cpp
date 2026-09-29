@@ -211,7 +211,7 @@ void serializeClockConfig(JsonDocument& doc, const ClockConfig& clock) {
 
   JsonObject timezone = doc["time"]["timezone"].to<JsonObject>();
   timezone["name"] = clock.timezone.name;
-  timezone["utcOffsetMinutes"] = clock.timezone.utcOffsetMinutes;
+  timezone["posix"] = clock.timezone.posix;
 
   JsonObject location = doc["location"].to<JsonObject>();
   location["zipcode"]   = clock.locations.device.zipcode;
@@ -426,17 +426,33 @@ bool applyLocationInfo(JsonVariantConst source, LocationInfo& info) {
   return true;
 }
 
-void applyTimezoneFields(JsonVariantConst time, ClockConfig& config) {
+// Returns false for a rule that does not parse, leaving the stored rule as it
+// was.
+bool applyTimezoneFields(JsonVariantConst time, ClockConfig& config) {
   JsonVariantConst timezone = time["timezone"];
   if (!timezone["name"].isNull()) {
     sanitizePrintableText(timezone["name"].as<const char*>(),
                           config.timezone.name,
                           sizeof(config.timezone.name));
   }
-  if (!timezone["utcOffsetMinutes"].isNull()) {
-    config.timezone.utcOffsetMinutes =
-        sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>());
+  if (!timezone["posix"].isNull()) {
+    const char* rule = timezone["posix"] | "";
+    TimeZoneRule parsed;
+    if ((strlen(rule) >= sizeof(config.timezone.posix)) ||
+        !parsePosixTimeZone(rule, &parsed)) {
+      return false;
+    }
+    strlcpy(config.timezone.posix, rule, sizeof(config.timezone.posix));
+    return true;
   }
+  // A schema-1 config stores only the offset that was in effect when it was
+  // saved. It becomes a fixed-offset rule until a real zone is chosen.
+  if (!timezone["utcOffsetMinutes"].isNull()) {
+    formatFixedOffsetRule(
+        sanitizeUtcOffsetMinutes(timezone["utcOffsetMinutes"].as<int>()),
+        config.timezone.posix, sizeof(config.timezone.posix));
+  }
+  return true;
 }
 
 }  // namespace
@@ -526,8 +542,16 @@ const char* applyJsonToClockConfig(JsonVariantConst root, ClockConfig& config) {
     error = "{\"error\":\"ZIP code must be 5 digits\"}";
   }
 
-  applyTimezoneFields(root["time"], config);
+  if (!applyTimezoneFields(root["time"], config) && (error == nullptr)) {
+    error = "{\"error\":\"Timezone rule is invalid\"}";
+  }
   return error;
+}
+
+uint8_t readConfigSchemaVersion(JsonVariantConst root) {
+  // Schema 1 predates the field being read back, but always wrote it; a file
+  // without it is treated as the oldest schema.
+  return root["configVersion"] | static_cast<uint8_t>(1);
 }
 
 bool applyJsonToWifiConfig(JsonVariantConst root, WifiConfig& wifi) {
