@@ -17,7 +17,9 @@ lives in [beep_pattern.cpp](src/beep_pattern.cpp) and has host tests.
 
 Tone accepts 100-5000 Hz, duration 4-1200 whole seconds, and starting rate
 1-10 beeps/s. Settings are stored under `sound.boundaryAlert`.
-The overall sound switch and approach-alert switch must both be enabled.
+The **Sound on** switch and the approach-alert switch must both be enabled.
+Sound on is a mute-all: turning it off silences every automatic sound without
+changing the per-sound choices, which the page greys out until it is back on.
 
 The controller supplies the current target and RTC second phase every accepted
 SQW tick. [BeepPlayer](src/beep_player.h) calculates the current pulse on each

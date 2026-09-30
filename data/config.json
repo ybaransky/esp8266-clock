@@ -3,13 +3,18 @@
   "display": {
     "activeMode": "clock",
     "brightness": 3,
+    "clock12Hour": false,
     "messages": {
       "splash": "    YuriCloc",
-      "final":  "    Good Luc"
+      "final": "    Good Luc",
+      "fridaySunset": "     SUN SET",
+      "tradingOpen": "        OPEN",
+      "tradingClose": "        CLSE"
     },
     "modes": {
       "countdown": {
-        "format": "ddl-hhmm-ssu"
+        "format": "ddl-hhmm-ssu",
+        "end": "2026-07-04 00:00:00"
       },
       "countup": {
         "format": "ddl-hhmm-ssu",
@@ -17,12 +22,33 @@
       },
       "clock": {
         "format": "yyyy-mmdd-hhmm"
+      },
+      "friday": {
+        "clockFormat": "yyyy-mmdd-hhmm",
+        "toFridaySunsetFormat": "ddl-hhmm-ssu",
+        "toSaturdaySunsetFormat": "ddl-hhmm-ssu",
+        "blinkBeforeMinutes": 0,
+        "blinkAfterMinutes": 0
+      },
+      "trading": {
+        "format": "ddl-hhmm-ssu",
+        "formatOver24": "same",
+        "intervalCount": 1,
+        "intervals": [
+          { "start": "09:30", "stop": "16:00" },
+          { "start": "17:00", "stop": "18:00" }
+        ]
       }
     }
   },
   "sound": {
     "enabled": true,
     "volume": 40,
+    "startupBeep": false,
+    "finalBeep": false,
+    "fridaySunsetBeep": false,
+    "tradingOpenBeep": false,
+    "tradingCloseBeep": false,
     "boundaryAlert": {
       "enabled": true,
       "boundary1": {

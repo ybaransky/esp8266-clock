@@ -15,9 +15,9 @@ constexpr const char* kDefaultApPassword = "12345678";  // Fallback AP password;
 // A placeholder, not a meaningful default: it is already in the past and cannot
 // be otherwise, since any date compiled into firmware is stale by the time a
 // device is powered on. It is reachable only when a user selects Countdown
-// without setting an end time, because the shipped activeMode is Clock. Do not
-// duplicate it in data/config.json - patch semantics make an absent field fall
-// through to here, and a second copy would drift out of step with this one.
+// without setting an end time, because the shipped activeMode is Clock.
+// data/config.json spells out every default, this one included; change both
+// together.
 constexpr const char* kDefaultCountdownEnd = "2026-07-04 00:00:00";  // Placeholder countdown target.
 
 // "Never set": resolved to the RTC's time on the first save.
