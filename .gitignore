@@ -83,3 +83,4 @@ data/zipcodes.bin
 __pycache__/
 *.py[cod]
 tools/__pycache__/web_manifest.cpython-311.pyc
+data/songs.bin
