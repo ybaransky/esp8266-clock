@@ -141,8 +141,8 @@ void RtcService::recoverIfPowerWasLost() {
 
   // Set a known-valid time once to clear the DS3231 OSF/lostPower condition.
   adjustWithLog(DateTime(F(__DATE__), F(__TIME__)), "lost power recovery");
-  m_status.powerLost = false;
-  m_status.lowBattery = false;
+  // powerLost/lowBattery stay set so LO BAT shows until setUtc() (browser or
+  // NTP sync) clears them; otherwise the wrong time would display silently.
   // The chip now holds the firmware build date (a local time, read as UTC),
   // which is in range and therefore passes flagInvalidTimeIfNeeded(), but it is
   // a placeholder rather than a reading. Nothing may persist it as a timestamp

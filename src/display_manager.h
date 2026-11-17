@@ -155,7 +155,8 @@ class DisplayManager {
   void notifySecondBoundary(bool forceHardwareRefresh = false);
 
   void showSplash(const char* message);
-  void showDemo();
+  // Plays the demo countdown, then blinks `finalMessage` (the page's unsaved text).
+  void showDemo(const char* finalMessage);
   void showInfo(const char* message, int32_t durationMs = kForever);
   void showPages(const DisplayPage* pages, uint8_t pageCount,
                  uint16_t pageDurationMs = kDefaultPageDurationMs,

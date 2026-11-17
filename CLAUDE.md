@@ -167,6 +167,7 @@ libraries. Gating only our own sources there would need `build_src_flags`. `-Wno
   - `LOG_PRINTLN(msg)` and the `fmt` of `LOG_PRINTF` **must be string literals**. For a runtime string, use `LOG_PRINTF("%s", value)`.
   - `LOG_PRINTLN` pastes its literal into the printf format, so a literal `%` must be written `%%`.
 - Each macro call emits exactly one line and appends the terminating newline itself, so **formats must not end with `\n`**.
+- The same RAM rule covers HTTP replies: `HttpResponder::sendText`/`sendJsonError` take only `F("...")`, and literal `sendJson` bodies use its `F()` overload; the `const char*` `sendJson` is for bodies built at runtime.
 
 ### Display / mode architecture
 The display system is layered as follows:
@@ -199,7 +200,7 @@ The display system is layered as follows:
    - `OverlayState` is a plain struct: `{overlay, message[64], paged, transition}`. Behavior is explicit in the `Overlay` value instead of boolean flag combinations; unused fields are ignored.
    - `applySettings(config, initialView)` (hot-reload; the application resolves the view before rendering), `tick(nowMs)`, and `setBrightness()`.
    - `setView(state)` replaces the base view. If an overlay is active, the new view simply becomes visible when the overlay clears - the view keeps updating live underneath; there is no snapshot to keep in sync. Used by `ScheduledModeController` when its decision changes.
-   - Overlays: `showSplash(msg)`, `showDemo()`, `showInfo(msg, durationMs = kForever)`, `showPages(pages, count, ...)`. `showFault()` has priority over ordinary overlays; only `clearFault()` or a new fault can replace it. Expiration reveals the current base view.
+   - Overlays: `showSplash(msg)`, `showDemo(finalMessage)`, `showInfo(msg, durationMs = kForever)`, `showPages(pages, count, ...)`. `showFault()` has priority over ordinary overlays; only `clearFault()` or a new fault can replace it. Expiration reveals the current base view.
    - `ViewState.blink` is a `BlinkWindow` - a half-open `[fromUnix, untilUnix)` range of UTC seconds during which the **whole base view** blinks at `kViewBlinkMs` (250ms half-period = 2 blinks/second). An empty window (the default) disables it. `render()` advances the blink phase before the frame builders consult the render throttle - a toggle forces its own frame regardless of the format's refresh rate - and blanks the finished frame on the "off" phase. Membership is re-tested every render (`viewBlinkActive()`), so like `longFormatIndex` the window ends on its own and needs no crossing state; a window that closes on an "off" phase forces one immediate visible frame instead of waiting for the next refresh. Absolute times (not a duration relative to `anchorUtc`) are what let one field express both "before a boundary" and "after a boundary". Used by Friday mode's sunset blink windows.
    - Overlay frames come from **`display_renderer.h/cpp`**: pure functions (`renderBlankDisplayFrame`, `renderDemoDisplayFrame`, `renderMessageDisplayFrame`, `renderPageDisplayFrame`) that convert explicit data into a `DisplayFrame` with no I/O or scheduling.
    - `ClockController::activeMode()` is the persisted mode; `DisplayManager::activeView()` is the base view (never an overlay). Friday and Trading modes update their views over time.

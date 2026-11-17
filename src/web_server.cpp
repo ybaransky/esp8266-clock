@@ -30,7 +30,7 @@ WebPortal::WebPortal(ClockController& clockController,
       // m_configApi is declared, and so constructed, before m_timeApi.
       m_timeApi(m_server, m_responder, clockController, rtc, configManager,
                 m_configApi, networkTime),
-      m_fileApi(m_server, m_responder),
+      m_fileApi(m_server, m_responder, *this),
       m_locationApi(m_server, m_responder),
       m_wifiApi(m_server, m_responder, configManager, wifiConnectionManager, *this),
       m_clockController(clockController),
@@ -65,15 +65,15 @@ void WebPortal::begin() {
                [this]() { sendProbe204("text/plain"); });
     m_server.on("/hotspot-detect.html", HTTP_GET, [this]() {
       sendProbeText(
-          "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>");
+          F("<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"));
     });
     m_server.on("/library/test/success.html", HTTP_GET, [this]() {
-      sendProbeText("Success");
+      sendProbeText(F("Success"));
     });
     m_server.on("/ncsi.txt", HTTP_GET,
-               [this]() { sendProbeText("Microsoft NCSI"); });
+               [this]() { sendProbeText(F("Microsoft NCSI")); });
     m_server.on("/connecttest.txt", HTTP_GET, [this]() {
-      sendProbeText("Microsoft Connect Test");
+      sendProbeText(F("Microsoft Connect Test"));
     });
 
     m_server.on("/api/client-log", HTTP_POST,
@@ -174,7 +174,7 @@ void WebPortal::sendProbe204(const char* contentType) {
     m_responder.send(204, contentType, "");
 }
 
-void WebPortal::sendProbeText(const char* body) {
+void WebPortal::sendProbeText(const __FlashStringHelper* body) {
     ++m_probeCount;
     m_responder.sendText(200, body);
 }
@@ -215,7 +215,7 @@ void WebPortal::scheduleReboot(uint32_t delayMs) {
 
 void WebPortal::handleCaptiveRedirect() {
     if (m_wifiConnectionManager.status().mode != WifiMode::kAccessPoint) {
-      m_responder.sendText(404, "Not found");
+      m_responder.sendText(404, F("Not found"));
       return;
     }
 

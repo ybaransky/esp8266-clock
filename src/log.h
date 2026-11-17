@@ -4,7 +4,8 @@
 
 using LogTimeProvider = bool (*)(char* buffer, size_t bufferSize);
 
-const char* logSourceName(const char* path);
+// `path` must be a flash string (PSTR(__FILE__)); a plain __FILE__ would sit in RAM.
+const char* logSourceName(PGM_P path);
 const char* logCurrentTime();
 void logSetTimeProvider(LogTimeProvider provider);
 
@@ -23,4 +24,4 @@ unsigned logStackUsed();
 #define LOG_PRINTLN(message) LOG_PRINTF(message)
 
 #define LOG_PRINTF(format, ...) \
-  do { Serial.printf_P(PSTR("%s %u %s:%d " format "\n"), logCurrentTime(), logStackUsed(), logSourceName(__FILE__), __LINE__, ##__VA_ARGS__); } while (0)
+  do { Serial.printf_P(PSTR("%s %u %s:%d " format "\n"), logCurrentTime(), logStackUsed(), logSourceName(PSTR(__FILE__)), __LINE__, ##__VA_ARGS__); } while (0)

@@ -9,6 +9,8 @@
 
 namespace {
 
+constexpr uint32_t kUploadRebootDelayMs = 1500;
+
 // Indents a compact JSON byte stream on its way to Serial, one byte at a time.
 //
 // Deliberately not a parse-then-serializeJsonPretty(): this mirror exists to
@@ -175,7 +177,7 @@ void FileApi::sendJsonEscapedString(ESP8266WebServer& server, const String& valu
 
 void FileApi::handleListFiles() {
   if (!storageManager.ensureMounted("list files")) {
-    m_responder.sendJsonError(500, "Storage mount failed");
+    m_responder.sendJsonError(500, F("Storage mount failed"));
     return;
   }
 
@@ -221,7 +223,7 @@ void FileApi::handleListFiles() {
 void FileApi::handleReadFile() {
   const String path = normalizedFilePath(m_server.arg("name"));
   if (path.isEmpty()) {
-    m_responder.sendText(400, "Invalid file name");
+    m_responder.sendText(400, F("Invalid file name"));
     return;
   }
   // /config.json holds the WiFi station password in plain text. serializeWifi-
@@ -236,17 +238,17 @@ void FileApi::handleReadFile() {
   if (isCredentialBearingPath(path)) {
     LOG_PRINTF("/api/file refused %s: contains credentials; use /api/config",
                path.c_str());
-    m_responder.sendText(403, "Not served: contains credentials. Use /api/config");
+    m_responder.sendText(403, F("Not served: contains credentials. Use /api/config"));
     return;
   }
   if (!storageManager.ensureMounted("read file")) {
-    m_responder.sendText(500, "Storage mount failed");
+    m_responder.sendText(500, F("Storage mount failed"));
     return;
   }
 
   File file = STORAGE.open(path, "r");
   if (!file) {
-    m_responder.sendText(404, "Not found");
+    m_responder.sendText(404, F("Not found"));
     return;
   }
 
@@ -321,22 +323,22 @@ void FileApi::logFileContent(File& file, const String& path, size_t offset,
 void FileApi::handleDeleteFile() {
   const String path = normalizedFilePath(m_server.arg("name"));
   if (path.isEmpty()) {
-    m_responder.sendJsonError(400, "Invalid file name");
+    m_responder.sendJsonError(400, F("Invalid file name"));
     return;
   }
   if (!storageManager.ensureMounted("delete file")) {
-    m_responder.sendJsonError(500, "Storage mount failed");
+    m_responder.sendJsonError(500, F("Storage mount failed"));
     return;
   }
   if (!STORAGE.exists(path)) {
-    m_responder.sendJsonError(404, "Not found");
+    m_responder.sendJsonError(404, F("Not found"));
     return;
   }
   if (!STORAGE.remove(path)) {
-    m_responder.sendJsonError(500, "Delete failed");
+    m_responder.sendJsonError(500, F("Delete failed"));
     return;
   }
-  m_responder.sendJson(200, "{\"message\":\"Deleted\"}");
+  m_responder.sendJson(200, F("{\"message\":\"Deleted\"}"));
 }
 
 void FileApi::handleUploadData() {
@@ -354,9 +356,12 @@ void FileApi::handleUploadData() {
       m_uploadError = true;
       return;
     }
-    m_uploadFile = STORAGE.open(path, "w");
+    // Written beside the target so a dropped upload never truncates the real file.
+    m_uploadPath = path;
+    m_uploadFile = STORAGE.open(uploadTempPath(), "w");
     if (!m_uploadFile) {
-      LOG_PRINTF("File upload failed: could not open %s for writing", path.c_str());
+      LOG_PRINTF("File upload failed: could not open %s for writing",
+                 uploadTempPath().c_str());
       m_uploadError = true;
       return;
     }
@@ -374,23 +379,45 @@ void FileApi::handleUploadData() {
 
   if (upload.status == UPLOAD_FILE_END) {
     closeUploadFile();
+    if (m_uploadError) {
+      STORAGE.remove(uploadTempPath());
+      return;
+    }
+    STORAGE.remove(m_uploadPath);
+    if (!STORAGE.rename(uploadTempPath(), m_uploadPath)) {
+      LOG_PRINTF("File upload failed: could not rename onto %s", m_uploadPath.c_str());
+      STORAGE.remove(uploadTempPath());
+      m_uploadError = true;
+    }
     return;
   }
 
   if (upload.status == UPLOAD_FILE_ABORTED) {
     closeUploadFile();
+    STORAGE.remove(uploadTempPath());
     LOG_PRINTLN("File upload aborted by client");
     m_uploadError = true;
   }
 }
 
 void FileApi::handleUpload() {
+  // The config is cached in RAM at boot; a reboot is what makes an uploaded
+  // config.json take effect instead of being overwritten by the next save.
+  const bool needsReboot = (strcmp_P(m_uploadPath.c_str(), PSTR("/config.json")) == 0);
   if (m_uploadError) {
-    m_responder.sendJsonError(500, "Upload failed");
+    m_responder.sendJsonError(500, F("Upload failed"));
+  } else if (needsReboot) {
+    m_responder.sendJson(200, F("{\"message\":\"Saved - rebooting...\",\"reboot\":true}"));
+    m_rebootScheduler.scheduleReboot(kUploadRebootDelayMs);
   } else {
-    m_responder.sendJson(200, "{\"message\":\"Uploaded\"}");
+    m_responder.sendJson(200, F("{\"message\":\"Uploaded\"}"));
   }
   m_uploadError = false;
+  m_uploadPath = String();
+}
+
+String FileApi::uploadTempPath() const {
+  return m_uploadPath + F(".tmp");
 }
 
 void FileApi::closeUploadFile() {

@@ -109,8 +109,8 @@ void ClockController::setBrightness(uint8_t brightness) {
   m_displayManager.setBrightness(brightness);
 }
 
-void ClockController::showDemo() {
-  m_displayManager.showDemo();
+void ClockController::showDemo(const char* finalMessage) {
+  m_displayManager.showDemo(finalMessage);
 }
 
 void ClockController::showInfo(const char* message, int32_t durationMs) {

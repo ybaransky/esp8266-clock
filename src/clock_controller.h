@@ -26,7 +26,7 @@ class ClockController {
   // Writes the RTC. `reason` names the source (browser, NTP) in the log.
   void setTime(uint32_t utc, const char* reason);
   void setBrightness(uint8_t brightness);
-  void showDemo();
+  void showDemo(const char* finalMessage);
   void showInfo(const char* message, int32_t durationMs);
   void showSplash(const char* message);
 

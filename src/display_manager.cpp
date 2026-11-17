@@ -142,10 +142,11 @@ void DisplayManager::showSplash(const char* message) {
   render(nowMs, true);
 }
 
-void DisplayManager::showDemo() {
+void DisplayManager::showDemo(const char* finalMessage) {
   const uint32_t nowMs = millis();
   OverlayState state;
   state.overlay = Overlay::kDemoCountdown;
+  copyMessage(state.message, finalMessage);  // Carried into the final-message phase.
   state.transition = {true, nowMs + kDemoCountdownMs};
 
   installOverlay(state, nowMs);
@@ -314,7 +315,7 @@ void DisplayManager::clearOverlayAndRenderView(uint32_t nowMs) {
 void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
   OverlayState state;
   state.overlay = Overlay::kDemoFinalMessage;
-  copyMessage(state.message, m_settings.finalMessage);
+  copyMessage(state.message, m_overlay.message);
   state.transition = {true, nowMs + kDemoMessageMs};
 
   installOverlay(state, nowMs);

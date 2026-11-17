@@ -18,7 +18,7 @@ void LocationApi::handleZipcodeLookup() {
   if (!isValidZipcode(zipcode.c_str())) {
     LOG_PRINTF("/api/zipcode/lookup failed: invalid zipcode=\"%s\"",
                zipcode.c_str());
-    m_responder.sendJsonError(400, "ZIP code must be 5 digits");
+    m_responder.sendJsonError(400, F("ZIP code must be 5 digits"));
     return;
   }
 
@@ -26,7 +26,7 @@ void LocationApi::handleZipcodeLookup() {
   if (!zipcodeLookupLocation(zipcode.c_str(), &location)) {
     LOG_PRINTF("/api/zipcode/lookup failed: zip not found or unreadable: \"%s\"",
                zipcode.c_str());
-    m_responder.sendJsonError(404, "ZIP code not found");
+    m_responder.sendJsonError(404, F("ZIP code not found"));
     return;
   }
 
@@ -57,21 +57,21 @@ void LocationApi::handleSunset() {
       !isfinite(longitude) || (longitude < -180.0f) || (longitude > 180.0f)) {
     LOG_PRINTF("/api/sunset failed: invalid coordinates lat=%.6f lon=%.6f",
                latitude, longitude);
-    m_responder.sendJsonError(400, "Latitude or longitude is invalid");
+    m_responder.sendJsonError(400, F("Latitude or longitude is invalid"));
     return;
   }
 
   int year = 0, month = 0, day = 0;
   if ((!parseIsoDate(dateTextArg, &year, &month, &day) || (year < 2020))) {
     LOG_PRINTF("/api/sunset failed: invalid date=\"%s\"", dateTextArg);
-    m_responder.sendJsonError(400, "Date is invalid");
+    m_responder.sendJsonError(400, F("Date is invalid"));
     return;
   }
 
   int hour = 0, minute = 0, second = 0;
   if (!parseClockTime(timeTextArg, &hour, &minute, &second)) {
     LOG_PRINTF("/api/sunset failed: invalid time=\"%s\"", timeTextArg);
-    m_responder.sendJsonError(400, "Time is invalid");
+    m_responder.sendJsonError(400, F("Time is invalid"));
     return;
   }
 
@@ -83,7 +83,7 @@ void LocationApi::handleSunset() {
     TimeZoneRule zone;
     if (!parsePosixTimeZone(posixRule, &zone)) {
       LOG_PRINTF("/api/sunset failed: invalid timezone rule \"%s\"", posixRule);
-      m_responder.sendJsonError(400, "Timezone rule is invalid");
+      m_responder.sendJsonError(400, F("Timezone rule is invalid"));
       return;
     }
     const uint32_t eveningLocal = DateTime(year, month, day, 18, 0, 0).unixtime();
@@ -91,7 +91,7 @@ void LocationApi::handleSunset() {
   }
   if ((utcOffsetMinutes < -840) || (utcOffsetMinutes > 840)) {
     LOG_PRINTF("/api/sunset failed: invalid UTC offset=%d", utcOffsetMinutes);
-    m_responder.sendJsonError(400, "UTC offset is invalid");
+    m_responder.sendJsonError(400, F("UTC offset is invalid"));
     return;
   }
 

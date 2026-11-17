@@ -40,11 +40,11 @@ void WifiApi::handleConnect() {
   const String password = doc["password"] | "";
   if (!m_wifiConnectionManager.connectAndSave(m_configManager, ssid, password)) {
     LOG_PRINTLN("/api/wifi/connect failed: SSID required");
-    m_responder.sendJsonError(400, "SSID required");
+    m_responder.sendJsonError(400, F("SSID required"));
     return;
   }
 
-  m_responder.sendJson(200, "{\"message\":\"Saved - rebooting...\",\"reboot\":true}");
+  m_responder.sendJson(200, F("{\"message\":\"Saved - rebooting...\",\"reboot\":true}"));
   m_rebootScheduler.scheduleReboot(kRebootDelayMs);
 }
 

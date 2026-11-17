@@ -98,7 +98,7 @@ void TimeApi::handleTimeSync() {
   bool hasTimezone = false;
   if (!readTimezone(doc["timezone"], timezone, hasTimezone)) {
     LOG_PRINTLN("/api/time failed: invalid timezone rule");
-    m_responder.sendJsonError(400, "Timezone rule is invalid");
+    m_responder.sendJsonError(400, F("Timezone rule is invalid"));
     return;
   }
 
@@ -108,28 +108,28 @@ void TimeApi::handleTimeSync() {
   DateTime local;
   if (hasUtc && ((utc < kEarliestSettableUtc) || (utc > kLatestSettableUtc))) {
     LOG_PRINTF("/api/time failed: utc %lu out of range", static_cast<unsigned long>(utc));
-    m_responder.sendJsonError(400, "Time is out of range");
+    m_responder.sendJsonError(400, F("Time is out of range"));
     return;
   }
   if (!hasUtc && hasLocal &&
       (!parseLocalDateTime(doc["local"] | "", local) || (local.year() < 2020))) {
     LOG_PRINTLN("/api/time failed: invalid local time");
-    m_responder.sendJsonError(400, "Invalid time");
+    m_responder.sendJsonError(400, F("Invalid time"));
     return;
   }
   const bool hasTime = hasUtc || hasLocal;
   if (!hasTime && !hasTimezone) {
-    m_responder.sendJsonError(400, "Time or timezone required");
+    m_responder.sendJsonError(400, F("Time or timezone required"));
     return;
   }
   if (hasTime && !m_rtc.getStatus().present) {
     LOG_PRINTLN("/api/time failed: no RTC present");
-    m_responder.sendJsonError(503, "No RTC: time not set");
+    m_responder.sendJsonError(503, F("No RTC: time not set"));
     return;
   }
 
   if (hasTimezone && !m_configApi.saveTimezone(timezone)) {
-    m_responder.sendJsonError(500, "Configuration write failed");
+    m_responder.sendJsonError(500, F("Configuration write failed"));
     return;
   }
   if (hasTime) {

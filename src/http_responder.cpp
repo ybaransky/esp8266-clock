@@ -17,12 +17,23 @@ void HttpResponder::send(int status, const char* contentType, const char* body) 
   captureClientState();
 }
 
-void HttpResponder::sendText(int status, const char* body) {
-  send(status, "text/plain", body);
+void HttpResponder::sendFlash(int status, const char* contentType, PGM_P body) {
+  logRequest(status, strlen_P(body));
+  m_server.sendHeader("Cache-Control", "no-store, max-age=0");
+  m_server.send_P(status, contentType, body);
+  captureClientState();
+}
+
+void HttpResponder::sendText(int status, const __FlashStringHelper* body) {
+  sendFlash(status, "text/plain", reinterpret_cast<PGM_P>(body));
 }
 
 void HttpResponder::sendJson(int status, const char* body) {
   send(status, "application/json", body);
+}
+
+void HttpResponder::sendJson(int status, const __FlashStringHelper* body) {
+  sendFlash(status, "application/json", reinterpret_cast<PGM_P>(body));
 }
 
 void HttpResponder::sendJsonDocument(int status, JsonDocument& doc) {
@@ -32,9 +43,12 @@ void HttpResponder::sendJsonDocument(int status, JsonDocument& doc) {
   sendJson(status, json.c_str());
 }
 
-void HttpResponder::sendJsonError(int status, const char* message) {
+void HttpResponder::sendJsonError(int status, const __FlashStringHelper* message) {
+  char text[80];
+  strncpy_P(text, reinterpret_cast<PGM_P>(message), sizeof(text) - 1);
+  text[sizeof(text) - 1] = '\0';
   char body[96];
-  snprintf(body, sizeof(body), "{\"error\":\"%s\"}", message);
+  snprintf_P(body, sizeof(body), PSTR("{\"error\":\"%s\"}"), text);
   sendJson(status, body);
 }
 
@@ -43,7 +57,7 @@ bool HttpResponder::parseJsonBody(JsonDocument& doc, const char* route) {
   if (!error) return true;
 
   LOG_PRINTF("%s failed: invalid JSON: %s", route, error.c_str());
-  sendJsonError(400, "Invalid JSON");
+  sendJsonError(400, F("Invalid JSON"));
   return false;
 }
 

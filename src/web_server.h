@@ -40,7 +40,7 @@ class WebPortal : public RebootScheduler {
  private:
   void logTrafficSummary();
   void sendProbe204(const char* contentType);
-  void sendProbeText(const char* body);
+  void sendProbeText(const __FlashStringHelper* body);
   void handleClientLog();
   void handleCaptiveRedirect();
   void handleApiStatus();

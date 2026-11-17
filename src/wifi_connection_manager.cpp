@@ -14,6 +14,7 @@ constexpr uint32_t kStationConnectTimeoutMs = 15000;  // Station join attempt be
 constexpr uint16_t kStationConnectPollMs = 250;       // Status poll interval during a join.
 constexpr uint32_t kApClientIpTimeoutMs = 10000;     // Wait for a new AP client to be leased an IP.
 constexpr uint32_t kApAddressTimeoutMs = 5000;       // Bounded wait for softAPIP() after softAP().
+constexpr uint32_t kStationRetryIntervalMs = 5UL * 60UL * 1000UL;  // Idle-AP scan period for the home network.
 
 WiFiEventHandler apStationConnectedHandler;     // Keeps the SDK subscription alive.
 WiFiEventHandler apStationDisconnectedHandler;  // Keeps the SDK subscription alive.
@@ -83,6 +84,8 @@ void WifiConnectionManager::onApClientDisconnected(const uint8_t* mac) {
 }
 
 void WifiConnectionManager::tick() {
+  retryStationIfDue();
+
   if (m_apClientDisconnectedPending) {
     m_apClientDisconnectedPending = false;
     char mac[18];
@@ -191,6 +194,37 @@ String WifiConnectionManager::resolveApSsid() const {
   return String(derived);
 }
 
+// After a power cut the clock often boots before the router and falls back to
+// AP. While no one uses the AP, scan in the background every few minutes and
+// reboot into station mode once the home network is back on the air.
+// shortcut: a hidden home SSID never shows in scans, so it needs a manual reboot.
+void WifiConnectionManager::retryStationIfDue() {
+  if ((m_mode != WifiMode::kAccessPoint) || m_config.staSsid.isEmpty()) return;
+  if (WiFi.softAPgetStationNum() > 0) {  // Never disturb a connected client.
+    m_apIdleSinceMs = millis();
+    return;
+  }
+
+  const int8_t result = WiFi.scanComplete();
+  if (result == WIFI_SCAN_RUNNING) return;
+  if (result >= 0) {
+    for (int8_t i = 0; i < result; ++i) {
+      if (WiFi.SSID(i) == m_config.staSsid) {
+        LOG_PRINTF("STA \"%s\" is back - rebooting to connect", m_config.staSsid.c_str());
+        ESP.restart();
+      }
+    }
+    WiFi.scanDelete();
+    WiFi.mode(WIFI_AP);  // The scan enabled STA; return to the AP-only setup.
+    m_apIdleSinceMs = millis();
+    return;
+  }
+
+  if (millis() - m_apIdleSinceMs < kStationRetryIntervalMs) return;
+  m_apIdleSinceMs = millis();  // A scan that fails to start retries next interval.
+  WiFi.scanNetworks(true);
+}
+
 bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& password) {
   LOG_PRINTF("Connecting to STA \"%s\"...", ssid.c_str());
   WiFi.mode(WIFI_STA);
@@ -251,6 +285,7 @@ uint8_t WifiConnectionManager::pickLeastCongestedChannel() {
 
 void WifiConnectionManager::startAccessPoint() {
   m_mode = WifiMode::kAccessPoint;
+  m_apIdleSinceMs = millis();
   const uint8_t channel = pickLeastCongestedChannel();
   WiFi.mode(WIFI_AP);
   // Confirmed on stock settings (2026-07-13): transfers to a power-save

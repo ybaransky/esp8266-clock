@@ -9,11 +9,14 @@ class HttpResponder {
  public:
   explicit HttpResponder(ESP8266WebServer& server) : m_server(server) {}
 
+  // Literal bodies are passed as F("...") so they stay in flash, not RAM;
+  // the const char* forms are for bodies built at runtime.
   void send(int status, const char* contentType, const char* body);
-  void sendText(int status, const char* body);
+  void sendText(int status, const __FlashStringHelper* body);
   void sendJson(int status, const char* body);
+  void sendJson(int status, const __FlashStringHelper* body);
   void sendJsonDocument(int status, JsonDocument& doc);
-  void sendJsonError(int status, const char* message);
+  void sendJsonError(int status, const __FlashStringHelper* message);
   void sendGzipProgmem(int status, const char* contentType,
                        const uint8_t* body, size_t length,
                        bool cacheImmutable = false);
@@ -29,6 +32,7 @@ class HttpResponder {
   static const char* methodName(HTTPMethod method);
   static const char* abbreviatedRoute(const char* uri);
   void captureClientState();
+  void sendFlash(int status, const char* contentType, PGM_P body);
 
   ESP8266WebServer& m_server;  // Server used to send HTTP responses.
   uint32_t m_responseSequence = 0;  // Count of responses started since boot.
