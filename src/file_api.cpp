@@ -134,45 +134,36 @@ String FileApi::uploadFilePath(const String& uploadName) {
   return normalizedFilePath(name);
 }
 
+// Escapes into one buffer and sends it with a single sendContent(): in a
+// chunked reply every call is its own chunk, so per-character sends multiplied
+// the bytes and writes on the fragile AP link.
 void FileApi::sendJsonEscapedString(ESP8266WebServer& server, const String& value) {
-  server.sendContent("\"");
+  String escaped;
+  escaped.reserve(value.length() + 2);
+  escaped += '"';
   for (size_t index = 0; index < value.length(); ++index) {
     const char c = value[index];
     switch (c) {
-      case '"':
-        server.sendContent("\\\"");
-        break;
-      case '\\':
-        server.sendContent("\\\\");
-        break;
-      case '\b':
-        server.sendContent("\\b");
-        break;
-      case '\f':
-        server.sendContent("\\f");
-        break;
-      case '\n':
-        server.sendContent("\\n");
-        break;
-      case '\r':
-        server.sendContent("\\r");
-        break;
-      case '\t':
-        server.sendContent("\\t");
-        break;
+      case '"':  escaped += F("\\\""); break;
+      case '\\': escaped += F("\\\\"); break;
+      case '\b': escaped += F("\\b"); break;
+      case '\f': escaped += F("\\f"); break;
+      case '\n': escaped += F("\\n"); break;
+      case '\r': escaped += F("\\r"); break;
+      case '\t': escaped += F("\\t"); break;
       default:
         if (static_cast<uint8_t>(c) < 0x20) {
-          char escaped[7];
-          snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<uint8_t>(c));
-          server.sendContent(escaped);
+          char unicode[7];
+          snprintf(unicode, sizeof(unicode), "\\u%04x", static_cast<uint8_t>(c));
+          escaped += unicode;
         } else {
-          char text[2] = {c, '\0'};
-          server.sendContent(text);
+          escaped += c;
         }
         break;
     }
   }
-  server.sendContent("\"");
+  escaped += '"';
+  server.sendContent(escaped);
 }
 
 void FileApi::handleListFiles() {
@@ -383,7 +374,8 @@ void FileApi::handleUploadData() {
       STORAGE.remove(uploadTempPath());
       return;
     }
-    STORAGE.remove(m_uploadPath);
+    // LittleFS rename replaces an existing target in one step, so the original
+    // survives intact if this fails; deleting it first would lose both copies.
     if (!STORAGE.rename(uploadTempPath(), m_uploadPath)) {
       LOG_PRINTF("File upload failed: could not rename onto %s", m_uploadPath.c_str());
       STORAGE.remove(uploadTempPath());

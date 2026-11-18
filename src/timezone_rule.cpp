@@ -226,10 +226,6 @@ bool parsePosixTimeZone(const char* text, TimeZoneRule* out) {
   return PosixTzParser(text).parse(out);
 }
 
-bool isDaylightTimeAt(const TimeZoneRule& rule, uint32_t utc) {
-  return isDaylightAt(rule, utc);
-}
-
 int32_t utcOffsetSecondsAt(const TimeZoneRule& rule, uint32_t utc) {
   return offsetAt(rule, utc);
 }

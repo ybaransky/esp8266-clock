@@ -199,7 +199,9 @@ String WifiConnectionManager::resolveApSsid() const {
 // reboot into station mode once the home network is back on the air.
 // shortcut: a hidden home SSID never shows in scans, so it needs a manual reboot.
 void WifiConnectionManager::retryStationIfDue() {
-  if ((m_mode != WifiMode::kAccessPoint) || m_config.staSsid.isEmpty()) return;
+  // A join that failed for any other reason (e.g. a wrong password) would fail
+  // again after the reboot, turning the retry into a reboot loop.
+  if ((m_mode != WifiMode::kAccessPoint) || !m_stationRetryAllowed) return;
   if (WiFi.softAPgetStationNum() > 0) {  // Never disturb a connected client.
     m_apIdleSinceMs = millis();
     return;
@@ -240,7 +242,9 @@ bool WifiConnectionManager::tryStationConnect(const String& ssid, const String& 
     return true;
   }
 
-  LOG_PRINTF("STA connect failed, status=%d", static_cast<int>(WiFi.status()));
+  const wl_status_t failure = WiFi.status();
+  LOG_PRINTF("STA connect failed, status=%d", static_cast<int>(failure));
+  m_stationRetryAllowed = (failure == WL_NO_SSID_AVAIL);
   WiFi.disconnect();
   return false;
 }

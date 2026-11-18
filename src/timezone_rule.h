@@ -45,9 +45,6 @@ struct TimeZoneRule {
 // malformed or outside the supported grammar.
 bool parsePosixTimeZone(const char* text, TimeZoneRule* out);
 
-// True when daylight time is in effect at the given UTC instant.
-bool isDaylightTimeAt(const TimeZoneRule& rule, uint32_t utc);
-
 // Offset from UTC (east-positive seconds) in effect at the given UTC instant.
 int32_t utcOffsetSecondsAt(const TimeZoneRule& rule, uint32_t utc);
 

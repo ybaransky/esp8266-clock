@@ -46,6 +46,7 @@ class WifiConnectionManager {
   String m_apSsid;      // Effective AP SSID: the configured one, or derived when it is empty.
   WifiMode m_mode = WifiMode::kAccessPoint;  // Current runtime WiFi mode.
   uint32_t m_apIdleSinceMs = 0;  // Last time the fallback AP had a client or finished a station scan.
+  bool m_stationRetryAllowed = false;  // Boot join failed only because the network was absent.
 
   volatile bool m_apClientConnectedPending = false;  // Deferred AP-client log flag.
   uint8_t m_apClientMac[6] = {};  // MAC used to find the DHCP-assigned client IP.

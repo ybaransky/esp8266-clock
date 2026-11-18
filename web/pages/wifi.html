@@ -18,8 +18,8 @@
 
 <hr>
 <h2>Local Hotspot Mode</h2>
-<label class="field"><span>AP Name</span><input type="text" id="apSsid"></label>
-<label class="field"><span>AP Password</span><input type="password" id="apPw" placeholder="blank keeps current"></label>
+<label class="field"><span>AP Name</span><input type="text" id="apSsid" maxlength="32"></label>
+<label class="field"><span>AP Password</span><input type="password" id="apPw" minlength="8" maxlength="63" placeholder="8-63 characters; blank keeps current"></label>
 <div class="actions"><button onclick="saveAp()">Save AP &amp; Reboot</button></div>
 
 <div id="st"></div>
@@ -109,6 +109,8 @@ function connect() {
 function saveAp() {
   var body = { wifi: { accessPoint: { ssid: $('apSsid').value } } };
   var pw = $('apPw').value;
+  // minlength is only enforced on form submit; the device rejects it too.
+  if (pw && (pw.length < 8)) { setStatus('AP password needs 8-63 characters'); return; }
   if (pw) body.wifi.accessPoint.password = pw;
   fetch('/api/config', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

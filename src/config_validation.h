@@ -42,3 +42,8 @@ void sanitizeDisplayMessage(const char* input, char* output, size_t outputSize);
 // the sentinel, not an error. Station credentials are untouched; empty is
 // meaningful there too (it selects AP-only mode).
 void sanitizeWifiConfig(WifiConfig& wifi);
+
+// True when the AP name and password are ones softAP() accepts as given:
+// SSID at most 32 characters, WPA2 password 8-63. API saves reject anything
+// else instead of letting sanitizeWifiConfig() silently replace it.
+bool apCredentialsAreValid(const WifiConfig& wifi);

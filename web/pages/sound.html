@@ -85,11 +85,7 @@ function togglePreview() {
   var stopping = previewTimer !== null;
   if (!stopping && !captureBoundary()) return;
   var pattern = boundaryPatterns[activeBoundary];
-  var body = stopping ? { stop: true } : { boundaryAlert: {
-    frequencyHz: pattern.toneHz,
-    totalDurationSeconds: pattern.totalDurationSeconds,
-    startingBeatsHz: pattern.startingBeatsHz
-  }};
+  var body = stopping ? { stop: true } : { boundaryAlert: pattern };
   $('preview').disabled = true;
   apiPost('/api/sound/test', body).then(function (d) {
     previewIdle();

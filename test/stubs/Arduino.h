@@ -9,6 +9,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <math.h>
+
+// Used by SolarCalculator, which the sunset suite compiles on the host.
+#ifndef radians
+#define radians(deg) ((deg) * M_PI / 180.0)
+#endif
+#ifndef degrees
+#define degrees(rad) ((rad) * 180.0 / M_PI)
+#endif
+
 #ifndef constrain
 #define constrain(amt, low, high) \
   ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))

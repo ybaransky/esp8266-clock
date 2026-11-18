@@ -43,6 +43,17 @@ inline void civilFromDays(int32_t days, int* year, uint8_t* month, uint8_t* day)
 
 }  // namespace rtclib_stub
 
+// A signed duration in seconds, as RTClib's TimeSpan; only the part
+// sunset_calculator.cpp uses (construction plus DateTime +/-).
+class TimeSpan {
+ public:
+  explicit TimeSpan(int32_t seconds) : m_seconds(seconds) {}
+  int32_t totalseconds() const { return m_seconds; }
+
+ private:
+  int32_t m_seconds;  // Signed length of the span.
+};
+
 class DateTime {
  public:
   DateTime() : m_unix(0) { split(); }
@@ -67,6 +78,12 @@ class DateTime {
   // 0 = Sunday, matching RTClib. 1970-01-01 was a Thursday.
   uint8_t dayOfTheWeek() const {
     return static_cast<uint8_t>((m_unix / 86400UL + 4UL) % 7UL);
+  }
+  DateTime operator+(const TimeSpan& span) const {
+    return DateTime(static_cast<uint32_t>(static_cast<int64_t>(m_unix) + span.totalseconds()));
+  }
+  DateTime operator-(const TimeSpan& span) const {
+    return DateTime(static_cast<uint32_t>(static_cast<int64_t>(m_unix) - span.totalseconds()));
   }
 
  private:

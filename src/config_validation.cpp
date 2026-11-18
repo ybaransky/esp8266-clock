@@ -160,6 +160,15 @@ void sanitizeDisplayMessage(const char* input, char* output, size_t outputSize) 
   snprintf(output, outputSize, "%s", clean);
 }
 
+bool apCredentialsAreValid(const WifiConfig& wifi) {
+  String ssid = wifi.apSsid;
+  ssid.trim();  // Matches sanitizeWifiConfig(), which trims before measuring.
+  const size_t passwordLength = wifi.apPassword.length();
+  return (ssid.length() <= kMaxApSsidLength) &&
+         (passwordLength >= kMinApPasswordLength) &&
+         (passwordLength <= kMaxApPasswordLength);
+}
+
 void sanitizeWifiConfig(WifiConfig& wifi) {
   wifi.apSsid.trim();
   if (wifi.apSsid.length() > kMaxApSsidLength) {

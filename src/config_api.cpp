@@ -183,14 +183,14 @@ void ConfigApi::handleSoundTest() {
   }
 
   JsonVariantConst boundaryAlert = doc["boundaryAlert"];
-  if (boundaryAlert["frequencyHz"].isNull() ||
+  if (boundaryAlert["toneHz"].isNull() ||
       boundaryAlert["totalDurationSeconds"].isNull() ||
       boundaryAlert["startingBeatsHz"].isNull()) {
     m_responder.sendJsonError(400, F("Tone, total duration, and starting beats required"));
     return;
   }
   const BeepPattern pattern{
-      sanitizeBoundaryFrequencyHz(boundaryAlert["frequencyHz"].as<int>()),
+      sanitizeBoundaryFrequencyHz(boundaryAlert["toneHz"].as<int>()),
       sanitizeBoundaryDurationSeconds(boundaryAlert["totalDurationSeconds"].as<int>()),
       sanitizeBoundaryStartingBeatsHz(boundaryAlert["startingBeatsHz"].as<int>())};
   // An explicit preview bypasses the automatic-sound master switch.
@@ -222,6 +222,12 @@ void ConfigApi::handleSaveConfig() {
   }
   WifiConfig wifiConfig = m_configManager.wifiConfig();
   const bool wifiChanged = applyJsonToWifiConfig(payload, wifiConfig);
+  if (wifiChanged && !apCredentialsAreValid(wifiConfig)) {
+    LOG_PRINTLN("/api/config rejected AP credentials: SSID over 32 or password not 8-63");
+    m_responder.sendJsonError(
+        400, F("AP name must be at most 32 characters and password 8-63 characters"));
+    return;
+  }
   if (!persistClockConfig(clockConfig, wifiConfig)) {
     LOG_PRINTLN("/api/config failed: complete config write failed");
     m_responder.sendJsonError(500, F("Configuration write failed"));
