@@ -14,7 +14,7 @@ assignment in defaults.cpp wins, otherwise the struct's member initializer.
 Three groups are deliberately device-specific and are not compared:
 time.timezone, location, and sunset.
 
-Adding a config field: add it to data/config.json and to EXPECTED below.
+Adding a config field: add it to data/config.json and to the mapping returned by expected_values() below.
 """
 
 import json
@@ -225,7 +225,7 @@ def main(project_dir):
     unknown = sorted(set(shipped) - set(expected) - set(device_specific))
     if unknown:
         fail("data/config.json has fields this check does not know: %s "
-             "(add them to EXPECTED in tools/check_config_defaults.py)" % ", ".join(unknown))
+             "(add them to expected_values() in tools/check_config_defaults.py)" % ", ".join(unknown))
     for path, value in expected.items():
         # bool is an int in Python; compare types too, so 0 never equals false.
         if (shipped[path] != value) or (type(shipped[path]) is not type(value)):

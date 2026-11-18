@@ -78,16 +78,18 @@ access-point mode the browser on `/time` is the time source.
 
 ## References
 
-Every document here tracks the code; CLAUDE.md is the single detailed reference.
+Documentation is organized under [docs/README.md](docs/README.md). The technical
+documents were checked against the source on 2026-11-17; if code and docs
+disagree, the code is authoritative.
 
-- [CLAUDE.md](CLAUDE.md): the authoritative firmware reference - module APIs,
-  conventions, and the reasoning behind the non-obvious decisions. Covers the
-  display layering, scheduled modes, sound, storage, and web subsystems.
-- [AGENTS.md](AGENTS.md): the critical invariants, in short form. Read this
+- [CLAUDE.md](CLAUDE.md): the Claude Code entry point, which imports AGENTS.md.
+- [AGENTS.md](AGENTS.md): the shared coding-agent instruction entry point.
+- [architecture.md](docs/architecture.md): detailed module ownership and contracts.
+- [invariants.md](docs/invariants.md): critical correctness rules. Read this
   before hardware, timing, radio, or storage changes.
-- [SOUNDS.md](SOUNDS.md): generated beeps, boundary patterns, and preview behavior.
-- [WIRING.md](WIRING.md): the buzzer's inverting NPN buffer and why D8 needs it.
-- [HARDWARE.md](HARDWARE.md): the board specification - bill of materials, pin
+- [sounds.md](docs/sounds.md): generated beeps, boundary patterns, and preview behavior.
+- [buzzer_wiring.md](docs/buzzer_wiring.md): the buzzer's inverting NPN buffer and why D8 needs it.
+- [pcb-specification.md](docs/pcb-specification.md): the board specification - bill of materials, pin
   assignments, net list, power tree, boot-strap constraints, and the fabrication
   parameters still to be decided.
 
@@ -100,16 +102,17 @@ pio run --target uploadfs        # upload the LittleFS image (data/)
 
 # Host tests for the pure modules: schedule, display formats, datetime, beep envelopes, timezone rules.
 # Needs a host C++ compiler; PLATFORMIO_BUILD_DIR is required when a second
-# PlatformIO install shares this project - see AGENTS.md.
+# PlatformIO install shares this project - see docs/build-and-test.md.
 PLATFORMIO_BUILD_DIR=$HOME/.cache/pio-build/esp8266-clock pio test -e native
 ```
 
 Validate RTC, display, WiFi, schedule transitions, and timing behavior on the
 device after relevant changes. The automated layers are narrower on purpose:
-`tools/check_formats.py` guards the format catalog on every build, and `test/`
+`tools/check_formats.py` guards the format catalog on every firmware build, and `test/`
 covers only the modules that are pure by design. Neither substitutes for
 operating the clock.
 
-Read `AGENTS.md` before hardware or timing changes; it contains the critical
-electrical, RTC, display, storage, and network invariants. `CLAUDE.md` is the
-full module reference.
+Read [AGENTS.md](AGENTS.md) before changes and follow its required reading.
+The critical electrical, RTC, display, storage, and network rules are in
+[docs/invariants.md](docs/invariants.md); detailed module documentation is in
+[docs/architecture.md](docs/architecture.md).

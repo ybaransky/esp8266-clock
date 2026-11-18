@@ -54,8 +54,9 @@ struct CountdownConfig {
 // against the RTC. It exists because no absolute datetime is a correct factory
 // default - a shipped date would make a fresh device show an ever-growing
 // elapsed time, the way the shipped CountdownConfig::end goes stale. It is
-// substituted for a concrete datetime by resolveCountupStart() on the first
-// save, so it reaches the display path only on a device that has never saved.
+// substituted for a concrete datetime by resolveCountupStart() on an API save
+// with trustworthy RTC time. Untrusted saves retain it, so rendering may still
+// use a temporary origin after the config has been saved.
 static constexpr char kCountupStartNow[] = "now";
 
 // Stores the origin and renderer selection for count-up mode.

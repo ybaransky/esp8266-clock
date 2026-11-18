@@ -59,7 +59,7 @@ using F = Field;
 // it renders. The hhh:mm overflow fallback is resolved semantically in
 // resolveCountingOverflow(); no hardcoded indices.
 // Parallel to kCountingFormats, one row per format. PROGMEM: the key and label
-// strings together are ~1.2KB across both tables - flash we have, DRAM we
+// strings together occupy 1,680 bytes across both groups - flash we have, DRAM we
 // do not. Read with the accessors at the bottom of this file.
 const char kCountingKeys[][kFormatKeyLength] PROGMEM = {
     "ddl-hhmm-ssu",
@@ -119,7 +119,7 @@ const FormatSpec kCountingFormats[] = {
 };
 
 // Parallel to kClockFormats, one row per format. PROGMEM: the key and label
-// strings together are ~1.2KB across both tables - flash we have, DRAM we
+// strings together occupy 1,680 bytes across both groups - flash we have, DRAM we
 // do not. Read with the accessors at the bottom of this file.
 const char kClockKeys[][kFormatKeyLength] PROGMEM = {
     "dow-mmdd-hhmm",

@@ -33,9 +33,9 @@ ViewState ClockController::initialView(const ClockConfig& config, const DateTime
       break;
     case kModeCountup:
       view.view = View::kCountup;
-      // The sentinel only survives to here on a device that has never saved
-      // its config: resolveCountupStart() replaces it on the first save, which
-      // is what keeps the origin stable across later saves and reboots.
+      // Before a trusted API save resolves the sentinel, use a temporary
+      // origin. Saves with untrusted RTC time retain the sentinel, so config
+      // apply or reboot can restart it until an absolute origin is persisted.
       view.anchorUtc = nowUtc;
       if (strcmp(config.countup.start, kCountupStartNow) != 0) {
         view.anchorUtc = localTextToUtc(config.countup.start);

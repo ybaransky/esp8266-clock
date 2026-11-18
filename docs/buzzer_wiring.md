@@ -1,13 +1,13 @@
 # Buzzer Wiring (D8 / GPIO15)
 
-The clock's sound output is a KY-006 style active buzzer module on **D8**. The
+The clock's sound output is a KY-006 style passive buzzer module on **D8**. The
 module is active LOW and D8 is a boot-strap pin, so the module cannot connect to
 D8 directly. D8 drives an NPN transistor, and that transistor pulls the module's
 S pin low.
 
 Every other usable GPIO on this board is already spoken for by the three TM1637
 panels, the DS3231, and the button - see the pin map in
-[src/hardware.h](src/hardware.h). D8 is the only pin left, which is why the
+[src/hardware.h](../src/hardware.h). D8 is the only pin left, which is why the
 buffer is necessary rather than optional.
 
 ## Two transistors, do not confuse them
@@ -86,7 +86,7 @@ D8 HIGH turns the NPN on, pulls S low, and sounds the buzzer. The firmware
 drives a square wave, and inverting a 50% duty square wave gives the same
 waveform at the same frequency. It sounds identical.
 
-Below 50% duty - which is how [src/beep_player.cpp](src/beep_player.cpp)
+Below 50% duty - which is how [src/beep_player.cpp](../src/beep_player.cpp)
 implements volume - inversion swaps the mark and space ratio. A 20% duty wave
 reaches the buzzer as 80%. Loudness is symmetric about 50%, so the effect on
 volume is the same in either direction; only the timbre differs slightly.
@@ -97,7 +97,7 @@ volume is the same in either direction; only the timbre differs slightly.
 - pulling S low: about 2.4mA through the module's own base resistor
 
 Both are small enough that the buzzer does not contribute to the USB supply
-droop described in CLAUDE.md's WiFi performance note.
+droop described in [networking documentation](architecture.md).
 
 ## Volume: potentiometer on VCC (hardware volume control)
 

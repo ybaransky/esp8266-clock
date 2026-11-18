@@ -16,7 +16,7 @@ TM1637 ALL CLK | D5  | GPIO14 | Shared across all 3 displays
 TM1637 DIO[1]  | D6  | GPIO12 | Safe
 DS3231 SQW     | D7  | GPIO13 | Interrupt capable, INPUT_PULLUP
 Buzzer         | D8  | GPIO15 | Must stay LOW at boot; drive through the
-                                inverting NPN buffer in WIRING.md. The buzzer
+                                inverting NPN buffer in docs/buzzer_wiring.md. The buzzer
                                 module cannot sit on D8 directly - it idles its
                                 S pin at 2.7V, which violates the strap.
 */
@@ -33,7 +33,7 @@ namespace Hardware {
 		constexpr uint8_t SEGMENT_CLK    = D5;  // TM1637 clock, shared by all three panels.
 		constexpr uint8_t DIO1           = D6;  // Middle TM1637 data.
 		constexpr uint8_t RTC_SQW        = D7;  // DS3231 1 Hz square wave, RISING interrupt.
-		constexpr uint8_t BUZZER         = D8;  // Via inverting NPN; see WIRING.md.
+		constexpr uint8_t BUZZER         = D8;  // Via inverting NPN; see docs/buzzer_wiring.md.
 		//                               left/top     right/bottom
 		constexpr uint8_t SEGMENT_DIO[3] = {DIO0, DIO1, DIO2};
 	}  // namespace Pins

@@ -2,7 +2,7 @@
 
 Board specification and fabrication brief for the desktop clock. **`src/hardware.h`
 is the authoritative pin map**; this document must follow it, never the reverse.
-The buzzer's transistor buffer has its own document, [WIRING.md](WIRING.md),
+The buzzer's transistor buffer has its own document, [buzzer_wiring.md](buzzer_wiring.md),
 because it is a circuit rather than a net.
 
 Revision 0.1 — pin assignments complete, fabrication parameters open (see
@@ -28,7 +28,7 @@ Modules attached via 2.54 mm header, removable:
 | DSP1 | TM1637 4-digit 7-segment module — left | 4-pin female header (VCC, GND, DIO, CLK) |
 | DSP2 | TM1637 4-digit 7-segment module — center | 4-pin female header |
 | DSP3 | TM1637 4-digit 7-segment module — right | 4-pin female header |
-| BZ1 | KY-006 style active buzzer module, active LOW | 3-pin female header (VCC, GND, S) |
+| BZ1 | KY-006 style passive buzzer module, active LOW | 3-pin female header (VCC, GND, S) |
 
 Soldered directly to the PCB:
 
@@ -41,7 +41,7 @@ Soldered directly to the PCB:
 | Q1  | 2N2222, PN2222, BC547 or S8050 NPN | Inverting buffer for the buzzer |
 | R3  | 1 kΩ | Q1 base resistor |
 | R4  | 10 kΩ | Q1 base pull-down — **mandatory**, holds GPIO15 LOW at reset |
-| RV1 | 1 kΩ–10 kΩ linear potentiometer | *Optional* hardware volume; see WIRING.md |
+| RV1 | 1 kΩ–10 kΩ linear potentiometer | *Optional* hardware volume; see [buzzer_wiring.md](buzzer_wiring.md) |
 
 A 2N7000 MOSFET substitutes for Q1: gate to D8, drain to BZ1 S, source to GND,
 R4 from gate to GND, and R3 omitted.
@@ -111,7 +111,7 @@ The uxcell 4-pin tactile switch bridges pins 1–3 and 2–4 internally.
 
 D8 cannot drive BZ1 directly: the module idles its S pin at 2.7 V, which
 violates the GPIO15 strap and prevents boot. Q1 inverts D8 instead — see
-[WIRING.md](WIRING.md) for the full schematic and reasoning.
+[buzzer_wiring.md](buzzer_wiring.md) for the full schematic and reasoning.
 
 | Net | From | To |
 |-----|------|----|
@@ -147,7 +147,7 @@ U1 3V3 ──► BZ1 VCC
 
 Do not judge WiFi behavior while the board is powered from a PC's USB port —
 supply droop plus a nearby 2.4 GHz radio degrades transfers severely with
-perfectly healthy firmware. CLAUDE.md records the measurements.
+perfectly healthy firmware. [architecture.md](architecture.md) records the measurements.
 
 ## Boot-strap constraints
 

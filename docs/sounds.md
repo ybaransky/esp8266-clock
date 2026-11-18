@@ -13,7 +13,7 @@ page owns automatic enable, volume, event beeps, and approach patterns.
 Each has four equal phases at rates R, 2R, 4R, and 8R. Each beep occupies
 the end of its slot, lasting the smaller of 100 ms and half the slot.
 The final beep ends exactly at the scheduled boundary. The pure envelope
-lives in [beep_pattern.cpp](src/beep_pattern.cpp) and has host tests.
+lives in [beep_pattern.cpp](../src/beep_pattern.cpp) and has host tests.
 
 Tone accepts 100-5000 Hz, duration 4-1200 whole seconds, and starting rate
 1-10 beeps/s. Settings are stored under `sound.boundaryAlert`.
@@ -22,7 +22,7 @@ Sound on is a mute-all: turning it off silences every automatic sound without
 changing the per-sound choices, which the page greys out until it is back on.
 
 The controller supplies the current target and RTC second phase every accepted
-SQW tick. [BeepPlayer](src/beep_player.h) calculates the current pulse on each
+SQW tick. [BeepPlayer](../src/beep_player.h) calculates the current pulse on each
 loop; late loops skip missed pulses. Arrival inside an alert window resumes at
 the correct position. There are no blocking waits or per-note deadlines.
 
@@ -40,6 +40,6 @@ suppresses the current scheduled occurrence until its target changes.
 
 Preview uses the saved volume and bypasses automatic-enable switches. The page
 previews unsaved pattern edits, using `POST /api/sound/test` with `boundaryAlert`
-fields `frequencyHz`, `totalDurationSeconds`, and `startingBeatsHz`. The response
+fields `toneHz`, `totalDurationSeconds`, and `startingBeatsHz` (the same names as the saved pattern). The response
 includes `durationMs` for the button timer. `{ "stop": true }` stops playback.
 Volume maps 0-100% to PWM duty 0-50%; GPIO15 remains LOW when silent.
