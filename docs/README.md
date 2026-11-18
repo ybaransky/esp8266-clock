@@ -13,6 +13,7 @@ This directory contains both **reusable development policies** and **project-spe
 - `architecture.md` — detailed modules, display/schedule/config/network contracts
 - `hardware.md` — pin map and boot constraints
 - `pcb-specification.md` — PCB specification, BOM, nets, power, layout, open fabrication decisions (formerly root `HARDWARE.md`)
+- `clock.fzz` — Fritzing wiring diagram (formerly in the project root; not yet checked against `src/hardware.h`)
 - `buzzer_wiring.md` — detailed buzzer transistor wiring and validation (formerly root `WIRING.md`)
 - `sounds.md` — beep patterns, timing, and priority rules (formerly root `SOUNDS.md`)
 - `invariants.md` — critical correctness rules

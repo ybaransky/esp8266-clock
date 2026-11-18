@@ -5,6 +5,9 @@ is the authoritative pin map**; this document must follow it, never the reverse.
 The buzzer's transistor buffer has its own document, [buzzer_wiring.md](buzzer_wiring.md),
 because it is a circuit rather than a net.
 
+Wiring diagram: [clock.fzz](clock.fzz) (Fritzing). It has not been checked
+against `src/hardware.h`; where they differ, `src/hardware.h` wins.
+
 Revision 0.1 — pin assignments complete, fabrication parameters open (see
 [Open decisions](#open-decisions)).
 

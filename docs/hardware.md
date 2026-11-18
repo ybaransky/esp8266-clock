@@ -1,6 +1,6 @@
 # ESP8266 Clock — Hardware
 
-**Authoritative pin assignments:** `src/hardware.h`. This document records the pin map and hardware reasoning; the table was checked against `src/hardware.h` on 2026-11-17. If they ever disagree, `src/hardware.h` wins. See [buzzer_wiring.md](buzzer_wiring.md) for the detailed buzzer circuit and [pcb-specification.md](pcb-specification.md) for the PCB BOM, nets, and fabrication brief.
+**Authoritative pin assignments:** `src/hardware.h`. This document records the pin map and hardware reasoning; the table was checked against `src/hardware.h` on 2026-11-17. If they ever disagree, `src/hardware.h` wins. See [buzzer_wiring.md](buzzer_wiring.md) for the detailed buzzer circuit and [pcb-specification.md](pcb-specification.md) for the PCB BOM, nets, and fabrication brief. The Fritzing wiring diagram is [clock.fzz](clock.fzz); it has not been checked against `src/hardware.h`.
 
 ### Hardware pin map (authoritative source: `src/hardware.h`)
 
