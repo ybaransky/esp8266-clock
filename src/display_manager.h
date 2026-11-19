@@ -191,11 +191,7 @@ class DisplayManager {
   void clearOverlayAndRenderView(uint32_t nowMs);
   void startDemoMessageOverlay(uint32_t nowMs);
 
-  uint8_t activeCountingFormatIndex() const;
-  // True while the base view's blink window covers the current time. Resolved
-  // fresh on every render - like activeCountingFormatIndex(), the window ends
-  // on its own without anyone pushing a new view.
-  bool viewBlinkActive() const;
+  uint8_t activeCountingFormatIndex(int64_t durationSeconds) const;
   bool renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force = false);
   bool overlayExpired(uint32_t nowMs) const;
   bool overlayBlinks() const;
@@ -203,8 +199,8 @@ class DisplayManager {
 
   void render(uint32_t nowMs, bool force = false);
   bool buildClockFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
-  bool buildCountdownFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
-  bool buildCountupFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
+  bool buildCountingFrame(uint32_t nowMs, uint32_t nowUtc, bool force,
+                          DisplayFrame& frame);
   bool buildDemoFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
   bool buildMessageFrame(uint32_t nowMs, bool force, DisplayFrame& frame);
   bool buildPagedMessageFrame(uint32_t nowMs, bool force,

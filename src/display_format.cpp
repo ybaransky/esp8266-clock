@@ -389,8 +389,11 @@ DisplayFrame renderPanels(const FormatSpec& format, const RenderValues& values) 
   return frame;
 }
 
-RenderValues valuesFromDuration(long totalSeconds, uint8_t tenths) {
-  if (totalSeconds < 0) totalSeconds = 0;
+RenderValues valuesFromDuration(int64_t durationSeconds, uint8_t tenths) {
+  // A difference of two uint32_t timestamps fits this unsigned range. Clamp
+  // before narrowing, then keep the component arithmetic 32-bit on ESP8266.
+  uint32_t totalSeconds = durationSeconds <= 0 ? 0 :
+      durationSeconds > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(durationSeconds);
   RenderValues values;
   values.days = totalSeconds / 86400;
   totalSeconds %= 86400;
@@ -482,7 +485,7 @@ DisplayFormatInfo displayFormatInfo(FormatGroup group, uint8_t index) {
   return info;
 }
 
-DisplayFrame renderCountingFormat(uint8_t index, long totalSeconds,
+DisplayFrame renderCountingFormat(uint8_t index, int64_t totalSeconds,
                                   uint8_t tenths) {
   const RenderValues values = valuesFromDuration(totalSeconds, tenths);
   const FormatSpec format = suppressLeadingZeroPanels(

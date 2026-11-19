@@ -226,6 +226,34 @@ void test_counting_clamps_negative_durations_to_zero() {
   assertPanels(frame, "    ", "    ", "   0");
 }
 
+void test_counting_handles_the_full_supported_datetime_span() {
+  const uint32_t start = DateTime(2000, 1, 1).unixtime();
+  const uint32_t end = DateTime(2099, 12, 31, 23, 59, 59).unixtime();
+  const int64_t duration = static_cast<int64_t>(end) - start;
+  TEST_ASSERT_TRUE(duration > INT32_MAX);
+  const uint8_t index = countingIndexFor("dd-hhmm-ss");
+  // Days saturate at four digits, but the sub-day components stay exact.
+  assertPanels(renderCountingFormat(index, duration, 0), "9999", "23:59", "  59");
+  assertPanels(renderCountingFormat(index, -duration, 0), "    ", "    ", "   0");
+}
+
+void test_counting_renders_intervals_across_2038_and_one_day() {
+  const uint32_t start = DateTime(2038, 1, 19, 3, 14, 0).unixtime();
+  const uint32_t end = DateTime(2038, 1, 19, 3, 15, 0).unixtime();
+  const uint8_t index = countingIndexFor("dd-hhmm-ss");
+  assertPanels(renderCountingFormat(index, static_cast<int64_t>(end) - start, 0),
+               "    ", " 0:01", "   0");
+  assertPanels(renderCountingFormat(index, 86399, 0), "    ", "23:59", "  59");
+  assertPanels(renderCountingFormat(index, 86400, 0), "   1", " 0:00", "   0");
+  assertPanels(renderCountingFormat(index, 86401, 0), "   1", " 0:00", "   1");
+}
+
+void test_counting_bounds_inputs_before_narrowing() {
+  const uint8_t index = countingIndexFor("dd-hhmm-ss");
+  assertPanels(renderCountingFormat(index, INT64_MAX, 0), "9999", " 6:28", "  15");
+  assertPanels(renderCountingFormat(index, INT64_MIN, 0), "    ", "    ", "   0");
+}
+
 // hhh:mm on one panel only fits through 99:59; above that the renderer must
 // select the split variant with the same seconds panel.
 void test_counting_overflows_combined_total_hours_to_the_split_format() {
@@ -359,6 +387,9 @@ int main() {
   RUN_TEST(test_counting_suppresses_leading_zero_panels);
   RUN_TEST(test_counting_does_not_suppress_interior_zeros);
   RUN_TEST(test_counting_clamps_negative_durations_to_zero);
+  RUN_TEST(test_counting_handles_the_full_supported_datetime_span);
+  RUN_TEST(test_counting_renders_intervals_across_2038_and_one_day);
+  RUN_TEST(test_counting_bounds_inputs_before_narrowing);
   RUN_TEST(test_counting_overflows_combined_total_hours_to_the_split_format);
   RUN_TEST(test_counting_right_justifies_numeric_panels);
   RUN_TEST(test_counting_colon_panel_blank_pads_the_left_value);

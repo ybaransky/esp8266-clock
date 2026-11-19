@@ -41,7 +41,10 @@ bool ConfigApi::resolveCountupStart(ClockConfig& config) {
     LOG_PRINTLN("countup start left unset: no trustworthy RTC time to stamp");
     return false;
   }
-  formatLocalDateTime(m_rtc.getNowCached(), config.countup.start,
+  // The candidate's timezone is not installed until the save succeeds.
+  const DateTime local(localFromUtc(timeZoneFromConfig(config.timezone),
+                                   m_rtc.getUtcCached()));
+  formatLocalDateTime(local, config.countup.start,
                       sizeof(config.countup.start));
   LOG_PRINTF("countup start resolved from \"now\" to %s", config.countup.start);
   return true;

@@ -170,6 +170,19 @@ void test_format_local_datetime_truncates_safely() {
   formatLocalDateTime(DateTime(2026, 9, 18, 14, 5, 30), nullptr, 8);
 }
 
+void test_parsed_browser_datetimes_format_canonically() {
+  const char* samples[] = {
+      "2026-11-18T09:05", "2026-11-18 09:05",
+      "2026-11-18T09:05:00", "2026-11-18 09:05:00"};
+  for (const char* sample : samples) {
+    DateTime parsed;
+    TEST_ASSERT_TRUE(parseLocalDateTime(sample, parsed));
+    char canonical[kLocalDateTimeLength];
+    formatLocalDateTime(parsed, canonical, sizeof(canonical));
+    TEST_ASSERT_EQUAL_STRING("2026-11-18 09:05:00", canonical);
+  }
+}
+
 }  // namespace
 
 void setUp() {}
@@ -191,5 +204,6 @@ int main() {
   RUN_TEST(test_format_local_datetime_round_trips);
   RUN_TEST(test_format_local_datetime_needs_no_more_than_its_constant);
   RUN_TEST(test_format_local_datetime_truncates_safely);
+  RUN_TEST(test_parsed_browser_datetimes_format_canonically);
   return UNITY_END();
 }

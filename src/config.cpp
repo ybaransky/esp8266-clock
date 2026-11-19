@@ -77,7 +77,7 @@ bool ConfigManager::readAll(DeviceConfig& config) {
             return false;
         }
         LOG_PRINTLN("No config found; creating defaults");
-        return writeAll(config, "create default config");
+        return writeAll(config.clock, config.wifi, "create default config");
     }
     m_loadedSchemaVersion = readConfigSchemaVersion(doc.as<JsonVariantConst>());
     const char* validationError =
@@ -97,14 +97,14 @@ bool ConfigManager::readAll(DeviceConfig& config) {
 // Serializes config to the temp file. The JsonDocument is scoped to this
 // function so its pool is released before verifyTemp() builds its own -
 // holding both at once roughly doubled the peak heap for a save.
-bool ConfigManager::serializeToTemp(const DeviceConfig& config,
+bool ConfigManager::serializeToTemp(const ClockConfig& clock, const WifiConfig& wifi,
                                     const char* context, size_t& bytes) {
     JsonDocument doc;
-    // Callers guarantee config.clock is sanitized (defaults, loaded config,
+    // Callers guarantee clock is sanitized (defaults, loaded config,
     // or a save path that sanitized in place) - no extra copy at this depth.
-    // config outlives doc, which serializeClockConfig() requires.
-    serializeClockConfig(doc, config.clock);
-    serializeWifiConfig(doc, config.wifi);
+    // clock outlives doc, which serializeClockConfig() requires.
+    serializeClockConfig(doc, clock);
+    serializeWifiConfig(doc, wifi);
 
     STORAGE.remove(kConfigTempPath);
     File file = STORAGE.open(kConfigTempPath, "w");
@@ -165,12 +165,13 @@ bool ConfigManager::installVerifiedTemp(const char* context) {
     return true;
 }
 
-bool ConfigManager::writeAll(const DeviceConfig& config, const char* context) {
+bool ConfigManager::writeAll(const ClockConfig& clock, const WifiConfig& wifi,
+                             const char* context) {
     const uint32_t startedUs = micros();
     if (!storageManager.ensureMounted(context)) return false;
 
     size_t bytes = 0;
-    if (!serializeToTemp(config, context, bytes)) return false;
+    if (!serializeToTemp(clock, wifi, context, bytes)) return false;
     if (!verifyTemp(context)) return false;
     if (!installVerifiedTemp(context)) return false;
 
@@ -188,11 +189,10 @@ const WifiConfig& ConfigManager::wifiConfig() {
 
 bool ConfigManager::saveWifiConfig(const WifiConfig& config) {
     ensureLoaded();
-    DeviceConfig next = m_current;
-    next.wifi = config;
-    sanitizeWifiConfig(next.wifi);
-    if (!writeAll(next, "save WiFi config")) return false;
-    m_current = next;
+    WifiConfig next = config;
+    sanitizeWifiConfig(next);
+    if (!writeAll(m_current.clock, next, "save WiFi config")) return false;
+    m_current.wifi = next;
     return true;
 }
 
@@ -209,20 +209,19 @@ uint8_t ConfigManager::loadedSchemaVersion() {
 bool ConfigManager::saveClockConfig(ClockConfig& config) {
     ensureLoaded();
     sanitizeClockConfig(config);
-    DeviceConfig next = m_current;
-    next.clock = config;
-    if (!writeAll(next, "save clock config")) return false;
-    m_current = next;
+    if (!writeAll(config, m_current.wifi, "save clock config")) return false;
+    m_current.clock = config;
     return true;
 }
 
 bool ConfigManager::saveConfig(ClockConfig& clock, const WifiConfig& wifi) {
     ensureLoaded();
     sanitizeClockConfig(clock);
-    DeviceConfig next{clock, wifi};
-    sanitizeWifiConfig(next.wifi);
-    if (!writeAll(next, "save complete config")) return false;
-    m_current = next;
+    WifiConfig nextWifi = wifi;
+    sanitizeWifiConfig(nextWifi);
+    if (!writeAll(clock, nextWifi, "save complete config")) return false;
+    m_current.clock = clock;
+    m_current.wifi = nextWifi;
     return true;
 }
 

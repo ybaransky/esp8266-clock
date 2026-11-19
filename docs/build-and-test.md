@@ -85,3 +85,30 @@ libraries. Gating only our own sources there would need `build_src_flags`. `-Wno
 - For pure-module changes, extend the corresponding Unity tests.
 - On-device testing remains required for hardware, timing, display, radio, and peripheral behavior; never claim it happened unless performed.
 - Do not change the Windows/WSL build directory arrangement.
+
+## Focused save/render regression checks
+
+The native format suite covers durations spanning 2000-2099, a short interval
+across the signed Unix timestamp boundary in 2038, day boundaries, and input
+saturation. The datetime suite checks canonical output for browser inputs with
+space/T separators and optional seconds. These do not exercise API orchestration.
+
+On a test device, verify the following before releasing changes to these paths:
+
+- With trusted RTC time and an unresolved count-up start, save a different
+  timezone. The saved origin must represent the current instant in the new
+  timezone, and a reboot must retain it. Repeat with an explicit start and with
+  untrusted RTC time (the sentinel must remain unset).
+- Read the primary, backup, and temporary configuration paths, and each upload
+  staging path, both normally and with offset/limit: all must return 403.
+  Ordinary files must retain full/ranged read behavior; `/api/config` must
+  continue omitting the station password.
+- Empty SSID returns 400. A failed credential write returns 500 and does not
+  schedule reboot. A successful credential save retains delayed reboot.
+- Exercise clock-only, WiFi-only, and combined saves on a disposable test
+  filesystem, including failed write/verification/install operations. Failed
+  saves must retain the cached config and existing recovery guarantees. Compare
+  stack high-water usage before/after; static RAM usage does not measure stack.
+- Compare countdown/count-up tenths, the 24-hour format transition, completion
+  under overlays, and a countdown spanning 2038. Preserve SQW phase and fault
+  priority. Use the clock's own supply for WiFi performance observations.

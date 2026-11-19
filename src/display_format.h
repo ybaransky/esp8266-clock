@@ -61,8 +61,10 @@ void displayFormatLabel(FormatGroup group, uint8_t index, char* out,
 bool displayFormatIndexForKey(FormatGroup group, const char* key,
                               uint8_t* index);
 
+// Signed duration avoids timestamp-subtraction overflow on 32-bit targets.
+// Negative durations render as zero; values above UINT32_MAX saturate there.
 DisplayFrame renderCountingFormat(uint8_t index,
-                                  long totalSeconds,
+                                  int64_t totalSeconds,
                                   uint8_t tenths);
 DisplayFrame renderClockFormat(uint8_t index,
                                const DateTime& now,

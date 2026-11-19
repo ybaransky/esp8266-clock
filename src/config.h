@@ -175,11 +175,12 @@ private:
     // Writes config to the temp file and confirms it parses back. Split from
     // installVerifiedTemp() so the serialization document is destroyed before
     // the verification document is built, rather than both being live at once.
-    bool serializeToTemp(const DeviceConfig& config, const char* context,
-                         size_t& bytes);
+    bool serializeToTemp(const ClockConfig& clock, const WifiConfig& wifi,
+                         const char* context, size_t& bytes);
     bool verifyTemp(const char* context);
     bool installVerifiedTemp(const char* context);
-    bool writeAll(const DeviceConfig& config, const char* context);
+    bool writeAll(const ClockConfig& clock, const WifiConfig& wifi,
+                  const char* context);
 
     DeviceConfig m_current;  // Cached configuration loaded from storage.
     bool m_loaded = false;   // True after m_current has been initialized.

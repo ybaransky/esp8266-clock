@@ -38,9 +38,14 @@ void WifiApi::handleConnect() {
 
   const String ssid = doc["ssid"] | "";
   const String password = doc["password"] | "";
-  if (!m_wifiConnectionManager.connectAndSave(m_configManager, ssid, password)) {
+  if (ssid.isEmpty()) {
     LOG_PRINTLN("/api/wifi/connect failed: SSID required");
     m_responder.sendJsonError(400, F("SSID required"));
+    return;
+  }
+  if (!m_wifiConnectionManager.connectAndSave(m_configManager, ssid, password)) {
+    LOG_PRINTLN("/api/wifi/connect failed: configuration write failed");
+    m_responder.sendJsonError(500, F("Configuration write failed"));
     return;
   }
 

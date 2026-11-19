@@ -358,12 +358,7 @@ bool applyDateTimeField(JsonVariantConst value, char* destination,
   }
   DateTime parsed;
   if (!parseLocalDateTime(text, parsed)) return false;
-  // Validation guarantees fixed-width digits; normalize browser minutes and T.
-  char canonical[20];
-  strlcpy(canonical, text, sizeof(canonical));
-  canonical[10] = ' ';
-  if (strlen(text) == 16) strlcpy(canonical + 16, ":00", 4);
-  strlcpy(destination, canonical, size);
+  formatLocalDateTime(parsed, destination, size);
   return true;
 }
 

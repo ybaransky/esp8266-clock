@@ -326,18 +326,10 @@ void DisplayManager::startDemoMessageOverlay(uint32_t nowMs) {
 // fresh on every render (and for the render cadence), so the display switches
 // to the long-range format at >= 24h remaining/elapsed and reverts on its own
 // the moment the duration drops below 24h - no crossing state is kept.
-uint8_t DisplayManager::activeCountingFormatIndex() const {
+uint8_t DisplayManager::activeCountingFormatIndex(int64_t durationSeconds) const {
   if (m_baseView.longFormatIndex == kSameFormat) return m_baseView.formatIndex;
-  const long nowUnix = static_cast<long>(m_rtc.getUtcCached());
-  const long anchorUnix = static_cast<long>(m_baseView.anchorUtc);
-  const long durationSeconds = (m_baseView.view == View::kCountup) ? (nowUnix - anchorUnix)
-                                                       : (anchorUnix - nowUnix);
   return (durationSeconds >= kLongRangeSeconds) ? m_baseView.longFormatIndex
                                      : m_baseView.formatIndex;
-}
-
-bool DisplayManager::viewBlinkActive() const {
-  return m_baseView.blink.contains(m_rtc.getUtcCached());
 }
 
 bool DisplayManager::renderElapsed(uint32_t nowMs, uint32_t intervalMs, bool force) {
@@ -384,7 +376,10 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
     // The blink phase advances before the build functions consult the render
     // throttle, so every toggle produces a frame of its own regardless of the
     // format's normal refresh rate.
-    const bool blinking = viewBlinkActive();
+    // Share one UTC sample between the blink window and counting renderer,
+    // including when stale SQW forces the cached getter to read the chip.
+    const uint32_t nowUtc = m_rtc.getUtcCached();
+    const bool blinking = m_baseView.blink.contains(nowUtc);
     if (blinking) {
       if (m_scheduler.toggleBlinkIfDue(nowMs, kViewBlinkMs)) force = true;
     } else if (!m_scheduler.blinkOn()) {
@@ -399,10 +394,8 @@ void DisplayManager::render(uint32_t nowMs, bool force) {
         frameReady = buildClockFrame(nowMs, force, frame);
         break;
       case View::kCountdown:
-        frameReady = buildCountdownFrame(nowMs, force, frame);
-        break;
       case View::kCountup:
-        frameReady = buildCountupFrame(nowMs, force, frame);
+        frameReady = buildCountingFrame(nowMs, nowUtc, force, frame);
         break;
     }
 
@@ -440,47 +433,33 @@ bool DisplayManager::buildClockFrame(uint32_t nowMs, bool force,
   return true;
 }
 
-bool DisplayManager::buildCountdownFrame(uint32_t nowMs, bool force,
-                                         DisplayFrame& frame) {
-  const uint8_t formatIndex = activeCountingFormatIndex();
+bool DisplayManager::buildCountingFrame(uint32_t nowMs, uint32_t nowUtc, bool force,
+                                        DisplayFrame& frame) {
+  const bool countingUp = m_baseView.view == View::kCountup;
+  // Widen before subtraction: Unix timestamps cross signed 32-bit range in
+  // 2038, and a valid 2000-2099 interval can itself exceed INT32_MAX seconds.
+  const int64_t anchorUtc = m_baseView.anchorUtc;
+  const int64_t durationSeconds = countingUp ? nowUtc - anchorUtc : anchorUtc - nowUtc;
+  const uint8_t formatIndex = activeCountingFormatIndex(durationSeconds);
+  // Countdown and count-up intentionally share the counting catalog.
   const RefreshRate refreshRate =
       displayFormatInfo(kFmtGroupCountdown, formatIndex).refreshRate;
   if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
     return false;
 
-  // Durations are measured in UTC, so a daylight-saving change in between
-  // neither adds nor removes an hour.
-  const long remainingSeconds = static_cast<long>(m_baseView.anchorUtc) -
-                               static_cast<long>(m_rtc.getUtcCached());
-  // Completion and schedule changes belong to application logic. A delayed
-  // schedule sample can show zero here but cannot create a permanent overlay.
-
-  uint8_t tenths = 0;
-  if ((refreshRate == RefreshRate::kOneTenth) && (remainingSeconds > 0)) {
-    tenths = (10 - m_rtc.msIntoSecond(nowMs) / kTenthMs) % 10;
-  }
-
-  frame = renderCountingFormat(formatIndex, remainingSeconds, tenths);
-  return true;
-}
-
-bool DisplayManager::buildCountupFrame(uint32_t nowMs, bool force,
-                                       DisplayFrame& frame) {
-  const uint8_t formatIndex = activeCountingFormatIndex();
-  const RefreshRate refreshRate =
-      displayFormatInfo(kFmtGroupCountUp, formatIndex).refreshRate;
-  if (!renderElapsed(nowMs, intervalForRefreshRate(refreshRate), force))
-    return false;
-
-  const long elapsedSeconds = static_cast<long>(m_rtc.getUtcCached()) -
-                             static_cast<long>(m_baseView.anchorUtc);
-
   uint8_t tenths = 0;
   if (refreshRate == RefreshRate::kOneTenth) {
-    tenths = m_rtc.msIntoSecond(nowMs) / kTenthMs;
+    const uint8_t phase = m_rtc.msIntoSecond(nowMs) / kTenthMs;
+    if (countingUp) {
+      tenths = phase;
+    } else if (durationSeconds > 0) {
+      tenths = (10 - phase) % 10;
+    }
   }
 
-  frame = renderCountingFormat(formatIndex, elapsedSeconds, tenths);
+  // Completion and schedule changes remain application decisions, including
+  // when a delayed sample temporarily leaves an expired countdown at zero.
+  frame = renderCountingFormat(formatIndex, durationSeconds, tenths);
   return true;
 }
 

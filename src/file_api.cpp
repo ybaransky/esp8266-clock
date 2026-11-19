@@ -11,84 +11,18 @@ namespace {
 
 constexpr uint32_t kUploadRebootDelayMs = 1500;
 
-// Indents a compact JSON byte stream on its way to Serial, one byte at a time.
-//
-// Deliberately not a parse-then-serializeJsonPretty(): this mirror exists to
-// show what is actually on disk, and a file worth reading on the console is
-// often one that no longer parses. A byte filter cannot fail, allocates
-// nothing, and needs no lookahead beyond the one character of state below, so
-// it also survives the 4 KB truncation the caller may apply mid-document.
-//
-// Output matches serializeJsonPretty(): two spaces per level, ": " after a
-// key, and empty containers left on one line.
-class JsonIndenter {
- public:
-  void write(uint8_t byte);
-
- private:
-  void newline();
-
-  uint8_t m_depth = 0;    // Container nesting level; sets the indent width.
-  bool m_inString = false;  // True between the quotes of a string literal.
-  bool m_escaped = false;   // True when the previous byte was a backslash.
-  bool m_pendingBreak = false;  // A container just opened; break before its first item.
-};
-
-void JsonIndenter::newline() {
-  Serial.println();
-  for (uint8_t level = 0; level < m_depth; ++level) Serial.print(F("  "));
-}
-
-void JsonIndenter::write(uint8_t byte) {
-  // Inside a string every byte is content, including the structural characters
-  // and whitespace this otherwise rewrites.
-  if (m_inString) {
-    Serial.write(byte);
-    if (m_escaped) m_escaped = false;
-    else if (byte == '\\') m_escaped = true;
-    else if (byte == '"') m_inString = false;
-    return;
-  }
-
-  // Existing layout is discarded rather than added to, so a file that is
-  // already indented does not come out doubly so.
-  if ((byte == ' ') || (byte == '\t') || (byte == '\n') || (byte == '\r')) return;
-
-  const bool closer = ((byte == '}') || (byte == ']'));
-  if (closer && (m_depth > 0)) --m_depth;
-  if (m_pendingBreak) {
-    m_pendingBreak = false;
-    if (!closer) newline();  // "{}" and "[]" stay on one line.
-  } else if (closer) {
-    newline();
-  }
-
-  Serial.write(byte);
-  if (byte == '"') {
-    m_inString = true;
-  } else if ((byte == '{') || (byte == '[')) {
-    ++m_depth;
-    m_pendingBreak = true;
-  } else if (byte == ',') {
-    newline();
-  } else if (byte == ':') {
-    Serial.write(' ');
-  }
-}
-
 }  // namespace
 
 // -----------------------------------------------------------------------------
 // FileApi
 // -----------------------------------------------------------------------------
 
-// Paths whose bytes must never leave the device over HTTP. Only /config.json
-// qualifies today: it is the one file that stores a secret (the WiFi station
-// password). Kept as a named predicate so a future secret-bearing file is one
-// line away from being covered, and so handleDeleteFile()/handleUpload() can
-// be pointed at it too if that is ever wanted.
+// Primary, recovery files, and staging files for uploads to those paths all
+// contain the same credentials. Apply this before either full or ranged reads.
 bool FileApi::isCredentialBearingPath(const String& path) {
-  return path == "/config.json";
+  return (path == "/config.json") || (path == "/config.bak") ||
+         (path == "/config.tmp") || (path == "/config.json.tmp") ||
+         (path == "/config.bak.tmp") || (path == "/config.tmp.tmp");
 }
 
 const char* FileApi::mimeTypeForPath(const String& path) {
@@ -224,8 +158,7 @@ void FileApi::handleReadFile() {
   //
   // Deliberately a refusal rather than serving a sanitized body under the same
   // URL: "GET this path returns something other than the bytes at this path"
-  // is the kind of leaky abstraction that surprises the next reader. The serial
-  // mirror below still shows the real on-disk bytes, which is physically local.
+  // is the kind of leaky abstraction that surprises the next reader.
   if (isCredentialBearingPath(path)) {
     LOG_PRINTF("/api/file refused %s: contains credentials; use /api/config",
                path.c_str());
@@ -259,7 +192,6 @@ void FileApi::handleReadFile() {
     snprintf(totalSize, sizeof(totalSize), "%u", static_cast<unsigned>(fileSize));
     m_server.sendHeader("X-File-Size", totalSize);
     m_server.send(200, mimeTypeForPath(path), &file, length);
-    logFileContent(file, path, offset, length);
     file.close();
     return;
   }
@@ -267,48 +199,7 @@ void FileApi::handleReadFile() {
   const size_t fileSize = file.size();
   m_responder.logRequest(200, fileSize);
   m_server.streamFile(file, mimeTypeForPath(path));
-  logFileContent(file, path, 0, fileSize);
   file.close();
-}
-
-void FileApi::logFileContent(File& file, const String& path, size_t offset,
-                             size_t length) {
-  // Only the config file is mirrored. Serial drains at roughly 7.5 KB/s, so
-  // dumping whatever the browser happens to open would stall the loop for
-  // minutes on a large file (/zipcodes.bin is 164 KB).
-  static constexpr char kMirroredPath[] = "/config.json";
-  if (path != kMirroredPath) return;
-
-  // Kept as a safety net in case the config file ever grows: 4 KB is about
-  // half a second of serial time, and the current file is under 1 KB.
-  static constexpr size_t kMaxSerialDumpBytes = 4096;
-  const size_t dumped = min(length, kMaxSerialDumpBytes);
-
-  LOG_PRINTF("file body: %s offset=%u bytes=%u of %u", path.c_str(),
-             static_cast<unsigned>(offset), static_cast<unsigned>(dumped),
-             static_cast<unsigned>(length));
-  // The response has already been streamed, so the read head sits at the end
-  // of the range; rewind to replay exactly the bytes the browser received.
-  // They are re-indented on the way out - only the console reads this copy.
-  if (!file.seek(offset, SeekSet)) {
-    LOG_PRINTLN("file body: seek failed");
-    return;
-  }
-
-  JsonIndenter indenter;
-  uint8_t buffer[64];
-  size_t remaining = dumped;
-  while (remaining > 0) {
-    const size_t wanted = min(sizeof(buffer), remaining);
-    // File::read() returns int: a negative error must not be widened into a
-    // huge size_t length for Serial.write().
-    const int read = file.read(buffer, wanted);
-    if (read <= 0) break;  // Truncated or unreadable; stop rather than spin.
-    for (int index = 0; index < read; ++index) indenter.write(buffer[index]);
-    remaining -= static_cast<size_t>(read);
-    yield();
-  }
-  Serial.println();
 }
 
 void FileApi::handleDeleteFile() {

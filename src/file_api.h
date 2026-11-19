@@ -31,13 +31,6 @@ class FileApi {
 
   void closeUploadFile();
   String uploadTempPath() const;
-  // Mirrors the byte range just served to the serial monitor, but only for
-  // the config file - every other path returns immediately. Call it after the
-  // response has been sent: serial runs at roughly 7.5 KB/s, so this is far
-  // slower than the HTTP transfer and must not sit on the browser's wait. The
-  // per-chunk yield() keeps the watchdog fed and the display alive.
-  static void logFileContent(File& file, const String& path, size_t offset,
-                             size_t length);
 
   ESP8266WebServer& m_server;  // Source of file-management requests.
   HttpResponder& m_responder;  // Sends file-management responses.
